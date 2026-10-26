@@ -87,25 +87,34 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
   const blur = style === "cinematic" && intensity !== "quiet" && index > 0 ? interpolate(frame, [0, 14], [14, 0], { extrapolateRight: "clamp" }) : 0;
 
   const visual = scene.visual ?? detectVisual(scene.text);
+  const role = scene.narrative?.role ?? (index === 0 ? "hook" : index === count - 1 ? "resolution" : "continuation");
+  const strategy = scene.narrative?.strategy ?? "typography";
   const emphasis = new Set(visual.emphasis);
-  const all = stripMarks(scene.text).split(/\s+/).filter(Boolean);
+  const all = stripMarks(scene.text).split(/\\s+/).filter(Boolean);
   const active = activeWordIndex(scene.text, frame, d, scene.wordStarts);
-  // Kinetic/hybrid reveal the headline word by word in step with the narration; others show it at once.
-  const revealWords = intensity !== "quiet" && (style === "kinetic" || style === "hybrid");
+  // A role changes the actual composition; presets only tune the motion language.
+  const revealWords = intensity !== "quiet" && (style === "kinetic" || style === "hybrid" || role === "hook");
   const hasTop = ["list", "question", "number", "quote"].includes(visual.template) && (visual.template !== "number" || !!visual.number);
   const baseSize = all.length <= 6 ? 108 : all.length <= 12 ? 86 : all.length <= 20 ? 68 : 54;
-  // Leave room for the large visual above the headline and the cards below it.
-  const big = Math.round(baseSize * (hasTop ? 0.82 : 1) * (visual.template === "compare" ? 0.85 : 1));
+  const big = Math.round(baseSize * (hasTop ? 0.82 : 1) * (visual.template === "compare" ? 0.85 : 1) * (role === "hook" ? 1.16 : role === "resolution" ? 0.92 : 1));
   const line = captionLine(stripMarks(scene.text), active);
+  const centered = role === "hook" || role === "reveal" || role === "resolution";
+  const textAlign = centered ? "center" as const : "left" as const;
+  const alignItems = centered ? "center" as const : "flex-start" as const;
+  const roleLabel: Record<string, string> = { hook: "PEMBUKA", tension: "KONFLIK", explanation: "PENJELASAN", reveal: "INTI TEMUAN", application: "LANGKAH NYATA", resolution: "KESIMPULAN", continuation: "LANJUTAN" };
 
   return (
     <AbsoluteFill style={{ opacity: Math.min(fadeIn, fadeOut) }}>
-      <AbsoluteFill style={{ justifyContent: "center", padding: "0 92px", color: colors.text, transform: `translateY(${drift}px)`, filter: blur ? `blur(${blur}px)` : undefined }}>
-        <div style={{ fontFamily: "Arial, sans-serif", fontSize: 26, letterSpacing: 6, fontWeight: 700, color: colors.accent, marginBottom: 40, textTransform: "uppercase" }}>
-          {index === 0 && title ? title : `${String(index + 1).padStart(2, "0")} / ${String(count).padStart(2, "0")}`}
+      <AbsoluteFill style={{ justifyContent: "center", padding: role === "hook" ? "0 70px" : role === "resolution" ? "0 112px" : "0 92px", color: colors.text, transform: `translateY(${drift}px)`, filter: blur ? `blur(${blur}px)` : undefined, alignItems }}>
+        {role === "hook" ? <div style={{ position: "absolute", top: 250, left: 80, right: 80, height: 3, background: colors.accent, transform: `scaleX(${interpolate(enter, [0, 1], [0, 1])})`, transformOrigin: "left" }} /> : null}
+        <div style={{ width: "100%", fontFamily: "Arial, sans-serif", fontSize: 22, letterSpacing: 5, fontWeight: 700, color: colors.accent, marginBottom: role === "hook" ? 26 : 32, textTransform: "uppercase", textAlign }}>
+          {role === "hook" && title ? title : roleLabel[role] ?? `${String(index + 1).padStart(2, "0")} / ${String(count).padStart(2, "0")}`}
         </div>
-        <TopVisual visual={visual} colors={colors} sceneFrames={d} />
-        <div style={{ fontFamily: FONT, fontSize: big, lineHeight: 1.04, letterSpacing: -2, fontWeight: 900, transform: `scale(${scale})`, transformOrigin: "left center", textShadow: "0 8px 40px #0004", overflowWrap: "break-word" }}>
+        {role === "tension" && strategy === "comparison" ? <div style={{ alignSelf: "stretch", height: 7, marginBottom: 28, background: `linear-gradient(90deg, ${colors.text} 0 46%, transparent 46% 54%, ${colors.accent} 54% 100%)` }} /> : null}
+        {role !== "hook" && role !== "resolution" ? <TopVisual visual={visual} colors={colors} sceneFrames={d} /> : null}
+        {role === "explanation" && strategy === "diagram" ? <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 26, color: colors.accent, fontSize: 20, fontWeight: 800, letterSpacing: 2 }}><span style={{ border: `2px solid ${colors.accent}`, padding: "12px 16px" }}>SEBAB</span><span style={{ fontSize: 32 }}>→</span><span style={{ border: `2px solid ${colors.accent}`, padding: "12px 16px" }}>AKIBAT</span></div> : null}
+        {role === "reveal" ? <div style={{ width: 150, height: 6, background: colors.accent, marginBottom: 28, transform: `scaleX(${interpolate(enter, [0, 1], [0, 1])})` }} /> : null}
+        <div style={{ width: "100%", maxWidth: role === "resolution" ? 850 : 920, fontFamily: FONT, fontSize: big, lineHeight: role === "hook" ? 0.96 : 1.04, letterSpacing: role === "hook" ? -4 : -2, fontWeight: 900, textAlign, transform: `scale(${scale})`, transformOrigin: centered ? "center center" : "left center", textShadow: role === "hook" ? `0 10px 48px ${colors.accent}33` : "0 8px 40px #0004", overflowWrap: "break-word" }}>
           {all.map((w, i) => {
             const shown = !revealWords || i <= active;
             const pop = revealWords ? spring({ frame: frame - Math.floor((i / all.length) * d * 0.9), fps, config: { damping: 12, stiffness: 200 } }) : 1;
@@ -123,8 +132,9 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
             );
           })}
         </div>
-        <div style={{ height: 8, width: interpolate(enter, [0, 1], [0, 125]), background: colors.accent, marginTop: 40, boxShadow: `0 0 24px ${colors.accent}` }} />
-        <BottomVisual visual={visual} colors={colors} />
+        {role === "resolution" ? <div style={{ width: 110, height: 4, background: colors.accent, marginTop: 30, transform: `scaleX(${interpolate(enter, [0, 1], [0, 1])})` }} /> : <div style={{ height: role === "hook" ? 4 : 6, width: interpolate(enter, [0, 1], [0, role === "tension" ? 220 : 125]), background: colors.accent, marginTop: role === "application" ? 24 : 34, boxShadow: role === "hook" ? "none" : `0 0 18px ${colors.accent}55` }} />}
+        {role !== "resolution" && role !== "hook" ? <BottomVisual visual={visual} colors={colors} /> : null}
+        {role === "application" ? <div style={{ marginTop: 24, borderLeft: `4px solid ${colors.accent}`, paddingLeft: 18, fontSize: 22, letterSpacing: 3, fontWeight: 800, color: colors.accent }}>LAKUKAN SATU HAL</div> : null}
       </AbsoluteFill>
       {captions && line.words.length > 0 && (
         <div style={{ position: "absolute", left: 70, right: 70, bottom: 190, display: "flex", justifyContent: "center" }}>
