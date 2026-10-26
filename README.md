@@ -1,27 +1,56 @@
 # Clipper Studio
 
-Mobile-first video clipping workspace built with Next.js App Router.
+Mobile-first, local-first video clipping MVP for Safari on iPhone and iPad.
 
-## Current UI
-- Two source paths: upload a local video or paste a YouTube URL.
-- Browser-local video preview and YouTube embed preview.
-- Clip start/end fields, aspect-ratio selection, and output-resolution selection.
-- Responsive layout for iPhone/iPad Safari.
+## MVP scope
 
-## Limitations
-This is an interface prototype. It does not yet process, download, or export video. A separate authorized media-processing worker using FFmpeg is required.
+- Local video file selection (up to 1 GB and 60 minutes as a product guardrail).
+- Browser preview and manual start/end timestamps.
+- Save up to five clip ranges in the current session.
+- Portrait 9:16 MP4 output with black or blurred background.
+- No account, no server-side source-video upload, no API key in the browser.
 
-Public YouTube availability does not automatically grant permission to download or reuse a video. Any future URL workflow must respect rights, platform terms, and applicable law. Prefer authorized sources or user-provided files.
+## Implemented in this branch
 
-## Development
+- Mobile-first editing workspace.
+- File selection, metadata/duration reading and input validation.
+- Current-playhead shortcuts for start and end times.
+- Up to five saved clip ranges.
+- Lazy-loaded FFmpeg WebAssembly render pipeline for MP4 export.
+- Download link for the resulting MP4.
+
+## Not implemented yet
+
+- AI highlight detection and suggested clips.
+- Automatic transcription / subtitle generation.
+- Burning hook text or subtitles into the final rendered video.
+- YouTube or social-platform downloading.
+- Automated browser/device compatibility tests.
+
+The hook and transcript fields are reference/preview fields only in this build; they are not burned into the exported video.
+
+## Important limitations
+
+- The FFmpeg runtime is downloaded from unpkg on first export, so the first render requires an internet connection.
+- Source video processing is intended to happen in the browser. The source video is not uploaded to a Clipper Studio server.
+- Safari memory limits, device temperature, storage, codec support, and source file complexity can cause export failure. The 1 GB / 60 minute limits do not guarantee every device can process a file of that size.
+- The output encoder and blurred-background filter need real-device testing on target iPad/iPhone models.
+- Publicly accessible videos are not automatically permitted to download or reuse. This build intentionally accepts local files only.
+
+## Run locally
+
 ```sh
 npm install
 npm run dev
 ```
 
-## Planned architecture
-- Next.js frontend hosted on Vercel.
-- Separate FFmpeg worker for processing.
-- Optional temporary object storage.
-- Expiring job/result links and automatic cleanup.
-- Both source paths feed the same processing pipeline.
+Before deployment, run:
+
+```sh
+npm run typecheck
+npm run build
+```
+
+## Privacy
+
+The browser reads the selected video and passes it to a browser-local FFmpeg worker for rendering. The app currently has no backend video upload, user account, analytics, transcription API, or AI API. The FFmpeg runtime is fetched from a CDN on first export.
