@@ -22,7 +22,13 @@ self.onmessage = async (e: MessageEvent<AsrRequest>) => {
     env.allowLocalModels = false;
     env.useBrowserCache = true;
     // Self-hosted WebAssembly runtime (copied to public/ort-asr at build time); no SharedArrayBuffer, so a single thread.
-    if (env.backends.onnx.wasm) { env.backends.onnx.wasm.wasmPaths = "/ort-asr/"; env.backends.onnx.wasm.numThreads = 1; }
+    // Same variant choice as Transformers.js: the plain build on Safari < 26 without WebGPU, the asyncify build elsewhere.
+    if (env.backends.onnx.wasm) {
+      const safari = /Version\/(\d+)[\d.]*.*Safari/.exec(self.navigator.userAgent);
+      const suffix = safari && Number(safari[1]) < 26 && !("gpu" in self.navigator) ? "" : ".asyncify";
+      env.backends.onnx.wasm.wasmPaths = { mjs: `/ort-asr/ort-wasm-simd-threaded${suffix}.mjs`, wasm: `/ort-asr/ort-wasm-simd-threaded${suffix}.wasm` };
+      env.backends.onnx.wasm.numThreads = 1;
+    }
     if (!loaded || loaded.model !== model) {
       const files = new Map<string, { loaded: number; total: number }>();
       const pipe = await pipeline("automatic-speech-recognition", model, {
