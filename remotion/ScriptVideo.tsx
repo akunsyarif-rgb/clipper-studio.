@@ -3,9 +3,10 @@ import { Audio } from "@remotion/media";
 import { AbsoluteFill, interpolate, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig, type CalculateMetadataFunction } from "remotion";
 import { musicGain } from "../lib/audio";
 import { activeWordIndex, captionLine, PALETTES, totalFrames, type Scene, type StyleId, type VideoProps } from "../lib/script";
+import { detectVisual, stripMarks, wordKey } from "../lib/visuals";
+import { BottomVisual, TopVisual } from "./SceneVisuals";
 
 const FONT = "'Arial Black', 'Helvetica Neue', Arial, sans-serif";
-const SYMBOLS = ["◷", "↗", "✳", "✓", "→", "◆", "✦", "▲"];
 
 function resolveAudio(src: string): string {
   // Browser renders pass blob:/http(s):/data: URLs; CLI renders pass a file name inside public/.
@@ -27,13 +28,17 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
   const scale = style === "popup" ? interpolate(enter, [0, 1], [0.6, 1]) : interpolate(enter, [0, 1], [0.86, 1]);
   const blur = style === "cinematic" && index > 0 ? interpolate(frame, [0, 14], [14, 0], { extrapolateRight: "clamp" }) : 0;
 
-  const all = scene.text.split(/\s+/).filter(Boolean);
+  const visual = scene.visual ?? detectVisual(scene.text);
+  const emphasis = new Set(visual.emphasis);
+  const all = stripMarks(scene.text).split(/\s+/).filter(Boolean);
   const active = activeWordIndex(scene.text, frame, d);
   // Kinetic/hybrid reveal the headline word by word in step with the narration; others show it at once.
   const revealWords = style === "kinetic" || style === "hybrid";
-  const big = all.length <= 6 ? 108 : all.length <= 12 ? 86 : all.length <= 20 ? 68 : 54;
-  const symbolScale = spring({ frame: frame - 10, fps, config: { damping: 8, stiffness: 160 } });
-  const line = captionLine(scene.text, active);
+  const hasTop = ["list", "question", "number", "quote"].includes(visual.template) && (visual.template !== "number" || !!visual.number);
+  const baseSize = all.length <= 6 ? 108 : all.length <= 12 ? 86 : all.length <= 20 ? 68 : 54;
+  // Leave room for the large visual above the headline and the cards below it.
+  const big = Math.round(baseSize * (hasTop ? 0.82 : 1) * (visual.template === "compare" ? 0.85 : 1));
+  const line = captionLine(stripMarks(scene.text), active);
 
   return (
     <AbsoluteFill style={{ opacity: Math.min(fadeIn, fadeOut) }}>
@@ -41,15 +46,27 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
         <div style={{ fontFamily: "Arial, sans-serif", fontSize: 26, letterSpacing: 6, fontWeight: 700, color: colors.accent, marginBottom: 40, textTransform: "uppercase" }}>
           {index === 0 && title ? title : `${String(index + 1).padStart(2, "0")} / ${String(count).padStart(2, "0")}`}
         </div>
+        <TopVisual visual={visual} colors={colors} sceneFrames={d} />
         <div style={{ fontFamily: FONT, fontSize: big, lineHeight: 1.04, letterSpacing: -2, fontWeight: 900, transform: `scale(${scale})`, transformOrigin: "left center", textShadow: "0 8px 40px #0004", overflowWrap: "anywhere" }}>
           {all.map((w, i) => {
             const shown = !revealWords || i <= active;
             const pop = revealWords ? spring({ frame: frame - Math.floor((i / all.length) * d * 0.9), fps, config: { damping: 12, stiffness: 200 } }) : 1;
-            return <span key={i} style={{ display: "inline-block", marginRight: "0.25em", opacity: shown ? 1 : 0.14, transform: `translateY(${(1 - pop) * 30}px)`, color: revealWords && i === active ? colors.accent : undefined }}>{w}</span>;
+            const key = wordKey(w);
+            const emph = emphasis.has(key);
+            // Emphasised words turn accent-coloured and get an underline that grows once they are spoken.
+            const said = !revealWords || i <= active;
+            const sinceSaid = frame - Math.floor((i / all.length) * d * 0.9);
+            const underline = emph && said ? interpolate(revealWords ? sinceSaid : frame - 10, [0, 10], [0, 100], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 0;
+            return (
+              <span key={i} style={{ position: "relative", display: "inline-block", marginRight: "0.25em", opacity: shown ? 1 : 0.14, transform: `translateY(${(1 - pop) * 30}px)`, color: emph || (revealWords && i === active) ? colors.accent : undefined }}>
+                {w}
+                {emph && <span style={{ position: "absolute", left: 0, bottom: "-0.08em", height: "0.09em", width: `${underline}%`, borderRadius: 6, background: colors.accent }} />}
+              </span>
+            );
           })}
         </div>
         <div style={{ height: 8, width: interpolate(enter, [0, 1], [0, 125]), background: colors.accent, marginTop: 40, boxShadow: `0 0 24px ${colors.accent}` }} />
-        {style !== "kinetic" && <div style={{ marginTop: 56, width: 88, height: 88, borderRadius: 24, border: `2px solid ${colors.accent}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 54, color: colors.accent, transform: `scale(${Math.max(0, symbolScale)})` }}>{SYMBOLS[index % SYMBOLS.length]}</div>}
+        <BottomVisual visual={visual} colors={colors} />
       </AbsoluteFill>
       {captions && line.words.length > 0 && (
         <div style={{ position: "absolute", left: 70, right: 70, bottom: 190, display: "flex", justifyContent: "center" }}>

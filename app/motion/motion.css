@@ -50,3 +50,11 @@ button.scene-row{width:100%;text-align:left;color:inherit;font:inherit;backgroun
 .check-row{display:flex;gap:9px;align-items:flex-start;font-size:11px;color:#d6dbeb;line-height:1.5;cursor:pointer}
 .check-row input{margin-top:2px;accent-color:#8c80fa}
 .audio-box input[type=range]{width:100%;accent-color:#8c80fa}
+
+/* Per-scene visual controls */
+.scene-item{border-bottom:1px solid var(--m-line);padding-bottom:10px}
+.scene-item button.scene-row{border-bottom:0}
+.scene-visual{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding-left:36px}
+.scene-visual label{display:flex;flex-direction:column;gap:4px;font-size:10px;color:var(--m-muted);min-width:0}
+.scene-visual select{width:100%;min-width:0;border:1px solid #343750;background:#171a31;color:#e6e9f7;border-radius:8px;padding:7px 8px;font:11px 'DM Sans',system-ui,sans-serif}
+@media(max-width:520px){.scene-visual{padding-left:28px}.scene-visual select{font-size:16px}}

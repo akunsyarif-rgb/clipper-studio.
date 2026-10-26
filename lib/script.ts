@@ -1,5 +1,6 @@
 // Pure script → timeline logic shared by the UI, the Remotion composition and unit tests.
 import type { Music } from "./audio";
+import type { SceneVisual } from "./visuals";
 
 export const FPS = 30;
 export const WIDTH = 1080;
@@ -28,7 +29,12 @@ export const PALETTES: Record<PaletteId, { label: string; bg1: string; bg2: stri
   pearl: { label: "Pearl / Black", bg1: "#e9edf2", bg2: "#bfc8d5", accent: "#242c3a", text: "#141821" },
 };
 
-export type Scene = { text: string; durationInFrames: number };
+export type Scene = {
+  text: string;
+  durationInFrames: number;
+  /** Template, icon and emphasis; detected from the text when absent (e.g. older project JSON). */
+  visual?: SceneVisual;
+};
 
 export type VideoProps = {
   title: string;
