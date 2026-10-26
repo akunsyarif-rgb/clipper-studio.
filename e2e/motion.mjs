@@ -127,6 +127,46 @@ try {
     return renderAndCheck("silent", false, 15);
   });
 
+  async function failingEncoderPage(failWhen) {
+    // Simulates a browser whose H.264 encoder rejects some configurations (as reported on iPad Safari).
+    const p = await browser.newPage({ acceptDownloads: true });
+    await p.addInitScript(mode => {
+      const configure = VideoEncoder.prototype.configure;
+      VideoEncoder.prototype.configure = function (config) {
+        if (mode === "all" || config.hardwareAcceleration === "no-preference") throw new DOMException("Simulated encoder failure", "NotSupportedError");
+        return configure.call(this, config);
+      };
+    }, failWhen);
+    await p.goto(BASE);
+    await p.getByTestId("script").fill("Uji fallback encoder.\nSelesai.");
+    await p.getByTestId("style").selectOption("cinematic");
+    await p.getByTestId("palette").selectOption("pearl");
+    return p;
+  }
+
+  await step("falls back to another encoder setting when the first attempt fails", async () => {
+    const p = await failingEncoderPage("default-only");
+    await p.getByTestId("render").click();
+    await p.getByTestId("result").waitFor({ timeout: 300000 });
+    const [download] = await Promise.all([p.waitForEvent("download"), p.getByTestId("download").click()]);
+    const out = join(dir, "fallback.mp4");
+    await download.saveAs(out);
+    const info = probe(out);
+    assert(info.video === "h264" && info.width === 1080 && info.height === 1920, `video ${info.video} ${info.width}x${info.height}`);
+    await p.close();
+    return `${info.duration.toFixed(2)}s h264 after retry`;
+  });
+
+  await step("shows copyable diagnostics when every attempt fails", async () => {
+    const p = await failingEncoderPage("all");
+    await p.getByTestId("render").click();
+    await p.getByTestId("render-error").waitFor({ timeout: 120000 });
+    const detail = await p.getByTestId("error-detail").textContent();
+    for (const needle of ["[default]", "[software]", "Simulated encoder failure", "UA:", "avc1.640028", "Gaya: cinematic"]) assert(detail.includes(needle), `detail missing ${needle}`);
+    assert(await p.getByTestId("error-detail").isVisible(), "details should be open");
+    await p.close();
+  });
+
   await step("no horizontal scroll on iPhone-size viewport", async () => {
     const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
     await phone.goto(BASE);

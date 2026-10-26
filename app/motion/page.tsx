@@ -3,7 +3,7 @@
 import { Player, type PlayerRef } from "@remotion/player";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { checkBrowserRender, renderMp4 } from "@/lib/render";
+import { checkBrowserRender, environmentReport, RenderFailure, renderMp4 } from "@/lib/render";
 import {
   buildTimeline, explainRenderError, FPS, HEIGHT, MAX_SECONDS, PALETTES, slug, STYLES, validateAudioFile, validateTitle, WIDTH,
   type DurationMode, type PaletteId, type StyleId, type VideoProps,
@@ -76,14 +76,22 @@ export default function MotionStudio() {
     setRendering(true);
     setStatus("Merender MP4 di browser… Biarkan tab ini tetap terbuka.");
     try {
-      const blob = await renderMp4(props, { signal: controller.signal, onProgress: p => setProgress(Math.round(p * 100)) });
+      const blob = await renderMp4(props, {
+        signal: controller.signal,
+        onProgress: p => setProgress(Math.round(p * 100)),
+        onRetry: () => setStatus("Percobaan pertama gagal. Mencoba lagi dengan pengaturan encoder lain…"),
+      });
       if (blob.size < 1024) throw new Error("Output MP4 kosong.");
       setResult({ url: URL.createObjectURL(blob), name: `${slug(title || script.slice(0, 30))}-1080x1920.mp4`, size: blob.size });
       setStatus("MP4 selesai dirender. Simpan hasilnya sebelum menutup tab.");
     } catch (err) {
-      const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
       if (controller.signal.aborted) { setStatus("Render dibatalkan."); }
-      else { setErrorDetail(detail); setRenderError(explainRenderError(detail)); setStatus(""); }
+      else {
+        const detail = err instanceof RenderFailure ? err.detail : err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+        const env = await environmentReport().catch(() => "");
+        setErrorDetail(`${detail}\n\n${env}\nGaya: ${style}, palet: ${palette}, audio: ${props.audioSrc ? "ya" : "tidak"}, durasi: ${timeline.ok ? timeline.seconds.toFixed(1) : "?"} dtk`);
+        setRenderError(explainRenderError(detail)); setStatus("");
+      }
     } finally {
       abort.current = null;
       setRendering(false);
@@ -177,7 +185,7 @@ export default function MotionStudio() {
           <button className="text-link" onClick={copyBrief} disabled={!timeline.ok}>Salin brief teks</button>
           {rendering && <div className="render-progress" data-testid="progress"><div><span>Merender di browser…</span><b>{progress}%</b></div><i><em style={{ width: progress + "%" }} /></i></div>}
           {renderError && <p className="field-error" role="alert" data-testid="render-error">{renderError}</p>}
-          {errorDetail && <details className="error-details"><summary>Detail teknis</summary><code>{errorDetail}</code></details>}
+          {errorDetail && <details className="error-details" open><summary>Detail teknis (kirimkan saat melapor)</summary><code data-testid="error-detail">{errorDetail}</code><button className="text-link" onClick={() => navigator.clipboard?.writeText(errorDetail).then(() => setStatus("Detail teknis disalin."), () => setStatus("Salin manual teks di atas."))}>Salin detail teknis</button></details>}
           {result && <div className="render-result" data-testid="result"><b>✓ MP4 siap</b><small>{WIDTH}×{HEIGHT} · {timeline.ok ? timeline.seconds.toFixed(1) : "?"} dtk · {(result.size / 1024 ** 2).toFixed(1)} MB</small><a className="motion-primary" href={result.url} download={result.name} data-testid="download">Simpan MP4 ↓</a></div>}
           {status && <p className="motion-status" role="status" data-testid="status">{status}</p>}
         </section>
