@@ -1,5 +1,5 @@
 import React from "react";
-import { Audio } from "@remotion/media";
+import { Audio, Video } from "@remotion/media";
 import { AbsoluteFill, interpolate, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig, type CalculateMetadataFunction } from "remotion";
 import { musicGain } from "../lib/audio";
 import { activeWordIndex, captionLine, PALETTES, totalFrames, type Scene, type StyleId, type VideoProps } from "../lib/script";
@@ -79,7 +79,7 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
   );
 }
 
-export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech }) => {
+export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech, backgroundVideoSrc, backgroundVideoAudio }) => {
   const frame = useCurrentFrame();
   const { durationInFrames, fps } = useVideoConfig();
   const colors = PALETTES[palette] ?? PALETTES.violet;
@@ -97,8 +97,11 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
   }) : [];
   let from = 0;
   return (
-    <AbsoluteFill style={{ background: `linear-gradient(145deg, ${colors.bg1} 0%, ${colors.bg2} 100%)`, overflow: "hidden" }}>
-      <AbsoluteFill style={{ background: `radial-gradient(circle at 80% 20%, ${colors.accent}22 0%, transparent 38%)`, opacity: wash }} />
+    <AbsoluteFill style={{ background: backgroundVideoSrc ? "#080a10" : `linear-gradient(145deg, ${colors.bg1} 0%, ${colors.bg2} 100%)`, overflow: "hidden" }}>
+      {backgroundVideoSrc ? <>
+        <AbsoluteFill><Video src={resolveAudio(backgroundVideoSrc)} volume={backgroundVideoAudio ? 1 : 0} style={{ width: "100%", height: "100%", objectFit: "cover" }} /></AbsoluteFill>
+        <AbsoluteFill style={{ background: "linear-gradient(180deg, #05070b88 0%, #05070b33 35%, #05070b99 100%)" }} />
+      </> : <AbsoluteFill style={{ background: `radial-gradient(circle at 80% 20%, ${colors.accent}22 0%, transparent 38%)`, opacity: wash }} />
       {particles.map(p => <div key={p.key} aria-hidden="true" style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: p.size, height: p.size, borderRadius: "50%", background: colors.accent, opacity: p.opacity, transform: `translateY(${p.drift}px)`, pointerEvents: "none" }} />)}
       <div style={{ position: "absolute", width: 700, height: 700, border: `1px solid ${colors.accent}45`, borderRadius: "50%", right: -380, top: 250, transform: `rotate(${frame * 0.3}deg)` }} />
       <div style={{ position: "absolute", left: 70, right: 70, top: 72, display: "flex", justifyContent: "space-between", color: `${colors.accent}cc`, font: "bold 18px monospace", letterSpacing: 3 }}><span>CLIPPER / MOTION</span><span>30 FPS</span></div>
