@@ -45,7 +45,7 @@ export function planNarrative(texts: string[]): NarrativePlan[] {
       intensity = "impact";
       reason = "Buka dengan satu fokus dan hierarki teks yang jelas; ini rekomendasi awal yang dapat diabaikan kreator.";
       continuityCue = "Perkenalkan satu objek, pertanyaan, atau gagasan yang bisa berkembang pada adegan berikutnya.";
-    } else if (patterns.resolution.test(text) || (last && !patterns.application.test(text) && !patterns.tension.test(text) && !patterns.explanation.test(text))) {
+    } else if (patterns.resolution.test(text) || (last && index > 0 && !patterns.application.test(text) && !patterns.tension.test(text) && !patterns.explanation.test(text))) {
       role = "resolution";
       strategy = "typography";
       intensity = "quiet";
