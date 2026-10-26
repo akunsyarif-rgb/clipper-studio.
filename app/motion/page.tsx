@@ -16,6 +16,7 @@ import { spokenText } from "@/lib/tts/numbers";
 import { TTS_LANGS, type TtsLang } from "@/lib/tts/supertonic";
 import { allWords, shiftWords, HANDOFF_KEY, parseHandoff, sceneTimings, transcriptText, type Transcript } from "@/lib/transcript";
 import { autoCuts, ICONS, resolveVisual, type Cut, stripMarks, TEMPLATES, type Template, type VisualOverride } from "@/lib/visuals";
+import { planNarrative } from "@/lib/narrative";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
 import TranscriptPanel from "../TranscriptPanel";
 import { validateFile } from "@/lib/clip";
@@ -151,9 +152,10 @@ export default function MotionStudio() {
   const music: Music | null = musicTrack ? { src: musicTrack.url, volume: musicVolume / 100, duck, loop: musicMode === "upload" } : null;
 
   const sceneVisuals = timeline.ok ? timeline.scenes.map(sc => resolveVisual(sc.text, overrides[sc.text])) : [];
+  const narrativePlan = timeline.ok ? planNarrative(timeline.scenes.map(sc => sc.text)) : [];
   const planned = autoCuts(sceneVisuals);
   const sceneList = timeline.ok ? timeline.scenes.map((sc, i) => ({
-    ...sc, visual: sceneVisuals[i], ...(timed && !aiFresh ? { wordStarts: timed.wordStarts[i], wordEnds: timed.wordEnds[i] } : {}),
+    ...sc, visual: sceneVisuals[i], narrative: narrativePlan[i], ...(timed && !aiFresh ? { wordStarts: timed.wordStarts[i], wordEnds: timed.wordEnds[i] } : {}),
     ...(videoEdit && source ? { cut: cutOverrides[sc.text] ?? planned[i] } : {}),
   })) : [];
   const props: VideoProps | null = timeline.ok ? {
