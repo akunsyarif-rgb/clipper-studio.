@@ -114,6 +114,8 @@ export default function MotionStudio() {
   const [videoEdit, setVideoEdit] = useState(false);
   const [captionOffset, setCaptionOffset] = useState(0);
   const [cutOverrides, setCutOverrides] = useState<Record<string, Cut>>({});
+  // Where in the source video a "clip" scene starts (seconds), per scene text.
+  const [clipStarts, setClipStarts] = useState<Record<string, number>>({});
   useEffect(() => { if (!source) return; const url = source.url; return () => URL.revokeObjectURL(url); }, [source]);
   function onSourceVideo(e: ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -170,10 +172,10 @@ export default function MotionStudio() {
   const planned = autoCuts(sceneVisuals);
   const sceneList = timeline.ok ? timeline.scenes.map((sc, i) => ({
     ...sc, visual: sceneVisuals[i], narrative: narrativePlan[i], ...(timed && !aiFresh ? { wordStarts: timed.wordStarts[i], wordEnds: timed.wordEnds[i], pauseFrames: undefined } : {}),
-    ...(videoEdit && source ? { cut: cutOverrides[sc.text] ?? planned[i] } : {}),
+    ...(videoEdit && source ? { cut: cutOverrides[sc.text] ?? planned[i], ...(cutOverrides[sc.text] === "clip" ? { clipFrom: clipStarts[sc.text] ?? 0 } : {}) } : {}),
   })) : [];
   const props: VideoProps | null = timeline.ok ? {
-    title: title.trim(), scenes: sceneList, style, palette, audioSrc: narration?.url ?? null, captions, video: videoEdit && source ? { src: source.url } : null,
+    title: title.trim(), scenes: sceneList, style, palette, audioSrc: narration?.url ?? null, captions, video: videoEdit && source ? { src: source.url, seconds: source.seconds } : null,
     music, speech: narration?.speech ?? null,
   } : null;
   const blocker = !timeline.ok ? timeline.error : titleError
@@ -438,7 +440,7 @@ export default function MotionStudio() {
             ? <label className="upload-source"><input type="file" accept="video/*,.mp4,.mov,.m4v,.webm" onChange={onSourceVideo} data-testid="source-video" /></label>
             : <>
               <video ref={sourceVideo} src={source.url} controls playsInline preload="metadata" style={{ width: "100%", maxHeight: 220, borderRadius: 10, background: "#000" }} />
-              <button className="text-button" disabled={asrBusy} onClick={() => { setSource(null); setImported(null); setVideoEdit(false); }}>Ganti video ({source.file.name})</button>
+              <button className="text-button" disabled={asrBusy} onClick={() => { setSource(null); setImported(null); setVideoEdit(false); setCutOverrides({}); setClipStarts({}); }}>Ganti video ({source.file.name})</button>
               <TranscriptPanel key={source.url} file={source.file} video={sourceVideo} range={{ start: 0, duration: source.seconds }} locked={false} onWorking={setAsrBusy} onCopy={setScript}
                 onUse={t => { setScript(transcriptText(t)); setImported(t); setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptionOffset(0); setPalette("pearl"); setContentPreset("custom"); setOffer(null); }} />
             </>}
@@ -590,8 +592,14 @@ export default function MotionStudio() {
                 <div className="scene-info"><b>{stripMarks(s.text)}</b><small className="narrative-hint">{NARRATIVE_ROLE_LABELS[narrativePlan[i]?.role ?? ""] ?? "Lanjutan"} · {VISUAL_STRATEGY_LABELS[narrativePlan[i]?.strategy ?? ""] ?? "Minimal"} · {MOTION_INTENSITY_LABELS[narrativePlan[i]?.intensity ?? ""] ?? "Tenang"}{!(videoEdit && source) && sceneVisuals[i] ? <> · <span className="scene-family" data-testid="scene-family">{FAMILY_LABELS[chooseFamily(sceneVisuals[i], narrativePlan[i])]}</span></> : null}</small><small className="narrative-reason">{narrativePlan[i]?.reason}</small><small className="narrative-continuity"><b>Penghubung:</b> {narrativePlan[i]?.continuityCue}</small></div>
                 <div className="scene-meta"><b>{(from / FPS).toFixed(1)}–{(t / FPS).toFixed(1)}s</b><small>{(s.durationInFrames / FPS).toFixed(1)} dtk</small></div>
               </button>
-              <SceneVisualControls text={s.text} override={overrides[s.text]} disabled={rendering} cut={videoEdit ? { value: cutOverrides[s.text], auto: planned[i] } : undefined}
-                onCut={c => setCutOverrides(prev => { const next = { ...prev }; if (c) next[s.text] = c; else delete next[s.text]; return next; })}
+              <SceneVisualControls text={s.text} override={overrides[s.text]} disabled={rendering} cut={videoEdit ? { value: cutOverrides[s.text], auto: planned[i], clipFrom: clipStarts[s.text] } : undefined}
+                onCut={c => {
+                  setCutOverrides(prev => { const next = { ...prev }; if (c) next[s.text] = c; else delete next[s.text]; return next; });
+                  // Choosing "other footage" starts at wherever the source player is now.
+                  if (c === "clip" && clipStarts[s.text] === undefined) setClipStarts(prev => ({ ...prev, [s.text]: Math.min(sourceVideo.current?.currentTime ?? 0, source?.seconds ?? 0) }));
+                }}
+                onClipHere={() => setClipStarts(prev => ({ ...prev, [s.text]: Math.min(sourceVideo.current?.currentTime ?? 0, source?.seconds ?? 0) }))}
+                onClipSeek={t => { if (sourceVideo.current) { sourceVideo.current.currentTime = t; } }}
                 onChange={o => setOverrides(prev => { const next = { ...prev }; if (o.template || o.icon) next[s.text] = o; else delete next[s.text]; return next; })} />
             </div>); }); })()}</div>
         </section>
@@ -603,8 +611,14 @@ export default function MotionStudio() {
   );
 }
 
+/** 83.4 → "1:23.4" */
+function formatClock(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  return `${m}:${(seconds - m * 60).toFixed(1).padStart(4, "0")}`;
+}
+
 /** Per-scene visual correction: template and icon, each "Otomatis" unless the user picks one. */
-function SceneVisualControls({ text, override, disabled, onChange, cut, onCut }: { text: string; override?: VisualOverride; disabled: boolean; onChange: (o: VisualOverride) => void; cut?: { value?: Cut; auto: Cut }; onCut: (c: Cut | undefined) => void }) {
+function SceneVisualControls({ text, override, disabled, onChange, cut, onCut, onClipHere, onClipSeek }: { text: string; override?: VisualOverride; disabled: boolean; onChange: (o: VisualOverride) => void; cut?: { value?: Cut; auto: Cut; clipFrom?: number }; onCut: (c: Cut | undefined) => void; onClipHere: () => void; onClipSeek: (seconds: number) => void }) {
   const auto = resolveVisual(text);
   const current = resolveVisual(text, override);
   const autoIcon = auto.icon ? ICONS[auto.icon]?.label : "tanpa ikon";
@@ -616,8 +630,14 @@ function SceneVisualControls({ text, override, disabled, onChange, cut, onCut }:
           <option value="">Otomatis · {cut.auto === "graphic" ? "Grafis" : "Video"}</option>
           <option value="video">Video + subtitle</option>
           <option value="graphic">Grafis</option>
+          <option value="clip">Potongan lain dari video</option>
         </select>
       </label>}
+      {cut && cut.value === "clip" && <div className="clip-pick" data-testid="clip-pick">
+        <span>Mulai di <b data-testid="clip-from">{formatClock(cut.clipFrom ?? 0)}</b> (maks. 4 dtk, tanpa suara)</span>
+        <button type="button" className="text-link" disabled={disabled} onClick={() => onClipSeek(cut.clipFrom ?? 0)} data-testid="clip-seek">Lihat</button>
+        <button type="button" className="text-link" disabled={disabled} onClick={onClipHere} data-testid="clip-here">Pakai posisi pemutar</button>
+      </div>}
       <label>
         <span>Tampilan</span>
         <select value={override?.template ?? ""} disabled={disabled} data-testid="scene-template"

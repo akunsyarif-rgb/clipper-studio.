@@ -165,3 +165,13 @@ Write `[jeda]`, `[jeda 1.5s]`, `[jeda 500ms]` or `[pause 2]` (round brackets wor
 ## Edited scripts keep transcript timing
 
 When a script comes from a transcript and is edited afterwards, `sceneTimings` first matches words one to one (same word count). If the count changed (words added, dropped, merged or split) it aligns the script to the transcript with a word-level edit-distance alignment (`alignWords`) and spreads new words between their neighbours. It is used only when at least 75% of the words still match; otherwise the studio falls back to its normal timing. A notice tells the creator that caption timing was aligned, not measured. Idea from MoneyPrinterTurbo's subtitle correction (MIT); the implementation is original.
+
+## Clips from the same video (source-video edits)
+
+In a source-video edit each scene can show the speaker, a graphic, or **another part of the same video** ("Potongan lain dari video"). The speaker's audio keeps playing without a break; only the picture changes, like a cutaway to b-roll.
+
+- Pick the scene's start in the scene list: scrub the source player, choose *Potongan lain dari video* (it starts where the player is) and use *Pakai posisi pemutar* to change it; *Lihat* jumps the player to the chosen start.
+- A clip plays muted from that second for the length of the scene, at most 4 s (`MAX_CLIP_FRAMES`), and never past the end of the video (`clipPlan`: the start is clamped so the whole clip exists).
+- A dark gradient behind the caption band keeps captions readable on any footage. The cut fades in and out over 5 frames.
+- Projects keep `cut: "clip"` and `clipFrom` (seconds) per scene; older projects are unaffected. Replacing the source video clears the cuts and clip starts.
+- Verified with a CLI render of a synthetic source (a different colour every 3 s): the clip scene shows the chosen part, a start too close to the end is clamped, and the audio stays the speaker's single track. Not yet verified on Safari/iPad: two simultaneous decodes of one file can be heavy on small devices; if a render fails there, report the technical details shown by the studio.

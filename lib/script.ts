@@ -61,6 +61,8 @@ export type Scene = {
   pauseFrames?: number;
   /** Source-video edits only: show the speaker ("video", default) or cut to this scene's graphic ("graphic"). */
   cut?: Cut;
+  /** cut "clip" only: second of the source video at which the clip starts (the clip plays on from there, muted). */
+  clipFrom?: number;
 };
 
 export type VideoProps = {
@@ -76,7 +78,8 @@ export type VideoProps = {
   /** Narration speech activity per frame (0..1) for ducking; null when unknown. */
   speech: number[] | null;
   /** Source video edit: the video (with its own audio) is the base layer and scenes become overlays or cutaways. */
-  video?: { src: string } | null;
+  /** `seconds` is the source length; it keeps a clip from running past the end of the video. */
+  video?: { src: string; seconds?: number } | null;
 };
 
 const words = (s: string) => s.split(/\s+/).filter(Boolean);
@@ -275,6 +278,21 @@ export function buildTimeline(script: string, mode: DurationMode, fps = FPS): Ti
 /** Frames for a scene of the given length (rounded up, never below the minimum scene length). */
 export function sceneFrames(seconds: number, fps = FPS): number {
   return Math.max(Math.ceil(MIN_SCENE_SECONDS * fps), Math.ceil(seconds * fps - 1e-6));
+}
+
+/** A clip lasts as long as its scene, but at most this long (same limit as a graphic cutaway), so the pace stays quick. */
+export const MAX_CLIP_FRAMES = 120;
+
+/**
+ * Where and how long a "clip" scene shows other footage from the source video, or null for any other scene.
+ * The start is kept inside the video (never before 0, and early enough that the whole clip exists).
+ */
+export function clipPlan(scene: Pick<Scene, "cut" | "clipFrom" | "durationInFrames">, sourceSeconds: number | undefined, fps = FPS): { startFrame: number; lengthFrames: number } | null {
+  if (scene.cut !== "clip") return null;
+  const lengthFrames = Math.max(1, Math.min(scene.durationInFrames, MAX_CLIP_FRAMES));
+  const latest = sourceSeconds !== undefined && Number.isFinite(sourceSeconds) ? Math.max(0, sourceSeconds - lengthFrames / fps) : Infinity;
+  const from = Number.isFinite(scene.clipFrom) ? (scene.clipFrom as number) : 0;
+  return { startFrame: Math.round(Math.min(Math.max(0, from), latest) * fps), lengthFrames };
 }
 
 export function totalFrames(scenes: Scene[]): number {

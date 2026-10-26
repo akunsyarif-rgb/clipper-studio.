@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   activeWordIndex, buildTimeline, captionLine, explainRenderError, FPS, MAX_SCENE_CHARS, MAX_SCENES, MAX_SECONDS, MIN_SCENE_SECONDS,
-  slug, splitScript, splitScriptWithPauses, spokenFrames, totalFrames, validateAudioFile, validateTitle,
+  clipPlan, MAX_CLIP_FRAMES, slug, splitScript, splitScriptWithPauses, spokenFrames, totalFrames, validateAudioFile, validateTitle,
 } from "./script";
 
 describe("splitScript", () => {
@@ -168,5 +168,38 @@ describe("pause tags", () => {
     expect(activeWordIndex(text, spokenFrames(s) - 1, spokenFrames(s))).toBe(3);
     expect(spokenFrames({ durationInFrames: 30 })).toBe(30);
     expect(spokenFrames({ durationInFrames: 30, pauseFrames: 99 })).toBe(1);
+  });
+});
+
+describe("clipPlan (other footage from the source video)", () => {
+  const scene = (extra: object) => ({ durationInFrames: 90, cut: "clip" as const, ...extra });
+
+  it("only applies to scenes cut to a clip", () => {
+    expect(clipPlan({ durationInFrames: 90, cut: "video" }, 60)).toBeNull();
+    expect(clipPlan({ durationInFrames: 90, cut: "graphic" }, 60)).toBeNull();
+    expect(clipPlan({ durationInFrames: 90 }, 60)).toBeNull();
+  });
+
+  it("starts at the chosen second and lasts as long as the scene", () => {
+    expect(clipPlan(scene({ clipFrom: 12.5 }), 60)).toEqual({ startFrame: 375, lengthFrames: 90 });
+  });
+
+  it("limits a clip to 4 s so the pace stays quick", () => {
+    expect(MAX_CLIP_FRAMES).toBe(120);
+    expect(clipPlan(scene({ durationInFrames: 300, clipFrom: 1 }), 60)?.lengthFrames).toBe(120);
+  });
+
+  it("keeps the whole clip inside the video, never before 0, and survives bad values", () => {
+    // 12 s source, 3 s clip: the latest start is 9 s.
+    expect(clipPlan(scene({ clipFrom: 11.5 }), 12)).toEqual({ startFrame: 270, lengthFrames: 90 });
+    expect(clipPlan(scene({ clipFrom: -4 }), 12)?.startFrame).toBe(0);
+    expect(clipPlan(scene({ clipFrom: NaN }), 12)?.startFrame).toBe(0);
+    expect(clipPlan(scene({}), 12)?.startFrame).toBe(0);
+    // A source shorter than the clip starts at 0 rather than at a negative frame.
+    expect(clipPlan(scene({ clipFrom: 5 }), 2)?.startFrame).toBe(0);
+  });
+
+  it("without a known source length trusts the chosen start", () => {
+    expect(clipPlan(scene({ clipFrom: 40 }), undefined)?.startFrame).toBe(1200);
   });
 });

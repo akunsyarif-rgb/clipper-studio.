@@ -332,7 +332,8 @@ export function templateLabel(t: Template): string {
   return TEMPLATES.find(x => x.id === t)?.label ?? t;
 }
 
-export type Cut = "video" | "graphic";
+/** What a source-video scene shows: the speaker, a graphic, or another part ("clip") of the same video (audio never changes). */
+export type Cut = "video" | "graphic" | "clip";
 
 /**
  * Edit plan for a source-video edit: the speaker stays on screen by default; a scene with a recognised

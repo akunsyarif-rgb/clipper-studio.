@@ -2,7 +2,7 @@ import React from "react";
 import { Audio, Video } from "@remotion/media";
 import { AbsoluteFill, interpolate, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig, type CalculateMetadataFunction } from "remotion";
 import { musicGain } from "../lib/audio";
-import { activeWordIndex, phraseLine, spokenFrames, PALETTES, totalFrames, type Scene, type StyleId, type VideoProps } from "../lib/script";
+import { activeWordIndex, clipPlan, phraseLine, spokenFrames, PALETTES, totalFrames, type Scene, type StyleId, type VideoProps } from "../lib/script";
 import { chooseFamily } from "../lib/composition";
 import { contentBox, MOTION, SAFE } from "../lib/layout";
 import { detectVisual, stripMarks } from "../lib/visuals";
@@ -44,6 +44,19 @@ function VideoCaption({ scene }: { scene: Scene }) {
       <div style={{ maxWidth: 880, textAlign: "center", fontFamily: "Arial, sans-serif", fontWeight: 800, fontSize: 76, lineHeight: 1.12, letterSpacing: -1, color: "#fff", textShadow: "0 4px 22px #000d, 0 0 3px #000c", opacity: Math.min(1, 0.2 + pop), transform: `translateY(${(1 - Math.min(1, pop)) * 18}px) scale(${0.94 + 0.06 * Math.min(1, pop)})` }}>
         {state.line.words.map((w, i) => <span key={i} style={{ color: i === state.line.activeInLine ? "#ffe066" : "#fff" }}>{w}{i < state.line.words.length - 1 ? " " : ""}</span>)}
       </div>
+    </AbsoluteFill>
+  );
+}
+
+/** Other footage from the same source video over the speaker. Muted: the speaker's own audio keeps playing underneath. */
+function ClipCutaway({ src, startFrame, length }: { src: string; startFrame: number; length: number }) {
+  const frame = useCurrentFrame();
+  const fade = Math.min(interpolate(frame, [0, 5], [0, 1], { extrapolateRight: "clamp" }), interpolate(frame, [length - 5, length], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }));
+  return (
+    <AbsoluteFill style={{ background: "#000", opacity: fade }}>
+      <Video src={resolveAudio(src)} trimBefore={startFrame} muted objectFit="cover" />
+      {/* Darkens the caption band so white captions stay readable on any footage. */}
+      <AbsoluteFill style={{ background: "linear-gradient(to top, #000000c0 0%, #00000070 22%, #0000 44%)" }} />
     </AbsoluteFill>
   );
 }
@@ -149,10 +162,12 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
       {scenes.map((scene, i) => {
         const start = from;
         from += scene.durationInFrames;
+        const clip = video ? clipPlan(scene, video.seconds, fps) : null;
         return (
           <Sequence key={i} from={start} durationInFrames={scene.durationInFrames} name={`Scene ${i + 1}`}>
             {video
               ? <>
+                {clip && video ? <Sequence from={0} durationInFrames={clip.lengthFrames}><ClipCutaway src={video.src} startFrame={clip.startFrame} length={clip.lengthFrames} /></Sequence> : null}
                 {captions ? <VideoCaption scene={scene} /> : null}
                 {/* Cutaway: an opaque graphic over the speaker (at most 4 s); the video underneath keeps playing, so audio never breaks. */}
                 {scene.cut === "graphic" ? <Sequence from={0} durationInFrames={Math.min(scene.durationInFrames, 120)}><Cutaway scene={scene} colors={colors} length={Math.min(scene.durationInFrames, 120)} /></Sequence> : null}

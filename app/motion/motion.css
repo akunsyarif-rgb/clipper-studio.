@@ -90,3 +90,6 @@ button.scene-row{width:100%;text-align:left;color:inherit;font:inherit;backgroun
 .scene-info .narrative-reason,.scene-info .narrative-continuity{display:block;margin-top:4px;color:var(--m-muted);font-size:10px;font-weight:400;line-height:1.5;white-space:normal}
 .scene-info .narrative-continuity b{color:#a8dfd2;font-weight:700}
 @media(max-width:520px){.scene-info .narrative-reason,.scene-info .narrative-continuity{font-size:11px;line-height:1.45}}
+.clip-pick{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;font-size:11px;color:var(--m-muted)}
+.clip-pick b{color:var(--m-text,inherit)}
+.clip-pick .text-link{margin-top:0}
