@@ -39,9 +39,24 @@ Remotion is free for individuals and companies with up to 3 employees; larger co
 - Set `NEXT_PUBLIC_REMOTION_LICENSE_KEY` in Vercel to your license key, or to `free-license` if you qualify for the free license. Without it, the browser console shows a reminder.
 - The web renderer reports a usage event (site origin and success flag, no video content) to `remotion.pro`. If that host is blocked (ad blocker, firewall), an unhandled "Failed to fetch" may appear in the console. The rendered file is not affected.
 
+## Content presets (Motion Visual Pack)
+
+The studio offers six reusable starting presets in the **Template konten** selector. Presets only set the existing animation style and colour palette; users can still adjust both manually, and the script, audio, scene overrides, preview and local MP4 renderer remain the same.
+
+| Preset | Style | Palette | Intended use |
+|---|---|---|---|
+| Cinematic Motivation | Cinematic | Midnight / Gold | Motivation, reflective voiceover |
+| Kinetic Social | Kinetic typography | Violet / Cyan | Fast hooks and short-form social videos |
+| Education / Explainer | Hybrid | Pearl / Black | Lessons and clear explanations |
+| Business / Tech | Kinetic typography | Obsidian / Electric | AI, software and digital business |
+| Islamic Reflection | Cinematic | Forest / Sage | Islamic reminders and calm reflection |
+| Storytelling | Cinematic | Violet / Cyan | Narrative-led videos |
+
+The presets are starting points, not separate rendering engines. They add no dependencies, API calls, subscriptions, or server-side render costs.
+
 ## Smart visuals (icons, templates, emphasis)
 
-Every scene gets a visual that matches its text. Detection is automatic and works for Indonesian and English (`lib/visuals.ts`), and each scene can be corrected by hand.
+Every scene gets a visual that matches its text. Detection is automatic and works for Indonesian and English (`lib/visuals.ts`), and each scene can be corrected by hand. Semantic phrase rules take priority for Quran/ayat, prayer, mosque, faith, AI/technology, data/research, business, education, growth, challenges, solutions and video creation, then fall back to the existing bilingual keyword matcher.
 
 | Text pattern | Template | On screen |
 |---|---|---|
