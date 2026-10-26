@@ -18,7 +18,15 @@ jobs:
           node-version: 22
           cache: npm
       - name: Install FFmpeg (used by unit tests to verify output files)
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+        # A slow apt mirror once hung this step until the job hit its 15-minute limit; fail fast and retry instead.
+        timeout-minutes: 5
+        run: |
+          for attempt in 1 2 3; do
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update &&
+              sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends ffmpeg && break
+            echo "apt attempt $attempt failed, retrying"; sleep 10
+          done
+          ffmpeg -version | head -1
       - name: Install dependencies
         run: npm ci
       - name: Lint
