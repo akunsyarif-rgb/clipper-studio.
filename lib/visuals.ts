@@ -262,19 +262,19 @@ export function detectNumber(text: string): NumberInfo | null {
 export function detectSemanticConcept(text: string): string | null {
   const t = stripMarks(text).toLocaleLowerCase("id");
   const rules: [string, RegExp][] = [
-    ["book", /\\b(al[- ]?qur.?an|qur.?an|quran|ayat|surah|surat)\\b/i],
-    ["moon", /\\b(doa|berdoa|pray|prayer|dzikir|zikir|dhikr|shalat|salat|ibadah|worship)\\b/i],
-    ["building", /\\b(masjid|mushola|musala|mosque)\\b/i],
-    ["heart", /\\b(iman|takwa|taqwa|ikhlas|sabar|syukur|tawakal|tawakkul|faith|gratitude|sincerity)\\b/i],
-    ["ai", /\\b(ai|kecerdasan buatan|artificial intelligence|machine learning|otomatisasi|automation|teknologi|technology|software|coding|programming|aplikasi|app|digital)\\b/i],
-    ["data", /\\b(data|statistik|analitik|analytics|dashboard|riset|research|laporan|report)\\b/i],
-    ["work", /\\b(bisnis|usaha|penghasilan|pendapatan|profit|revenue|business|entrepreneur|wirausaha|pelanggan|customer)\\b/i],
-    ["book", /\\b(belajar|pembelajaran|pendidikan|pelajaran|mengajar|guru|siswa|murid|education|learning|teach|teacher|student|study|lesson)\\b/i],
-    ["heart", /\\b(cinta|kasih sayang|peduli|compassion|love|kindness|empathy)\\b/i],
-    ["growth", /\\b(berkembang|pertumbuhan|kemajuan|progres|growth|progress|improve|improvement)\\b/i],
-    ["challenge", /\\b(masalah|tantangan|hambatan|rintangan|problem|challenge|obstacle|struggle)\\b/i],
-    ["solution", /\\b(solusi|pemecahan|jawaban|solution|resolve|fix|answer)\\b/i],
-    ["video", /\\b(video|konten|reels|shorts|tiktok|youtube|creator|kreator|editing|editing video)\\b/i],
+    ["book", /\b(al[- ]?qur.?an|qur.?an|quran|ayat|surah|surat)\b/i],
+    ["moon", /\b(doa|berdoa|pray|prayer|dzikir|zikir|dhikr|shalat|salat|ibadah|worship)\b/i],
+    ["building", /\b(masjid|mushola|musala|mosque)\b/i],
+    ["heart", /\b(iman|takwa|taqwa|ikhlas|sabar|syukur|tawakal|tawakkul|faith|gratitude|sincerity)\b/i],
+    ["ai", /\b(ai|kecerdasan buatan|artificial intelligence|machine learning|otomatisasi|automation|teknologi|technology|software|coding|programming|aplikasi|app|digital)\b/i],
+    ["data", /\b(data|statistik|analitik|analytics|dashboard|riset|research|laporan|report)\b/i],
+    ["work", /\b(bisnis|usaha|penghasilan|pendapatan|profit|revenue|business|entrepreneur|wirausaha|pelanggan|customer)\b/i],
+    ["book", /\b(belajar|pembelajaran|pendidikan|pelajaran|mengajar|guru|siswa|murid|education|learning|teach|teacher|student|study|lesson)\b/i],
+    ["heart", /\b(cinta|kasih sayang|peduli|compassion|love|kindness|empathy)\b/i],
+    ["growth", /\b(berkembang|pertumbuhan|kemajuan|progres|growth|progress|improve|improvement)\b/i],
+    ["challenge", /\b(masalah|tantangan|hambatan|rintangan|problem|challenge|obstacle|struggle)\b/i],
+    ["solution", /\b(solusi|pemecahan|jawaban|solution|resolve|fix|answer)\b/i],
+    ["video", /\b(video|konten|reels|shorts|tiktok|youtube|creator|kreator|editing|editing video)\b/i],
   ];
   for (const [id, pattern] of rules) if (pattern.test(t)) return id;
   return null;
@@ -284,8 +284,8 @@ export function detectVisual(text: string): SceneVisual {
   const plain = stripMarks(text).trim();
   const manual = [...text.matchAll(/\*([^*]+)\*/g)].flatMap(m => m[1].split(/\s+/).map(wordKey)).filter(Boolean);
   const semanticId = detectSemanticConcept(text);
-  const concept = semanticId && ICONS[semanticId] ? { id: semanticId, words: [semanticId] } : matchConcept(text);
-  const icon = concept?.id ?? null;
+  const concept = matchConcept(text);
+  const icon = semanticId && ICONS[semanticId] ? semanticId : concept?.id ?? null;
   const emphasis = new Set<string>([...manual, ...(manual.length ? [] : concept?.words ?? [])]);
 
   for (const [re, index] of ORDINALS) {
