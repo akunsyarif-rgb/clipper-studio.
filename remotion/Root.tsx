@@ -14,6 +14,8 @@ export const defaultScriptProps: VideoProps = {
   captions: true,
   music: null,
   speech: null,
+  backgroundVideoSrc: null,
+  backgroundVideoAudio: false,
 };
 
 export const RemotionRoot: React.FC = () => (
