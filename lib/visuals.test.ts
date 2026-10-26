@@ -66,6 +66,11 @@ describe("detectVisual templates", () => {
     expect(detectNumber("Here are three simple tips.")).toMatchObject({ value: 3, label: "tips" });
     expect(detectNumber("Rating 4,5 bintang.")).toMatchObject({ value: 4.5, decimals: 1 });
     expect(detectNumber("One small step every day.")).toBeNull();
+    expect(detectNumber("Merdeka pada tahun 1945.")).toMatchObject({ value: 1945, year: true });
+    expect(detectNumber("It was founded in 2024.")).toMatchObject({ value: 2024, year: true });
+    expect(detectNumber("Lebih dari 17.000 pulau.")).toMatchObject({ value: 17000, year: false });
+    expect(detectNumber("Ada 5000 orang.")).toMatchObject({ value: 5000, year: false }); // outside 1000–2100 it is a quantity
+    expect(detectNumber("Naik 2024%.")).toMatchObject({ year: false });
     expect(detectVisual("80% kreator menyerah di bulan pertama.").emphasis).toContain("80");
   });
 

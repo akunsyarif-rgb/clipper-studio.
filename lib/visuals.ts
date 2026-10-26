@@ -133,7 +133,8 @@ export const ICONS: Record<string, { label: string; icon: IconNode }> = Object.f
   ["quote", { label: "Tanda kutip", icon: Quote }],
 ]);
 
-export type NumberInfo = { value: number; decimals: number; prefix: string; suffix: string; label: string; raw: string };
+/** `year`: a plain four-digit year such as 1945, shown without a thousands separator and without counting up. */
+export type NumberInfo = { value: number; decimals: number; prefix: string; suffix: string; label: string; raw: string; year: boolean };
 export type CompareInfo = { bad: string; good: string; neutral: boolean };
 
 export type SceneVisual = {
@@ -242,15 +243,16 @@ export function detectNumber(text: string): NumberInfo | null {
     const next = (m[4] ?? "").toLowerCase();
     // Show the following noun ("5 cara", "3 tips") but not connecting words or labels after money/units.
     const label = prefix || suffix.trim() || !next || STOPWORDS.has(next) ? "" : m[4];
-    return { value, decimals, prefix, suffix, label, raw };
+    const year = !grouped && !prefix && !suffix && /^\d{4}$/.test(raw) && value >= 1000 && value <= 2100;
+    return { value, decimals, prefix, suffix, label, raw, year };
   }
   const words = t.split(/\s+/).map(wordKey);
   for (let i = 0; i < words.length - 1; i++) {
     const n = NUMBER_WORDS[words[i]];
     // "one"/"satu" usually reads as a phrase ("one small step"), and a counter showing 1 says little.
     if (n === 1) continue;
-    if (n && COUNTABLE.test(words[i + 1] ?? "")) return { value: n, decimals: 0, prefix: "", suffix: "", label: words[i + 1], raw: words[i] };
-    if (n && COUNTABLE.test(words[i + 2] ?? "")) return { value: n, decimals: 0, prefix: "", suffix: "", label: words[i + 2], raw: words[i] };
+    if (n && COUNTABLE.test(words[i + 1] ?? "")) return { value: n, decimals: 0, prefix: "", suffix: "", label: words[i + 1], raw: words[i], year: false };
+    if (n && COUNTABLE.test(words[i + 2] ?? "")) return { value: n, decimals: 0, prefix: "", suffix: "", label: words[i + 2], raw: words[i], year: false };
   }
   return null;
 }

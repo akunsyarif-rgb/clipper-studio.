@@ -337,6 +337,26 @@ try {
     return `auto ${autos.length} templates ok, override applied, ${info}`;
   });
 
+  await step("numbers with thousands separators stay in one scene and one line", async () => {
+    await page.getByTestId("voice-none").click();
+    await page.getByTestId("music-none").click();
+    await page.getByTestId("script").fill("Negeri ini berdiri di atas lebih dari 17.000 pulau.\nAda lebih dari 1.300 suku dan 700 bahasa daerah.\nMerdeka pada tahun 1945.");
+    await page.getByTestId("duration").selectOption("15");
+    const rows = await page.getByTestId("scenes").locator(".scene-info b").allTextContents();
+    assert(rows.length === 3, `3 scenes expected, got ${rows.length}: ${JSON.stringify(rows)}`);
+    assert(rows[0].includes("17.000") && rows[1].includes("1.300"), `numbers kept whole: ${JSON.stringify(rows)}`);
+    const player = page.locator(".player-wrap");
+    await page.getByTestId("scene-item").nth(0).locator(".scene-row").click();
+    await player.locator('[data-visual="number"]').waitFor({ timeout: 5000 });
+    await player.hover();
+    await player.locator("button").first().click(); // play so the counter runs
+    await page.waitForTimeout(2200);
+    const box = await player.locator('[data-visual="number"] > div').first().evaluate(el => ({ text: el.textContent, lines: Math.round(el.offsetHeight / parseFloat(getComputedStyle(el).lineHeight)) }));
+    assert(box.text === "17.000", `counter text ${box.text}`);
+    assert(box.lines === 1, `counter must stay on one line, got ${box.lines}`);
+    return "scenes " + rows.length + ", counter 17.000 on one line";
+  });
+
   await step("no horizontal scroll on iPhone-size viewport", async () => {
     const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
     await phone.goto(BASE);

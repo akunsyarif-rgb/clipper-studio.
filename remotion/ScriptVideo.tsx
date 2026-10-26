@@ -47,7 +47,7 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
           {index === 0 && title ? title : `${String(index + 1).padStart(2, "0")} / ${String(count).padStart(2, "0")}`}
         </div>
         <TopVisual visual={visual} colors={colors} sceneFrames={d} />
-        <div style={{ fontFamily: FONT, fontSize: big, lineHeight: 1.04, letterSpacing: -2, fontWeight: 900, transform: `scale(${scale})`, transformOrigin: "left center", textShadow: "0 8px 40px #0004", overflowWrap: "anywhere" }}>
+        <div style={{ fontFamily: FONT, fontSize: big, lineHeight: 1.04, letterSpacing: -2, fontWeight: 900, transform: `scale(${scale})`, transformOrigin: "left center", textShadow: "0 8px 40px #0004", overflowWrap: "break-word" }}>
           {all.map((w, i) => {
             const shown = !revealWords || i <= active;
             const pop = revealWords ? spring({ frame: frame - Math.floor((i / all.length) * d * 0.9), fps, config: { damping: 12, stiffness: 200 } }) : 1;
@@ -58,7 +58,7 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
             const sinceSaid = frame - Math.floor((i / all.length) * d * 0.9);
             const underline = emph && said ? interpolate(revealWords ? sinceSaid : frame - 10, [0, 10], [0, 100], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 0;
             return (
-              <span key={i} style={{ position: "relative", display: "inline-block", marginRight: "0.25em", opacity: shown ? 1 : 0.14, transform: `translateY(${(1 - pop) * 30}px)`, color: emph || (revealWords && i === active) ? colors.accent : undefined }}>
+              <span key={i} style={{ position: "relative", display: "inline-block", whiteSpace: "nowrap", marginRight: "0.25em", opacity: shown ? 1 : 0.14, transform: `translateY(${(1 - pop) * 30}px)`, color: emph || (revealWords && i === active) ? colors.accent : undefined }}>
                 {w}
                 {emph && <span style={{ position: "absolute", left: 0, bottom: "-0.08em", height: "0.09em", width: `${underline}%`, borderRadius: 6, background: colors.accent }} />}
               </span>
