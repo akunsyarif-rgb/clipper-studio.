@@ -124,7 +124,7 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
       {phase !== "audio" && <button className="cancel-button" onClick={cancel} data-testid="asr-cancel">Batalkan transkripsi</button>}
     </div>}
     {error && <div className="notice notice-error" role="alert" data-testid="asr-error">{error}</div>}
-    {detail && <details className="error-details"><summary>Detail teknis</summary><code>{detail}</code></details>}
+    {detail && <details className="error-details" open><summary>Detail teknis</summary><code>{detail}</code></details>}
     {info && !error && <div className="notice" role="status" data-testid="asr-info">{info}</div>}
     {transcript && <>
       {stale && <div className="notice notice-error" role="status">Rentang waktu berubah setelah transkrip dibuat. Buat ulang agar sesuai dengan bagian yang dipilih.</div>}

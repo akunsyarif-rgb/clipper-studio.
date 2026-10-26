@@ -32,7 +32,8 @@ export function transcribe(audio: Float32Array, model: ModelId, language: Langua
         if (t.segments.length) resolve(t); else reject(new Error("no speech: tidak ada ucapan terdeteksi"));
       } else { worker.terminate(); reject(new Error(m.detail)); }
     };
-    worker.onerror = e => { worker.terminate(); reject(new Error(e.message || "worker error")); };
+    worker.onerror = e => { worker.terminate(); reject(new Error(`Worker gagal: ${e.message || "tanpa pesan"} (${e.filename || "?"}:${e.lineno || 0})`)); };
+    worker.onmessageerror = () => { worker.terminate(); reject(new Error("Worker gagal: pesan tidak dapat dibaca")); };
     // Transfer a copy-free buffer: the audio is not needed on this side afterwards.
     worker.postMessage({ audio, model, language }, [audio.buffer]);
   });

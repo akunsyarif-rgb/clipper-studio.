@@ -50,6 +50,6 @@ self.onmessage = async (e: MessageEvent<AsrRequest>) => {
       post({ type: "result", granularity: "segment", chunks: (Array.isArray(out) ? out[0] : out).chunks });
     }
   } catch (err) {
-    post({ type: "error", detail: err instanceof Error ? err.message : String(err) });
+    post({ type: "error", detail: err instanceof Error ? `${err.name}: ${err.message}\n${(err.stack ?? "").split("\n").slice(0, 4).join("\n")}` : String(err) });
   }
 };
