@@ -58,7 +58,7 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
             const sinceSaid = frame - Math.floor((i / all.length) * d * 0.9);
             const underline = emph && said ? interpolate(revealWords ? sinceSaid : frame - 10, [0, 10], [0, 100], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 0;
             return (
-              <span key={i} style={{ position: "relative", display: "inline-block", whiteSpace: "nowrap", marginRight: "0.25em", opacity: shown ? 1 : 0.14, transform: `translateY(${(1 - pop) * 30}px)`, color: emph || (revealWords && i === active) ? colors.accent : undefined }}>
+              <span key={i} style={{ position: "relative", display: "inline-block", whiteSpace: "nowrap", marginRight: "0.25em", opacity: shown ? 1 : 0.14, transform: `translateY(${(1 - pop) * (style === "kinetic" ? 42 : 30)}px) rotate(${style === "kinetic" ? (i % 2 === 0 ? -3 : 3) * (1 - pop) : 0}deg) scale(${style === "kinetic" ? 0.94 + 0.06 * pop : 1})`, color: emph || (revealWords && i === active) ? colors.accent : undefined, textShadow: style === "kinetic" && (emph || (revealWords && i === active)) ? `0 0 28px ${colors.accent}55` : undefined }}>
                 {w}
                 {emph && <span style={{ position: "absolute", left: 0, bottom: "-0.08em", height: "0.09em", width: `${underline}%`, borderRadius: 6, background: colors.accent }} />}
               </span>
