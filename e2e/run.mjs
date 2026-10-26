@@ -25,7 +25,8 @@ function probe(file) {
   return { duration: Number(out.format.duration), width: v?.width, height: v?.height, video: v?.codec_name, audio: a?.codec_name, format: out.format.format_name };
 }
 
-const server = spawn("npx", ["next", "start", "-p", String(PORT)], { stdio: ["ignore", "pipe", "pipe"] });
+// Own process group so the whole tree (npx → next-server) is stopped afterwards.
+const server = spawn("npx", ["next", "start", "-p", String(PORT)], { stdio: ["ignore", "pipe", "pipe"], detached: true });
 const results = [];
 let failed = false;
 async function step(name, fn) {
@@ -36,6 +37,7 @@ async function step(name, fn) {
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
 
 try {
+  if (await fetch(BASE).then(() => true, () => false)) throw new Error(`Port ${PORT} is already in use; stop the old server first.`);
   for (let i = 0; i < 60; i++) { try { await fetch(BASE); break; } catch { await new Promise(r => setTimeout(r, 500)); } }
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ acceptDownloads: true });
@@ -125,7 +127,7 @@ try {
   await step("no uncaught page errors", async () => { assert(consoleErrors.length === 0, consoleErrors.join(" | ")); });
   await browser.close();
 } finally {
-  server.kill();
+  try { process.kill(-server.pid, "SIGTERM"); } catch { server.kill(); }
   console.log(results.join("\n"));
   rmSync(dir, { recursive: true, force: true });
   process.exit(failed ? 1 : 0);
