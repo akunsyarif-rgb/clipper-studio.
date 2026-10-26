@@ -167,6 +167,41 @@ try {
     await p.close();
   });
 
+  await step("renders in a browser without native Symbol.dispose (Safari)", async () => {
+    // Safari 27 has no Symbol.dispose; conflicting library polyfills used to make every render fail
+    // with "Object not disposable". Hide the native symbols to reproduce that environment.
+    const p = await browser.newPage({ acceptDownloads: true });
+    await p.addInitScript(() => {
+      const S = Symbol;
+      function FakeSymbol(d) { return S(d); }
+      for (const k of Object.getOwnPropertyNames(S)) {
+        if (["dispose", "asyncDispose", "length", "name", "prototype"].includes(k)) continue;
+        Object.defineProperty(FakeSymbol, k, Object.getOwnPropertyDescriptor(S, k));
+      }
+      FakeSymbol.prototype = S.prototype;
+      globalThis.Symbol = FakeSymbol;
+    });
+    await p.goto(BASE);
+    const key = await p.evaluate(() => Symbol.dispose === Symbol.for("Symbol.dispose"));
+    assert(key, "page polyfill should define Symbol.dispose as Symbol.for('Symbol.dispose')");
+    await p.getByTestId("script").fill("Uji tanpa Symbol.dispose.\nSelesai.");
+    await p.getByTestId("style").selectOption("cinematic");
+    await p.getByTestId("palette").selectOption("pearl");
+    await p.getByTestId("render").click();
+    const outcome = await Promise.race([
+      p.getByTestId("result").waitFor({ timeout: 300000 }).then(() => "ok"),
+      p.getByTestId("render-error").waitFor({ timeout: 300000 }).then(async () => await p.getByTestId("error-detail").textContent()),
+    ]);
+    assert(outcome === "ok", `render failed: ${outcome.split("\n")[0]}`);
+    const [download] = await Promise.all([p.waitForEvent("download"), p.getByTestId("download").click()]);
+    const out = join(dir, "no-dispose.mp4");
+    await download.saveAs(out);
+    const info = probe(out);
+    assert(info.video === "h264" && info.width === 1080 && info.height === 1920, `video ${info.video} ${info.width}x${info.height}`);
+    await p.close();
+    return `${info.duration.toFixed(2)}s h264 1080x1920`;
+  });
+
   await step("no horizontal scroll on iPhone-size viewport", async () => {
     const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
     await phone.goto(BASE);
