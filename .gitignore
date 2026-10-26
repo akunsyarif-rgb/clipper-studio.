@@ -4,6 +4,7 @@
 # next.js
 /.next/
 /out/
+/public/ffmpeg/
 next-env.d.ts
 *.tsbuildinfo
 
@@ -25,3 +26,4 @@ npm-debug.log*
 /public/e2e-*
 /props.json
 /test-results/
+/playwright-report/

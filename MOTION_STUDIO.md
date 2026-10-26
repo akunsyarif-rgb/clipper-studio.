@@ -50,5 +50,5 @@ The CLI needs Chromium and FFmpeg. Remotion downloads them on first use.
 
 ```sh
 npm run lint && npm run typecheck && npm test && npm run build
-npm run test:e2e   # after build: renders MP4s in headless Chromium and checks them with ffprobe (needs ffmpeg + Playwright)
+npm run test:e2e   # after build (runs e2e/clipper.mjs and e2e/motion.mjs): renders MP4s in headless Chromium and checks them with ffprobe (needs ffmpeg + Playwright)
 ```

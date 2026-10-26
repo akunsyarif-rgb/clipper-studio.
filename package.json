@@ -1,27 +1,33 @@
 {
   "name": "clipper-studio",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "predev": "node scripts/copy-ffmpeg-core.mjs",
+    "prebuild": "node scripts/copy-ffmpeg-core.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "node e2e/run.mjs",
+    "test:e2e": "node e2e/clipper.mjs && node e2e/motion.mjs",
     "remotion:studio": "remotion studio remotion/index.ts",
     "render:motion": "remotion render remotion/index.ts MotionGraphics30 out/motion-graphics.mp4",
     "render:script": "remotion render remotion/index.ts ScriptVideo out/script-video.mp4 --props=props.json"
   },
   "dependencies": {
+    "@ffmpeg/core": "0.12.10",
+    "@ffmpeg/ffmpeg": "0.12.15",
+    "@ffmpeg/util": "0.12.2",
     "@remotion/media": "4.0.538",
     "@remotion/player": "4.0.538",
     "@remotion/web-renderer": "4.0.538",
     "next": "15.5.28",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "remotion": "4.0.538"
+    "react": "19.1.4",
+    "react-dom": "19.1.4",
+    "remotion": "4.0.538",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "3.3.7",
