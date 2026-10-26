@@ -1,6 +1,7 @@
 // Pure script → timeline logic shared by the UI, the Remotion composition and unit tests.
 import type { Music } from "./audio";
 import type { Cut, SceneVisual } from "./visuals";
+import type { NarrativePlan } from "./narrative";
 
 export const FPS = 30;
 export const WIDTH = 1080;
@@ -47,6 +48,8 @@ export type Scene = {
   durationInFrames: number;
   /** Template, icon and emphasis; detected from the text when absent (e.g. older project JSON). */
   visual?: SceneVisual;
+  /** Explainable narrative role and suggested visual treatment; optional for backward-compatible renders. */
+  narrative?: NarrativePlan;
   /** Frame (from the scene's first frame) at which each word is spoken; from a transcript. Even spread when absent. */
   wordStarts?: number[];
   /** Frame at which each word ends; captions over a source video hide in silent gaps. */
