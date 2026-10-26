@@ -52,13 +52,37 @@ export type VideoProps = {
 
 const words = (s: string) => s.split(/\s+/).filter(Boolean);
 
+/**
+ * Splits a line into sentences at . ! ? … — except a "." between two digits, which is a thousands or decimal
+ * separator ("17.000", "3.5"), not the end of a sentence.
+ */
+export function splitSentences(line: string): string[] {
+  const out: string[] = [];
+  let start = 0;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (!/[.!?…]/.test(c)) continue;
+    if (c === "." && /\d/.test(line[i - 1] ?? "") && /\d/.test(line[i + 1] ?? "")) continue;
+    let end = i + 1;
+    while (end < line.length && /[.!?…]/.test(line[end])) end++;
+    while (end < line.length && /["'”’)]/.test(line[end])) end++;
+    // A sentence ends at the terminator only when what follows is a space or the end of the line.
+    if (end < line.length && line[end] !== " ") { i = end - 1; continue; }
+    out.push(line.slice(start, end));
+    start = end;
+    i = end - 1;
+  }
+  if (start < line.length) out.push(line.slice(start));
+  return out;
+}
+
 /** Splits a script into scene texts: paragraphs/lines first, then sentences, then long sentences at commas/words. */
 export function splitScript(script: string): string[] {
   const out: string[] = [];
   for (const line of script.replace(/\r/g, "").split(/\n+/)) {
     const clean = line.replace(/\s+/g, " ").trim();
     if (!clean) continue;
-    const sentences = clean.match(/[^.!?…]+[.!?…]+["'”’)]*|[^.!?…]+$/g) ?? [clean];
+    const sentences = splitSentences(clean);
     for (const raw of sentences) {
       const sentence = raw.trim();
       if (!sentence) continue;

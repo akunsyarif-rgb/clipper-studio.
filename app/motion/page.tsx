@@ -12,6 +12,7 @@ import {
 } from "@/lib/script";
 import { explainVoiceError, loadVoiceEngine, MODEL_BYTES, VOICES } from "@/lib/tts/browser";
 import { assembleNarration, clipKey, SPEEDS } from "@/lib/tts/narration";
+import { spokenText } from "@/lib/tts/numbers";
 import { TTS_LANGS, type TtsLang } from "@/lib/tts/supertonic";
 import { ICONS, resolveVisual, stripMarks, TEMPLATES, type Template, type VisualOverride } from "@/lib/visuals";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
@@ -178,7 +179,8 @@ export default function MotionStudio() {
       const clips: Float32Array[] = [];
       for (const [i, text] of texts.entries()) {
         if (voiceCancel.current) throw new Error("cancelled");
-        const spoken = stripMarks(text);
+        // Digits are spoken as words ("1.300" → "seribu tiga ratus"); the screen keeps the digits.
+        const spoken = spokenText(stripMarks(text), ttsLang);
         const k = clipKey(spoken, ttsLang, ttsVoice, ttsSpeed);
         let clip = clipCache.current.get(k);
         if (!clip) {

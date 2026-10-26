@@ -31,6 +31,14 @@ export function LineIcon({ node, size, color, delay = 0, strokeWidth = 1.6 }: { 
   );
 }
 
+/** Largest font size (px) at which the final number fits the 896 px text column on one line. */
+export function counterSize(finalText: string): number {
+  // Arial Black digits are about 0.72 em wide, minus 6 px of negative letter spacing per glyph.
+  const perEm = 0.72, avail = 896;
+  for (let size = 220; size > 80; size -= 10) if (finalText.length * (perEm * size - 6) <= avail) return size;
+  return 80;
+}
+
 function formatNumber(value: number, decimals: number, prefix: string): string {
   const s = value.toLocaleString(prefix === "$" ? "en-US" : "id-ID", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   return prefix ? `${prefix}${prefix === "Rp" ? " " : ""}${s}` : s;
@@ -68,15 +76,17 @@ export function TopVisual({ visual, colors, sceneFrames }: { visual: SceneVisual
   }
 
   if (visual.template === "number" && visual.number) {
-    const { value, decimals, prefix, suffix, label } = visual.number;
+    const { value, decimals, prefix, suffix, label, year } = visual.number;
     const count = interpolate(frame, [4, Math.min(sceneFrames * 0.6, fps * 1.4)], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
     const eased = 1 - Math.pow(1 - count, 3);
-    const shown = decimals ? value * eased : Math.round(value * eased);
+    const shown = year ? value : decimals ? value * eased : Math.round(value * eased);
     const bar = interpolate(frame, [6, fps * 1.2], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-    const text = formatNumber(shown, decimals, prefix) + suffix;
+    const text = year ? String(value) : formatNumber(shown, decimals, prefix) + suffix;
+    const finalText = year ? String(value) : formatNumber(value, decimals, prefix) + suffix;
     return (
       <div style={{ marginBottom: 36 }} data-visual="number">
-        <div style={{ fontFamily: HEAVY, fontSize: text.length > 9 ? 150 : 220, lineHeight: 0.95, color: colors.accent, letterSpacing: -6, transform: `scale(${0.7 + 0.3 * pop})`, transformOrigin: "left bottom", textShadow: `0 0 50px ${colors.accent}44` }}>{text}</div>
+        {/* Size from the final text so the counter never reflows while it counts; one line, never wrapped. */}
+        <div style={{ fontFamily: HEAVY, fontSize: counterSize(finalText), lineHeight: 0.95, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", color: colors.accent, letterSpacing: -6, transform: `scale(${0.7 + 0.3 * pop})`, transformOrigin: "left bottom", textShadow: `0 0 50px ${colors.accent}44` }}>{text}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 18, marginTop: 14 }}>
           <div style={{ height: 10, width: 260, borderRadius: 6, background: `${colors.text}25`, overflow: "hidden" }}><div style={{ height: "100%", width: `${bar * 100}%`, background: colors.accent }} /></div>
           {label && <span style={{ fontFamily: SANS, fontWeight: 800, fontSize: 34, letterSpacing: 6, textTransform: "uppercase", color: colors.text, opacity: 0.8 }}>{label}</span>}

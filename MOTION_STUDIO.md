@@ -56,6 +56,11 @@ Every scene gets a visual that matches its text. Detection is automatic and work
 - **Emphasis**: the word that triggered the icon, and any number, is shown in the accent colour with an underline that grows once the word is spoken. Wrap words in `*asterisks*` in the script to choose the emphasis yourself. The asterisks are not shown and not spoken.
 - **Manual correction**: each scene in the timeline has two pickers, *Tampilan* (template) and *Ikon*. Both show what *Otomatis* detected. Corrections are kept per sentence, so editing other sentences does not reset them.
 
+## Numbers
+
+- **On screen**: a number keeps its digits ("17.000", "Rp 50.000", "80%"). A "." between two digits is a separator, so a sentence is never split there. A four-digit year (1000–2100) is shown plainly and does not count up. The counter is sized from its final text and stays on one line.
+- **In the voice**: digits are converted to words before synthesis (`lib/tts/numbers.ts`), because the model otherwise reads "1.300" as "satu 300". Indonesian: 17.000 → "tujuh belas ribu", 1.300 → "seribu tiga ratus", 1945 → "seribu sembilan ratus empat puluh lima", 4,5 → "empat koma lima", Rp 50.000 → "lima puluh ribu rupiah", 80% → "delapan puluh persen", 3x → "tiga kali". English: 1,300 → "one thousand three hundred", $1,200 → "one thousand two hundred dollars", 3.5 → "three point five". Indonesian uses "." for thousands and "," for decimals; English the opposite. Ranges ("2020-2024") become "sampai"/"to"; numbers with a leading zero are read digit by digit.
+
 ## Automatic voice over
 
 - **Model**: Supertonic 3 by Supertone Inc. It is multilingual (31 languages; the app exposes Indonesian and English) and was released as an ONNX export by sherpa-onnx. Model weights are under OpenRAIL-M: commercial use is allowed, but the use restrictions apply (no impersonation without consent, no deceptive or harmful content, disclose that the voice is AI-generated). See `public/supertonic/NOTICE.txt` after a build.
