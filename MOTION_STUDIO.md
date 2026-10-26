@@ -103,3 +103,13 @@ On the clipper page (`/`), after choosing a video, **Transkrip otomatis** turns 
 - **Editing**: each segment is an editable box. Word timing is kept if the word count is unchanged; otherwise the new words are spread over the segment. Emptying a box removes the segment.
 - **Captions follow the original audio**: the preview under the video highlights the spoken word while the original video plays. No audio is added or changed; the exported MP4 is not touched (subtitles are not burned into the clipper export).
 - **Motion graphics**: *Kirim ke Motion Graphics* stores the transcript in `sessionStorage` (same tab, not uploaded). On `/motion`, *Impor ke naskah* fills the script (one segment = one scene) and switches to *Rekam / unggah*. While the script still has exactly the transcript words, scene lengths and the highlighted caption word follow the transcript timing (`sceneTimings`, `Scene.wordStarts`). Upload the original audio of the clip as the narration so voice and captions agree; an audio of a different length (>1 s) falls back to the normal proportional timing, and so does an edited script. Icons, numbers, templates and emphasis are detected from the transcript text exactly as for a typed script, so keyword visuals never change the subtitle words.
+
+## Edit a source video (video + motion graphics)
+
+On `/motion`, **Video sumber** → make a transcript → *Pakai transkrip untuk naskah & subtitle* turns the page into an edit of that video:
+
+- The uploaded video is the base layer and keeps its **own audio** (no second narration track). Rendering it needs WebCodecs like any other render.
+- Scenes follow the transcript timing. A scene either shows the speaker with a big word-by-word caption (3 words at a time, spoken word highlighted), or **cuts away** to a graphic scene (icon, number, list, question, comparison, call to action) while the video underneath keeps playing.
+- The plan is automatic (`autoCuts` in `lib/visuals.ts`): the first scene is always the speaker, a scene with a recognised concept/number/template becomes a graphic, and two graphics never follow each other. Each scene has a **Layar** picker (*Otomatis / Video + subtitle / Grafis*) plus the existing *Tampilan* and *Ikon* pickers.
+- The Pearl palette is selected by default for the light cutaways; change it freely.
+- Models: *Akurat* (base) is the default; *Paling akurat* (small, ~250 MB) is clearly better for Indonesian but slower and needs more memory (iPad: try base first).

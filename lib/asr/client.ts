@@ -4,6 +4,7 @@ import type { AsrMessage } from "./worker";
 
 /** Multilingual Whisper models (Indonesian supported), 8-bit quantised. Sizes are approximate download sizes. */
 export const MODELS = [
+  { id: "Xenova/whisper-small", label: "Paling akurat (small, ±250 MB)", note: "Terbaik untuk bahasa Indonesia; lebih lambat dan butuh memori besar" },
   { id: "Xenova/whisper-base", label: "Akurat (base, ±80 MB)", note: "Disarankan untuk bahasa Indonesia" },
   { id: "Xenova/whisper-tiny", label: "Cepat (tiny, ±40 MB)", note: "Lebih cepat dan ringan, kurang akurat" },
 ] as const;

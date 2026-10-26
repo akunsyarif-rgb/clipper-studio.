@@ -1,5 +1,5 @@
 import React from "react";
-import { Audio } from "@remotion/media";
+import { Audio, Video } from "@remotion/media";
 import { AbsoluteFill, interpolate, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig, type CalculateMetadataFunction } from "remotion";
 import { musicGain } from "../lib/audio";
 import { activeWordIndex, captionLine, PALETTES, totalFrames, type Scene, type StyleId, type VideoProps } from "../lib/script";
@@ -11,6 +11,25 @@ const FONT = "'Arial Black', 'Helvetica Neue', Arial, sans-serif";
 function resolveAudio(src: string): string {
   // Browser renders pass blob:/http(s):/data: URLs; CLI renders pass a file name inside public/.
   return /^(blob:|https?:|data:)/.test(src) ? src : staticFile(src);
+}
+
+/** Big word-by-word caption over the speaker (source-video edits): up to 3 words at a time, the spoken one in the accent colour. */
+function VideoCaption({ scene, colors }: { scene: Scene; colors: (typeof PALETTES)[keyof typeof PALETTES] }) {
+  const frame = useCurrentFrame();
+  const d = scene.durationInFrames;
+  const text = stripMarks(scene.text);
+  const active = activeWordIndex(scene.text, frame, d, scene.wordStarts);
+  const line = captionLine(text, active, 3);
+  const dark = colors.text === "#ffffff";
+  const pop = interpolate(frame % 9999, [0, 4], [0.92, 1], { extrapolateRight: "clamp" });
+  if (line.words.length === 0) return null;
+  return (
+    <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", paddingBottom: 380 }}>
+      <div style={{ maxWidth: 900, textAlign: "center", fontFamily: FONT, fontWeight: 900, fontSize: 84, lineHeight: 1.1, letterSpacing: -2, color: "#fff", textShadow: "0 6px 26px #000c, 0 0 4px #000a", transform: `scale(${pop})` }}>
+        {line.words.map((w, i) => <span key={i} style={{ color: i === line.activeInLine ? (dark ? colors.accent : "#ffe066") : "#fff" }}>{w}{i < line.words.length - 1 ? " " : ""}</span>)}
+      </div>
+    </AbsoluteFill>
+  );
 }
 
 function SceneView({ scene, index, count, title, style, colors, captions }: {
@@ -79,7 +98,7 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
   );
 }
 
-export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech }) => {
+export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech, video }) => {
   const frame = useCurrentFrame();
   const { durationInFrames, fps } = useVideoConfig();
   const colors = PALETTES[palette] ?? PALETTES.violet;
@@ -90,7 +109,8 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
     <AbsoluteFill style={{ background: `linear-gradient(145deg, ${colors.bg1} 0%, ${colors.bg2} 100%)`, overflow: "hidden" }}>
       <AbsoluteFill style={{ background: `radial-gradient(circle at 80% 20%, ${colors.accent}22 0%, transparent 38%)`, opacity: wash }} />
       <div style={{ position: "absolute", width: 700, height: 700, border: `1px solid ${colors.accent}45`, borderRadius: "50%", right: -380, top: 250, transform: `rotate(${frame * 0.3}deg)` }} />
-      <div style={{ position: "absolute", left: 70, right: 70, top: 72, display: "flex", justifyContent: "space-between", color: `${colors.accent}cc`, font: "bold 18px monospace", letterSpacing: 3 }}><span>CLIPPER / MOTION</span><span>30 FPS</span></div>
+      {!video && <div style={{ position: "absolute", left: 70, right: 70, top: 72, display: "flex", justifyContent: "space-between", color: `${colors.accent}cc`, font: "bold 18px monospace", letterSpacing: 3 }}><span>CLIPPER / MOTION</span><span>30 FPS</span></div>}
+      {video ? <AbsoluteFill><Video src={resolveAudio(video.src)} objectFit="cover" /></AbsoluteFill> : null}
       {audioSrc ? <Audio src={resolveAudio(audioSrc)} /> : null}
       {music ? (
         <Audio
@@ -106,7 +126,12 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
         from += scene.durationInFrames;
         return (
           <Sequence key={i} from={start} durationInFrames={scene.durationInFrames} name={`Scene ${i + 1}`}>
-            <SceneView scene={scene} index={i} count={scenes.length} title={title} style={style} colors={colors} captions={captions} />
+            {video && scene.cut !== "graphic"
+              ? (captions ? <VideoCaption scene={scene} colors={colors} /> : null)
+              : video
+                // Cutaway: an opaque graphic scene over the speaker; the video underneath keeps playing, so the audio never breaks.
+                ? <AbsoluteFill style={{ background: `linear-gradient(145deg, ${colors.bg1} 0%, ${colors.bg2} 100%)` }}><SceneView scene={scene} index={i} count={scenes.length} title={title} style={style} colors={colors} captions={captions} /></AbsoluteFill>
+                : <SceneView scene={scene} index={i} count={scenes.length} title={title} style={style} colors={colors} captions={captions} />}
           </Sequence>
         );
       })}

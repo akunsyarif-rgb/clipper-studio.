@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { audioArgs } from "./clip";
+import { autoCuts, detectVisual } from "./visuals";
 import { activeWordIndex, buildTimeline, FPS, splitScript } from "./script";
 import {
   activeAt, allWords, editSegment, explainTranscribeError, formatSrtTime, groupSegments, mergeSubwords, parseHandoff, parseWords,
@@ -190,5 +191,18 @@ describe("audioArgs", () => {
     expect(a).toContain("-vn");
     expect(a.join(" ")).toContain("-ac 1 -ar 16000 -f s16le");
     expect(a).not.toContain("libx264");
+  });
+});
+
+describe("autoCuts (source-video edit plan)", () => {
+  const v = (t: string) => detectVisual(t);
+  it("keeps the speaker first and never puts two graphics in a row", () => {
+    const cuts = autoCuts([v("Ada 100 ribu orang yang ikut."), v("Uang itu penting sekali."), v("Waktu itu berharga."), v("Ya begitulah."), v("Siapa yang mau mulai?")]);
+    expect(cuts[0]).toBe("video");
+    expect(cuts.some(c => c === "graphic")).toBe(true);
+    for (let i = 1; i < cuts.length; i++) expect(cuts[i] === "graphic" && cuts[i - 1] === "graphic").toBe(false);
+  });
+  it("stays on the speaker for plain statements", () => {
+    expect(autoCuts([v("Ya begitulah."), v("Sudah lama sekali.")])).toEqual(["video", "video"]);
   });
 });

@@ -305,3 +305,19 @@ export function resolveVisual(text: string, override?: VisualOverride): SceneVis
 export function templateLabel(t: Template): string {
   return TEMPLATES.find(x => x.id === t)?.label ?? t;
 }
+
+export type Cut = "video" | "graphic";
+
+/**
+ * Edit plan for a source-video edit: the speaker stays on screen by default; a scene with a recognised
+ * concept, number, list, question, comparison or call-to-action cuts away to a graphic scene (audio keeps playing).
+ * The first scene always shows the speaker, and two graphic scenes never follow each other.
+ */
+export function autoCuts(visuals: SceneVisual[]): Cut[] {
+  const out: Cut[] = [];
+  visuals.forEach((v, i) => {
+    const meaningful = v.template !== "statement" || !!v.icon;
+    out.push(i > 0 && meaningful && out[i - 1] !== "graphic" ? "graphic" : "video");
+  });
+  return out;
+}

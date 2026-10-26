@@ -15,7 +15,7 @@ import { assembleNarration, clipKey, SPEEDS } from "@/lib/tts/narration";
 import { spokenText } from "@/lib/tts/numbers";
 import { TTS_LANGS, type TtsLang } from "@/lib/tts/supertonic";
 import { allWords, HANDOFF_KEY, parseHandoff, sceneTimings, transcriptText, type Transcript } from "@/lib/transcript";
-import { ICONS, resolveVisual, stripMarks, TEMPLATES, type Template, type VisualOverride } from "@/lib/visuals";
+import { autoCuts, ICONS, resolveVisual, type Cut, stripMarks, TEMPLATES, type Template, type VisualOverride } from "@/lib/visuals";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
 import TranscriptPanel from "../TranscriptPanel";
 import { validateFile } from "@/lib/clip";
@@ -94,6 +94,9 @@ export default function MotionStudio() {
   const [source, setSource] = useState<{ file: File; url: string; seconds: number } | null>(null);
   const [sourceError, setSourceError] = useState("");
   const [asrBusy, setAsrBusy] = useState(false);
+  // Edit mode: the uploaded video is the base layer (with its own audio); scenes become captions or cutaway graphics.
+  const [videoEdit, setVideoEdit] = useState(false);
+  const [cutOverrides, setCutOverrides] = useState<Record<string, Cut>>({});
   useEffect(() => { if (!source) return; const url = source.url; return () => URL.revokeObjectURL(url); }, [source]);
   function onSourceVideo(e: ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -145,8 +148,14 @@ export default function MotionStudio() {
   const musicTrack: Track | null = musicMode === "auto" ? generatedFresh : musicMode === "upload" ? uploadedMusic : null;
   const music: Music | null = musicTrack ? { src: musicTrack.url, volume: musicVolume / 100, duck, loop: musicMode === "upload" } : null;
 
+  const sceneVisuals = timeline.ok ? timeline.scenes.map(sc => resolveVisual(sc.text, overrides[sc.text])) : [];
+  const planned = autoCuts(sceneVisuals);
+  const sceneList = timeline.ok ? timeline.scenes.map((sc, i) => ({
+    ...sc, visual: sceneVisuals[i], ...(timed && !aiFresh ? { wordStarts: timed.wordStarts[i] } : {}),
+    ...(videoEdit && source ? { cut: cutOverrides[sc.text] ?? planned[i] } : {}),
+  })) : [];
   const props: VideoProps | null = timeline.ok ? {
-    title: title.trim(), scenes: timeline.scenes.map((sc, i) => ({ ...sc, visual: resolveVisual(sc.text, overrides[sc.text]), ...(timed && !aiFresh ? { wordStarts: timed.wordStarts[i] } : {}) })), style, palette, audioSrc: narration?.url ?? null, captions,
+    title: title.trim(), scenes: sceneList, style, palette, audioSrc: narration?.url ?? null, captions, video: videoEdit && source ? { src: source.url } : null,
     music, speech: narration?.speech ?? null,
   } : null;
   const blocker = !timeline.ok ? timeline.error : titleError
@@ -312,7 +321,7 @@ export default function MotionStudio() {
       if (!g) return;
       renderProps = { ...props, music: { src: g.url, volume: musicVolume / 100, duck, loop: false } };
     }
-    const support = await checkBrowserRender(!renderProps.audioSrc && !renderProps.music).catch(e => String(e));
+    const support = await checkBrowserRender(!renderProps.audioSrc && !renderProps.music && !renderProps.video).catch(e => String(e));
     if (support) { setRenderError(support); return; }
     player.current?.pause();
     const controller = new AbortController();
@@ -393,7 +402,7 @@ export default function MotionStudio() {
             <button className="text-button" data-testid="transcript-import" onClick={() => { setScript(transcriptText(offer.transcript)); setImported(offer.transcript); setVoiceMode("manual"); setOffer(null); }}>Impor ke naskah</button>
           </div>}
           {imported && <div className="notice" data-testid="transcript-status">
-            {timed ? "Subtitle mengikuti waktu kata dari transkrip. Unggah audio asli video pada Voice over → Rekam / unggah agar suara dan subtitle sama."
+            {timed ? (videoEdit ? "Mode edit video: video asli (dengan suaranya) jadi dasar; subtitle mengikuti waktu kata, dan scene dengan kata kunci/angka berganti ke grafis. Atur per scene lewat \"Layar\"." : "Subtitle mengikuti waktu kata dari transkrip. Unggah audio asli video pada Voice over → Rekam / unggah agar suara dan subtitle sama.")
               : timings ? "Audio yang dipilih tidak sama panjang dengan transkrip, jadi waktu dibagi otomatis. Unggah audio asli klip yang sama."
               : "Naskah sudah diubah dari transkrip, jadi waktu kata tidak dipakai lagi. Subtitle dibagi otomatis."}
           </div>}
@@ -402,9 +411,9 @@ export default function MotionStudio() {
             ? <label className="upload-source"><input type="file" accept="video/*,.mp4,.mov,.m4v,.webm" onChange={onSourceVideo} data-testid="source-video" /></label>
             : <>
               <video ref={sourceVideo} src={source.url} controls playsInline preload="metadata" style={{ width: "100%", maxHeight: 220, borderRadius: 10, background: "#000" }} />
-              <button className="text-button" disabled={asrBusy} onClick={() => { setSource(null); setImported(null); }}>Ganti video ({source.file.name})</button>
+              <button className="text-button" disabled={asrBusy} onClick={() => { setSource(null); setImported(null); setVideoEdit(false); }}>Ganti video ({source.file.name})</button>
               <TranscriptPanel key={source.url} file={source.file} video={sourceVideo} range={{ start: 0, duration: source.seconds }} locked={false} onWorking={setAsrBusy} onCopy={setScript}
-                onUse={t => { setScript(transcriptText(t)); setImported(t); setVoiceMode("manual"); setOffer(null); void loadNarrationFile(source.file); }} />
+                onUse={t => { setScript(transcriptText(t)); setImported(t); setVoiceMode("none"); setNarration(null); setVideoEdit(true); setPalette("pearl"); setOffer(null); }} />
             </>}
           {sourceError && <p className="field-error" role="alert">{sourceError}</p>}
           <label className="field-label" htmlFor="motion-script">Naskah <span className="field-hint">satu baris/kalimat = satu scene · *kata* untuk menonjolkan</span></label>
@@ -542,7 +551,8 @@ export default function MotionStudio() {
                 <div className="scene-info"><b>{stripMarks(s.text)}</b></div>
                 <div className="scene-meta"><b>{(from / FPS).toFixed(1)}–{(t / FPS).toFixed(1)}s</b><small>{(s.durationInFrames / FPS).toFixed(1)} dtk</small></div>
               </button>
-              <SceneVisualControls text={s.text} override={overrides[s.text]} disabled={rendering}
+              <SceneVisualControls text={s.text} override={overrides[s.text]} disabled={rendering} cut={videoEdit ? { value: cutOverrides[s.text], auto: planned[i] } : undefined}
+                onCut={c => setCutOverrides(prev => { const next = { ...prev }; if (c) next[s.text] = c; else delete next[s.text]; return next; })}
                 onChange={o => setOverrides(prev => { const next = { ...prev }; if (o.template || o.icon) next[s.text] = o; else delete next[s.text]; return next; })} />
             </div>); }); })()}</div>
         </section>
@@ -555,12 +565,20 @@ export default function MotionStudio() {
 }
 
 /** Per-scene visual correction: template and icon, each "Otomatis" unless the user picks one. */
-function SceneVisualControls({ text, override, disabled, onChange }: { text: string; override?: VisualOverride; disabled: boolean; onChange: (o: VisualOverride) => void }) {
+function SceneVisualControls({ text, override, disabled, onChange, cut, onCut }: { text: string; override?: VisualOverride; disabled: boolean; onChange: (o: VisualOverride) => void; cut?: { value?: Cut; auto: Cut }; onCut: (c: Cut | undefined) => void }) {
   const auto = resolveVisual(text);
   const current = resolveVisual(text, override);
   const autoIcon = auto.icon ? ICONS[auto.icon]?.label : "tanpa ikon";
   return (
     <div className="scene-visual">
+      {cut && <label>
+        <span>Layar</span>
+        <select value={cut.value ?? ""} disabled={disabled} data-testid="scene-cut" onChange={e => onCut((e.target.value || undefined) as Cut | undefined)}>
+          <option value="">Otomatis · {cut.auto === "graphic" ? "Grafis" : "Video"}</option>
+          <option value="video">Video + subtitle</option>
+          <option value="graphic">Grafis</option>
+        </select>
+      </label>}
       <label>
         <span>Tampilan</span>
         <select value={override?.template ?? ""} disabled={disabled} data-testid="scene-template"

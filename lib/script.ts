@@ -1,6 +1,6 @@
 // Pure script → timeline logic shared by the UI, the Remotion composition and unit tests.
 import type { Music } from "./audio";
-import type { SceneVisual } from "./visuals";
+import type { Cut, SceneVisual } from "./visuals";
 
 export const FPS = 30;
 export const WIDTH = 1080;
@@ -36,6 +36,8 @@ export type Scene = {
   visual?: SceneVisual;
   /** Frame (from the scene's first frame) at which each word is spoken; from a transcript. Even spread when absent. */
   wordStarts?: number[];
+  /** Source-video edits only: show the speaker ("video", default) or cut to this scene's graphic ("graphic"). */
+  cut?: Cut;
 };
 
 export type VideoProps = {
@@ -50,6 +52,8 @@ export type VideoProps = {
   music: Music | null;
   /** Narration speech activity per frame (0..1) for ducking; null when unknown. */
   speech: number[] | null;
+  /** Source video edit: the video (with its own audio) is the base layer and scenes become overlays or cutaways. */
+  video?: { src: string } | null;
 };
 
 const words = (s: string) => s.split(/\s+/).filter(Boolean);
