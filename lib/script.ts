@@ -61,6 +61,10 @@ export type VideoProps = {
   music: Music | null;
   /** Narration speech activity per frame (0..1) for ducking; null when unknown. */
   speech: number[] | null;
+  /** Optional local video clip used as the visual background. */
+  backgroundVideoSrc: string | null;
+  /** Keep the source clip audio when a background video is selected. */
+  backgroundVideoAudio: boolean;
 };
 
 const words = (s: string) => s.split(/\s+/).filter(Boolean);
@@ -205,8 +209,11 @@ export function totalFrames(scenes: Scene[]): number {
 export function activeWordIndex(text: string, frameInScene: number, sceneFrames: number): number {
   const n = words(text).length;
   if (n === 0) return -1;
+  // Advance the active-word marker by 3 frames (100 ms at 30 fps) to correct the observed fixed lag.
+  const HIGHLIGHT_LEAD_FRAMES = Math.round(FPS * 0.1);
   const speaking = Math.max(1, sceneFrames * 0.9);
-  return Math.min(n - 1, Math.floor((Math.max(0, frameInScene) / speaking) * n));
+  const alignedFrame = Math.max(0, frameInScene + HIGHLIGHT_LEAD_FRAMES);
+  return Math.min(n - 1, Math.floor((alignedFrame / speaking) * n));
 }
 
 /** Groups words into short caption lines (max ~4 words) and returns the line holding the active word. */
