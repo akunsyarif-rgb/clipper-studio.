@@ -101,7 +101,8 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
       {backgroundVideoSrc ? <>
         <AbsoluteFill><Video src={resolveAudio(backgroundVideoSrc)} volume={backgroundVideoAudio ? 1 : 0} style={{ width: "100%", height: "100%", objectFit: "cover" }} /></AbsoluteFill>
         <AbsoluteFill style={{ background: "linear-gradient(180deg, #05070b88 0%, #05070b33 35%, #05070b99 100%)" }} />
-      </> : <AbsoluteFill style={{ background: `radial-gradient(circle at 80% 20%, ${colors.accent}22 0%, transparent 38%)`, opacity: wash }} />
+      </> : <AbsoluteFill style={{ background: `radial-gradient(circle at 80% 20%, ${colors.accent}22 0%, transparent 38%)`, opacity: wash }} />}
+
       {particles.map(p => <div key={p.key} aria-hidden="true" style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: p.size, height: p.size, borderRadius: "50%", background: colors.accent, opacity: p.opacity, transform: `translateY(${p.drift}px)`, pointerEvents: "none" }} />)}
       <div style={{ position: "absolute", width: 700, height: 700, border: `1px solid ${colors.accent}45`, borderRadius: "50%", right: -380, top: 250, transform: `rotate(${frame * 0.3}deg)` }} />
       <div style={{ position: "absolute", left: 70, right: 70, top: 72, display: "flex", justifyContent: "space-between", color: `${colors.accent}cc`, font: "bold 18px monospace", letterSpacing: 3 }}><span>CLIPPER / MOTION</span><span>30 FPS</span></div>
