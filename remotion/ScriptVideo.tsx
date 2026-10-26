@@ -32,7 +32,7 @@ function captionState(scene: Scene, frame: number) {
 }
 
 /** Caption over the speaker (source-video edits): short phrase, spoken word highlighted, stable layout. */
-function VideoCaption({ scene, colors }: { scene: Scene; colors: Colors }) {
+function VideoCaption({ scene }: { scene: Scene }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const state = captionState(scene, frame);
@@ -166,7 +166,7 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
           <Sequence key={i} from={start} durationInFrames={scene.durationInFrames} name={`Scene ${i + 1}`}>
             {video
               ? <>
-                {captions ? <VideoCaption scene={scene} colors={colors} /> : null}
+                {captions ? <VideoCaption scene={scene} /> : null}
                 {/* Cutaway: an opaque graphic over the speaker (at most 4 s); the video underneath keeps playing, so audio never breaks. */}
                 {scene.cut === "graphic" ? <Sequence from={0} durationInFrames={Math.min(scene.durationInFrames, 120)}><Cutaway scene={scene} colors={colors} length={Math.min(scene.durationInFrames, 120)} /></Sequence> : null}
               </>
