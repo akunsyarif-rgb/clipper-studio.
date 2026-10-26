@@ -14,7 +14,7 @@ export const MIN_SCENE_SECONDS = 1.2;
 export const WORDS_PER_SECOND = 2.5;
 
 export type StyleId = "hybrid" | "kinetic" | "popup" | "cinematic";
-export type PaletteId = "violet" | "gold" | "pearl";
+export type PaletteId = "violet" | "gold" | "pearl" | "forest" | "obsidian";
 
 export const STYLES: { id: StyleId; label: string }[] = [
   { id: "hybrid", label: "Hybrid" },
@@ -27,6 +27,8 @@ export const PALETTES: Record<PaletteId, { label: string; bg1: string; bg2: stri
   violet: { label: "Violet / Cyan", bg1: "#15132f", bg2: "#542b79", accent: "#67f5ed", text: "#ffffff" },
   gold: { label: "Midnight / Gold", bg1: "#11151e", bg2: "#473522", accent: "#f6ce78", text: "#ffffff" },
   pearl: { label: "Pearl / Black", bg1: "#e9edf2", bg2: "#bfc8d5", accent: "#242c3a", text: "#141821" },
+  forest: { label: "Forest / Sage", bg1: "#0d211d", bg2: "#24483b", accent: "#b9d7ad", text: "#f7f5eb" },
+  obsidian: { label: "Obsidian / Electric", bg1: "#090d16", bg2: "#17263b", accent: "#73e0ff", text: "#f4f7ff" },
 };
 
 export type Scene = {
