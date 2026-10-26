@@ -96,7 +96,10 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
   const revealWords = intensity !== "quiet" && (style === "kinetic" || style === "hybrid" || role === "hook");
   const hasTop = ["list", "question", "number", "quote"].includes(visual.template) && (visual.template !== "number" || !!visual.number);
   const baseSize = all.length <= 6 ? 108 : all.length <= 12 ? 86 : all.length <= 20 ? 68 : 54;
-  const big = Math.round(baseSize * (hasTop ? 0.82 : 1) * (visual.template === "compare" ? 0.85 : 1) * (role === "hook" ? 1.16 : role === "resolution" ? 0.92 : 1));
+  // Fit long hooks by character width as well as word count; the canvas is 9:16 and must never crop text.
+  const textLength = stripMarks(scene.text).length;
+  const widthFit = textLength > 26 ? Math.max(0.58, 26 / textLength) : 1;
+  const big = Math.round(baseSize * (hasTop ? 0.82 : 1) * (visual.template === "compare" ? 0.85 : 1) * (role === "hook" ? 1.08 : role === "resolution" ? 0.92 : 1) * widthFit);
   const line = captionLine(stripMarks(scene.text), active);
   const centered = role === "hook" || role === "reveal" || role === "resolution" || style === "cinematic" || style === "popup";
   const textAlign = centered ? "center" as const : "left" as const;
@@ -116,7 +119,7 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
         {role !== "hook" && role !== "resolution" ? <TopVisual visual={visual} colors={colors} sceneFrames={d} /> : null}
         {role === "explanation" && strategy === "diagram" ? <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 26, color: colors.accent, fontSize: 20, fontWeight: 800, letterSpacing: 2 }}><span style={{ border: `2px solid ${colors.accent}`, padding: "12px 16px" }}>SEBAB</span><span style={{ fontSize: 32 }}>→</span><span style={{ border: `2px solid ${colors.accent}`, padding: "12px 16px" }}>AKIBAT</span></div> : null}
         {role === "reveal" ? <div style={{ width: 150, height: 6, background: colors.accent, marginBottom: 28, transform: `scaleX(${interpolate(enter, [0, 1], [0, 1])})` }} /> : null}
-        <div style={{ width: "100%", maxWidth: role === "resolution" ? 850 : 920, fontFamily: FONT, fontSize: big, lineHeight: role === "hook" ? 0.96 : 1.04, letterSpacing: role === "hook" ? -4 : -2, fontWeight: 900, textAlign, transform: `scale(${scale})`, transformOrigin: centered ? "center center" : "left center", textShadow: role === "hook" ? `0 10px 48px ${colors.accent}33` : "0 8px 40px #0004", overflowWrap: "break-word" }}>
+        <div style={{ width: "100%", maxWidth: role === "resolution" ? 850 : 920, boxSizing: "border-box", minWidth: 0, fontFamily: FONT, fontSize: big, lineHeight: role === "hook" ? 0.98 : 1.04, letterSpacing: role === "hook" ? -2 : -1, fontWeight: 900, textAlign, transform: `scale(${scale})`, transformOrigin: centered ? "center center" : "left center", textShadow: role === "hook" ? `0 10px 48px ${colors.accent}33` : "0 8px 40px #0004", overflowWrap: "anywhere", wordBreak: "normal", hyphens: "auto" }}>
           {all.map((w, i) => {
             const shown = !revealWords || i <= active;
             const pop = revealWords ? spring({ frame: frame - Math.floor((i / all.length) * d * 0.9), fps, config: { damping: 12, stiffness: 200 } }) : 1;
