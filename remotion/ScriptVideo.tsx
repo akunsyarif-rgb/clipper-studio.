@@ -2,7 +2,7 @@ import React from "react";
 import { Audio, Video } from "@remotion/media";
 import { AbsoluteFill, interpolate, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig, type CalculateMetadataFunction } from "remotion";
 import { musicGain } from "../lib/audio";
-import { activeWordIndex, phraseLine, PALETTES, totalFrames, type Scene, type StyleId, type VideoProps } from "../lib/script";
+import { activeWordIndex, phraseLine, spokenFrames, PALETTES, totalFrames, type Scene, type StyleId, type VideoProps } from "../lib/script";
 import { chooseFamily } from "../lib/composition";
 import { contentBox, MOTION, SAFE } from "../lib/layout";
 import { detectVisual, stripMarks } from "../lib/visuals";
@@ -24,7 +24,7 @@ function captionState(scene: Scene, frame: number) {
     // Silent gap: before the first word (minus a short lead-in) or well after the last one.
     if (frame < starts[0] - 3 || frame > ends[ends.length - 1] + 12) return null;
   }
-  const active = activeWordIndex(scene.text, frame, scene.durationInFrames, starts);
+  const active = activeWordIndex(scene.text, frame, spokenFrames(scene), starts);
   const line = phraseLine(text, active);
   if (line.words.length === 0) return null;
   // Frame at which this chunk appeared, for its entrance animation.
@@ -92,7 +92,7 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
   const role = scene.narrative?.role ?? (index === 0 ? "hook" : index === count - 1 ? "resolution" : "continuation");
   const family = chooseFamily(visual, scene.narrative, role);
   const box = contentBox(captions);
-  const line = phraseLine(stripMarks(scene.text), activeWordIndex(scene.text, frame, d, scene.wordStarts));
+  const line = phraseLine(stripMarks(scene.text), activeWordIndex(scene.text, frame, spokenFrames(scene), scene.wordStarts));
 
   return (
     <AbsoluteFill style={{ opacity: Math.min(fadeIn, fadeOut) }}>

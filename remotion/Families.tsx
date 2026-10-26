@@ -5,7 +5,7 @@ import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { splitCause, type Family } from "../lib/composition";
 import { estimateHeavy, fitText, MOTION, TYPE, type FitOptions, type Measure } from "../lib/layout";
 import type { NarrativeRole } from "../lib/narrative";
-import type { Scene, StyleId } from "../lib/script";
+import { spokenFrames, type Scene, type StyleId } from "../lib/script";
 import { ICONS, stripMarks, wordKey, type SceneVisual } from "../lib/visuals";
 import { LineIcon } from "./SceneVisuals";
 
@@ -46,7 +46,7 @@ function useAppear(delay: number, config: { damping: number; stiffness: number; 
 export function wordStart(scene: Scene, i: number, n: number): number {
   const s = scene.wordStarts;
   if (s && s.length === n) return s[i] ?? 0;
-  return Math.floor((i / Math.max(1, n)) * scene.durationInFrames * 0.9);
+  return Math.floor((i / Math.max(1, n)) * spokenFrames(scene) * 0.9);
 }
 
 /** At most `max` emphasised words: one focus at a time, not a highlighter on every keyword. */
