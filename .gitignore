@@ -5,6 +5,8 @@
 /.next/
 /out/
 /public/ffmpeg/
+/public/ort/
+/public/supertonic/
 next-env.d.ts
 *.tsbuildinfo
 

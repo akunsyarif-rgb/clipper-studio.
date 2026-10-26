@@ -6,15 +6,16 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "predev": "node scripts/copy-ffmpeg-core.mjs",
-    "prebuild": "node scripts/copy-ffmpeg-core.mjs",
+    "predev": "node scripts/copy-ffmpeg-core.mjs && node scripts/copy-tts-assets.mjs",
+    "prebuild": "node scripts/copy-ffmpeg-core.mjs && node scripts/copy-tts-assets.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "node e2e/clipper.mjs && node e2e/motion.mjs",
     "remotion:studio": "remotion studio remotion/index.ts",
     "render:motion": "remotion render remotion/index.ts MotionGraphics30 out/motion-graphics.mp4",
-    "render:script": "remotion render remotion/index.ts ScriptVideo out/script-video.mp4 --props=props.json"
+    "render:script": "remotion render remotion/index.ts ScriptVideo out/script-video.mp4 --props=props.json",
+    "pretest": "node scripts/copy-tts-assets.mjs"
   },
   "dependencies": {
     "@ffmpeg/core": "0.12.10",
@@ -24,6 +25,7 @@
     "@remotion/player": "4.0.538",
     "@remotion/web-renderer": "4.0.538",
     "next": "15.5.28",
+    "onnxruntime-web": "1.30.0",
     "react": "19.1.4",
     "react-dom": "19.1.4",
     "remotion": "4.0.538",
@@ -31,6 +33,9 @@
     "tone": "15.1.22"
   },
   "devDependencies": {
+    "@3sln/donki-lle-voice-multi": "0.1.1",
+    "@3sln/donki-lle-voice-multi-2": "0.1.1",
+    "@3sln/donki-lle-voice-multi-3": "0.1.1",
     "@eslint/eslintrc": "3.3.7",
     "@remotion/cli": "4.0.538",
     "@remotion/renderer": "4.0.538",

@@ -91,8 +91,15 @@ try {
     assert(await page.getByTestId("render").isDisabled(), "render button must be disabled");
   });
 
-  await step("rejects a non-audio file", async () => {
+  await step("automatic voice over is the default and must be generated before rendering", async () => {
     await page.getByTestId("script").fill("Halo semua.\nIni video uji dengan narasi.\nDurasi mengikuti audio.");
+    await page.getByTestId("ai-voice").waitFor({ timeout: 3000 });
+    await page.getByTestId("blocker").filter({ hasText: "Buat suara otomatis" }).waitFor({ timeout: 3000 });
+    assert(await page.getByTestId("render").isDisabled(), "render disabled until the voice exists");
+  });
+
+  await step("rejects a non-audio file", async () => {
+    await page.getByTestId("voice-manual").click();
     await page.getByTestId("audio-input").setInputFiles(notAudio);
     await page.getByText("Pilih berkas audio").waitFor({ timeout: 3000 });
   });
@@ -148,6 +155,7 @@ try {
       };
     }, failWhen);
     await p.goto(BASE);
+    await p.getByTestId("voice-none").click();
     await p.getByTestId("script").fill("Uji fallback encoder.\nSelesai.");
     await p.getByTestId("style").selectOption("cinematic");
     await p.getByTestId("palette").selectOption("pearl");
@@ -194,6 +202,7 @@ try {
     await p.goto(BASE);
     const key = await p.evaluate(() => Symbol.dispose === Symbol.for("Symbol.dispose"));
     assert(key, "page polyfill should define Symbol.dispose as Symbol.for('Symbol.dispose')");
+    await p.getByTestId("voice-none").click();
     await p.getByTestId("script").fill("Uji tanpa Symbol.dispose.\nSelesai.");
     await p.getByTestId("style").selectOption("cinematic");
     await p.getByTestId("palette").selectOption("pearl");
@@ -258,6 +267,52 @@ try {
   await step("can switch backsound off again", async () => {
     await page.getByTestId("music-none").click();
     assert(!(await page.getByTestId("music-volume").isVisible()), "volume control hidden without backsound");
+  });
+
+  async function generateVoice(lang, voice) {
+    await page.getByTestId("voice-ai").click();
+    await page.getByTestId("tts-lang").selectOption(lang);
+    await page.getByTestId("tts-voice").selectOption(String(voice));
+    const t0 = Date.now();
+    await page.getByTestId("voice-generate").click();
+    await page.getByTestId("voice-progress").waitFor({ timeout: 5000 });
+    await page.getByTestId("ai-audio").waitFor({ timeout: 300000 });
+    return (Date.now() - t0) / 1000;
+  }
+  function sceneEnds() {
+    return page.getByTestId("scenes").locator(".scene-meta b").allTextContents();
+  }
+
+  await step("automatic Indonesian voice over sets scene timing and renders with backsound", async () => {
+    await page.getByTestId("script").fill("Halo semuanya, selamat datang.\nIni suara otomatis dalam bahasa Indonesia.");
+    const secs = await generateVoice("id", 0);
+    const ends = await sceneEnds();
+    assert(ends.length === 2, `2 scenes, got ${ends.length}`);
+    await page.getByTestId("music-auto").click();
+    await page.getByTestId("music-status").filter({ hasText: "siap" }).waitFor({ timeout: 60000 });
+    const total = Number(/–([\d.]+)s/.exec(ends.at(-1))?.[1]);
+    const info = await renderAndCheck("ai-id", true, total);
+    return `voice in ${secs.toFixed(1)}s, scenes ${ends.join(" ")}, ${info}`;
+  });
+
+  await step("changing the script invalidates the voice; regeneration reuses unchanged sentences", async () => {
+    await page.getByTestId("script").fill("Halo semuanya, selamat datang.\nKalimat kedua sekarang berbeda.");
+    await page.getByTestId("blocker").filter({ hasText: "berubah" }).waitFor({ timeout: 3000 });
+    const t0 = Date.now();
+    await page.getByTestId("voice-generate").click();
+    await page.getByTestId("ai-audio").waitFor({ timeout: 300000 });
+    assert(!(await page.getByTestId("blocker").isVisible()), "blocker cleared after regeneration");
+    return `regenerated in ${((Date.now() - t0) / 1000).toFixed(1)}s (first sentence from cache)`;
+  });
+
+  await step("automatic English voice over renders", async () => {
+    await page.getByTestId("music-none").click();
+    await page.getByTestId("script").fill("Don't wait for motivation.\nStart now, even if your steps are small.");
+    const secs = await generateVoice("en", 7);
+    const ends = await sceneEnds();
+    const total = Number(/–([\d.]+)s/.exec(ends.at(-1))?.[1]);
+    const info = await renderAndCheck("ai-en", true, total);
+    return `voice in ${secs.toFixed(1)}s, ${info}`;
   });
 
   await step("no horizontal scroll on iPhone-size viewport", async () => {
