@@ -17,6 +17,8 @@ import { TTS_LANGS, type TtsLang } from "@/lib/tts/supertonic";
 import { allWords, HANDOFF_KEY, parseHandoff, sceneTimings, transcriptText, type Transcript } from "@/lib/transcript";
 import { ICONS, resolveVisual, stripMarks, TEMPLATES, type Template, type VisualOverride } from "@/lib/visuals";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
+import TranscriptPanel from "../TranscriptPanel";
+import { validateFile } from "@/lib/clip";
 import "./motion.css";
 
 const SAMPLE = "Jangan tunggu semangat datang.\nMulailah, meski langkahmu kecil.\nDisiplin membuatmu tetap bergerak.\nSatu langkah hari ini lebih baik dari rencana sempurna.\nMulai sekarang.";
@@ -87,6 +89,30 @@ export default function MotionStudio() {
   // Transcript handed over from the clipper: `offer` is waiting in sessionStorage, `imported` was applied to the script.
   const [offer, setOffer] = useState<{ source: string; transcript: Transcript } | null>(null);
   const [imported, setImported] = useState<Transcript | null>(null);
+  // Source video for automatic transcript (uploaded right here); its own audio becomes the narration so captions match.
+  const sourceVideo = useRef<HTMLVideoElement>(null);
+  const [source, setSource] = useState<{ file: File; url: string; seconds: number } | null>(null);
+  const [sourceError, setSourceError] = useState("");
+  const [asrBusy, setAsrBusy] = useState(false);
+  useEffect(() => { if (!source) return; const url = source.url; return () => URL.revokeObjectURL(url); }, [source]);
+  function onSourceVideo(e: ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    const check = validateFile(f);
+    if (!check.ok) return setSourceError(check.error);
+    setSourceError("");
+    const url = URL.createObjectURL(f);
+    const probe = document.createElement("video");
+    probe.preload = "metadata";
+    probe.onloadedmetadata = () => {
+      if (!Number.isFinite(probe.duration) || probe.duration <= 0) { URL.revokeObjectURL(url); return setSourceError("Durasi video tidak dapat dibaca. Coba MP4 (H.264)."); }
+      if (probe.duration > MAX_SECONDS) { URL.revokeObjectURL(url); return setSourceError(`Video ${Math.round(probe.duration)} detik melebihi batas ${MAX_SECONDS} detik (3 menit). Potong dulu di Clipper Studio.`); }
+      setSource({ file: f, url, seconds: probe.duration });
+    };
+    probe.onerror = () => { URL.revokeObjectURL(url); setSourceError("Browser tidak dapat memutar video ini. Coba MP4 (H.264)."); };
+    probe.src = url;
+  }
   useEffect(() => { try { setOffer(parseHandoff(sessionStorage.getItem(HANDOFF_KEY))); } catch { /* storage blocked: no offer */ } }, []);
 
   useEffect(() => { if (!manualNarration) return; const url = manualNarration.url; return () => URL.revokeObjectURL(url); }, [manualNarration]);
@@ -371,6 +397,16 @@ export default function MotionStudio() {
               : timings ? "Audio yang dipilih tidak sama panjang dengan transkrip, jadi waktu dibagi otomatis. Unggah audio asli klip yang sama."
               : "Naskah sudah diubah dari transkrip, jadi waktu kata tidak dipakai lagi. Subtitle dibagi otomatis."}
           </div>}
+          <div className="field-label">Video sumber <span className="field-hint">opsional · unggah video, ucapannya jadi naskah &amp; subtitle otomatis (maks. 3 menit)</span></div>
+          {!source
+            ? <label className="upload-source"><input type="file" accept="video/*,.mp4,.mov,.m4v,.webm" onChange={onSourceVideo} data-testid="source-video" /></label>
+            : <>
+              <video ref={sourceVideo} src={source.url} controls playsInline preload="metadata" style={{ width: "100%", maxHeight: 220, borderRadius: 10, background: "#000" }} />
+              <button className="text-button" disabled={asrBusy} onClick={() => { setSource(null); setImported(null); }}>Ganti video ({source.file.name})</button>
+              <TranscriptPanel key={source.url} file={source.file} video={sourceVideo} range={{ start: 0, duration: source.seconds }} locked={false} onWorking={setAsrBusy} onCopy={setScript}
+                onUse={t => { setScript(transcriptText(t)); setImported(t); setVoiceMode("manual"); setOffer(null); void loadNarrationFile(source.file); }} />
+            </>}
+          {sourceError && <p className="field-error" role="alert">{sourceError}</p>}
           <label className="field-label" htmlFor="motion-script">Naskah <span className="field-hint">satu baris/kalimat = satu scene · *kata* untuk menonjolkan</span></label>
           <textarea id="motion-script" data-testid="script" value={script} onChange={e => setScript(e.target.value)} rows={7} placeholder="Tulis naskah video…" />
           <div className="char-count">{script.length} / 3000</div>

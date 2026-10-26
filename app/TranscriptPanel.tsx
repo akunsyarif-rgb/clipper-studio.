@@ -14,7 +14,7 @@ type Range = { start: number; duration: number };
 type Phase = "idle" | "audio" | "download" | "running";
 
 /** Automatic transcript of the selected range: local Whisper, editable text, live caption preview, hand-off to /motion. */
-export default function TranscriptPanel({ file, video, range, locked, onWorking, onCopy }: {
+export default function TranscriptPanel({ file, video, range, locked, onWorking, onCopy, onUse }: {
   file: File;
   video: RefObject<HTMLVideoElement | null>;
   /** Selected clip range, or null while the range is invalid. */
@@ -24,6 +24,8 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
   onWorking: (working: boolean) => void;
   /** Copies the transcript text into the page's subtitle field. */
   onCopy: (text: string) => void;
+  /** On the motion page: use the transcript directly instead of linking there. */
+  onUse?: (t: Transcript) => void;
 }) {
   const [model, setModel] = useState<ModelId>(MODELS[0].id);
   const [language, setLanguage] = useState<LanguageId>("indonesian");
@@ -142,7 +144,9 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
         <button onClick={() => save(`${base}.srt`, toSrt(transcript.value), "application/x-subrip")} data-testid="asr-srt">Unduh .srt</button>
         <button onClick={() => save(`${base}.txt`, transcriptText(transcript.value), "text/plain")}>Unduh .txt</button>
       </div>
-      <Link className="motion-link" href="/motion" onClick={e => { if (toMotion() === false) e.preventDefault(); }} data-testid="asr-to-motion"><span className="bottom-icon">✳</span><span><strong>Kirim ke Motion Graphics</strong><small>Teks dan waktu kata dipakai untuk subtitle, ikon, dan angka pada video motion.</small></span><b>Buka →</b></Link>
+      {onUse
+        ? <button className="primary-button" onClick={() => onUse(transcript.value)} data-testid="asr-use"><span>Pakai transkrip untuk naskah &amp; subtitle</span></button>
+        : <Link className="motion-link" href="/motion" onClick={e => { if (toMotion() === false) e.preventDefault(); }} data-testid="asr-to-motion"><span className="bottom-icon">✳</span><span><strong>Kirim ke Motion Graphics</strong><small>Teks dan waktu kata dipakai untuk subtitle, ikon, dan angka pada video motion.</small></span><b>Buka →</b></Link>}
     </>}
   </div>;
 }

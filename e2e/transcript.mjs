@@ -89,6 +89,19 @@ try {
     await page.getByTestId("transcript-status").filter({ hasText: "sudah diubah" }).waitFor({ timeout: 5000 });
   });
 
+  await step("motion studio accepts a video upload and offers the transcript there", async () => {
+    await page.goto(BASE + "/motion");
+    await page.getByTestId("source-video").setInputFiles(withAudio);
+    await page.getByTestId("asr-panel").waitFor({ timeout: 15000 });
+    await page.screenshot({ path: process.env.E2E_SHOT || join(dir, "motion-upload.png"), fullPage: false });
+    await page.getByTestId("asr-run").click();
+    const outcome = await Promise.race([
+      page.getByTestId("asr-list").waitFor({ timeout: 240000 }).then(() => "transcript"),
+      page.getByTestId("asr-error").waitFor({ timeout: 240000 }).then(() => "error"),
+    ]);
+    return outcome === "error" ? "model unreachable here → clear error" : "transcript produced";
+  });
+
   await step("no uncaught page errors", async () => { assert(pageErrors.length === 0, pageErrors.join(" | ")); });
   await browser.close();
 } finally {
