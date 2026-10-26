@@ -80,7 +80,12 @@ export function splitScript(script: string): string[] {
 /** Reading weight of a scene: words plus a small pause per scene. */
 function weight(text: string) { return words(text).length + 1.5; }
 
-export type DurationMode = { kind: "audio"; seconds: number } | { kind: "target"; seconds: number } | { kind: "auto" };
+export type DurationMode =
+  | { kind: "audio"; seconds: number }
+  | { kind: "target"; seconds: number }
+  | { kind: "auto" }
+  /** One duration per scene, e.g. from per-scene synthesized speech. */
+  | { kind: "scenes"; seconds: number[] };
 
 export type TimelineResult =
   | { ok: true; scenes: Scene[]; totalFrames: number; seconds: number; warnings: string[] }
@@ -92,6 +97,14 @@ export function buildTimeline(script: string, mode: DurationMode, fps = FPS): Ti
   const texts = splitScript(script);
   if (texts.length === 0) return { ok: false, error: "Naskah tidak berisi teks yang bisa dijadikan scene." };
   if (texts.length > MAX_SCENES) return { ok: false, error: `Naskah menghasilkan ${texts.length} scene. Batas ${MAX_SCENES} scene; ringkas atau gabungkan kalimat.` };
+
+  if (mode.kind === "scenes") {
+    if (mode.seconds.length !== texts.length || mode.seconds.some(x => !Number.isFinite(x) || x <= 0)) return { ok: false, error: "Suara otomatis tidak cocok dengan naskah. Buat ulang suara." };
+    const frames = mode.seconds.map(x => sceneFrames(x, fps));
+    const sum = frames.reduce((a, b) => a + b, 0);
+    if (sum / fps > MAX_SECONDS) return { ok: false, error: `Durasi suara ${(sum / fps).toFixed(1)} detik melebihi batas ${MAX_SECONDS} detik. Ringkas naskahnya.` };
+    return { ok: true, scenes: texts.map((text, i) => ({ text, durationInFrames: frames[i] })), totalFrames: sum, seconds: sum / fps, warnings: [] };
+  }
 
   const warnings: string[] = [];
   let total: number;
@@ -131,6 +144,11 @@ export function buildTimeline(script: string, mode: DurationMode, fps = FPS): Ti
   for (let i = 0; rest > 0; i = (i + 1) % frames.length, rest--) frames[i]++;
   const scenes = texts.map((text, i) => ({ text, durationInFrames: frames[i] }));
   return { ok: true, scenes, totalFrames, seconds: totalFrames / fps, warnings };
+}
+
+/** Frames for a scene of the given length (rounded up, never below the minimum scene length). */
+export function sceneFrames(seconds: number, fps = FPS): number {
+  return Math.max(Math.ceil(MIN_SCENE_SECONDS * fps), Math.ceil(seconds * fps - 1e-6));
 }
 
 export function totalFrames(scenes: Scene[]): number {

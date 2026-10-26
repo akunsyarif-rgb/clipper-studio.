@@ -3,13 +3,16 @@
 import { Player, type PlayerRef } from "@remotion/player";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { DEFAULT_MUSIC_VOLUME, MAX_RECORDING_SECONDS, MOODS, moodForStyle, type Mood, type Music } from "@/lib/audio";
+import { DEFAULT_MUSIC_VOLUME, encodeWav, MAX_RECORDING_SECONDS, MOODS, moodForStyle, normalize, speechEnvelope, type Mood, type Music } from "@/lib/audio";
 import { analyseNarration, decodeToMono, explainMicError, NarrationRecorder, recordingSupported, type Narration } from "@/lib/recorder";
 import { checkBrowserRender, environmentReport, RenderFailure, renderMp4 } from "@/lib/render";
 import {
-  buildTimeline, explainRenderError, FPS, HEIGHT, MAX_SECONDS, PALETTES, slug, STYLES, validateAudioFile, validateTitle, WIDTH,
+  buildTimeline, explainRenderError, FPS, HEIGHT, MAX_SECONDS, PALETTES, slug, splitScript, STYLES, validateAudioFile, validateTitle, WIDTH,
   type DurationMode, type PaletteId, type StyleId, type VideoProps,
 } from "@/lib/script";
+import { explainVoiceError, loadVoiceEngine, MODEL_BYTES, VOICES } from "@/lib/tts/browser";
+import { assembleNarration, clipKey, SPEEDS } from "@/lib/tts/narration";
+import { TTS_LANGS, type TtsLang } from "@/lib/tts/supertonic";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
 import "./motion.css";
 
@@ -18,6 +21,9 @@ const SAMPLE = "Jangan tunggu semangat datang.\nMulailah, meski langkahmu kecil.
 type Track = { file: File; url: string; seconds: number };
 type Generated = Track & { mood: Mood; seed: number };
 type MusicMode = "none" | "auto" | "upload";
+type VoiceMode = "ai" | "manual" | "none";
+type AiNarration = { key: string; narration: Narration; sceneSeconds: number[] };
+type VoiceProgress = { phase: "download" | "synth"; loaded: number; total: number; label: string };
 
 /** Reads an audio file's duration, decoding it when the media element cannot (e.g. some WAV/OGG on Safari). */
 async function audioDuration(file: File, url: string): Promise<number> {
@@ -38,13 +44,22 @@ export default function MotionStudio() {
   const musicInput = useRef<HTMLInputElement>(null);
   const abort = useRef<AbortController | null>(null);
   const recorder = useRef<NarrationRecorder | null>(null);
+  const clipCache = useRef(new Map<string, Float32Array>());
+  const voiceCancel = useRef(false);
   const [script, setScript] = useState(SAMPLE);
   const [title, setTitle] = useState("Sebuah pengingat");
   const [style, setStyle] = useState<StyleId>("hybrid");
   const [palette, setPalette] = useState<PaletteId>("violet");
   const [target, setTarget] = useState("auto");
   const [captions, setCaptions] = useState(true);
-  const [narration, setNarration] = useState<Narration | null>(null);
+  const [manualNarration, setNarration] = useState<Narration | null>(null);
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>("ai");
+  const [ttsLang, setTtsLang] = useState<TtsLang>("id");
+  const [ttsVoice, setTtsVoice] = useState(0);
+  const [ttsSpeed, setTtsSpeed] = useState(1.05);
+  const [aiNarration, setAiNarration] = useState<AiNarration | null>(null);
+  const [voiceProgress, setVoiceProgress] = useState<VoiceProgress | null>(null);
+  const [voiceError, setVoiceError] = useState("");
   const [recordingSeconds, setRecordingSeconds] = useState<number | null>(null);
   const [narrationBusy, setNarrationBusy] = useState(false);
   const [audioError, setAudioError] = useState("");
@@ -65,7 +80,8 @@ export default function MotionStudio() {
   const [renderError, setRenderError] = useState("");
   const [errorDetail, setErrorDetail] = useState("");
 
-  useEffect(() => { if (!narration) return; const url = narration.url; return () => URL.revokeObjectURL(url); }, [narration]);
+  useEffect(() => { if (!manualNarration) return; const url = manualNarration.url; return () => URL.revokeObjectURL(url); }, [manualNarration]);
+  useEffect(() => { if (!aiNarration) return; const url = aiNarration.narration.url; return () => URL.revokeObjectURL(url); }, [aiNarration]);
   useEffect(() => { if (!generated) return; const url = generated.url; return () => URL.revokeObjectURL(url); }, [generated]);
   useEffect(() => { if (!uploadedMusic) return; const url = uploadedMusic.url; return () => URL.revokeObjectURL(url); }, [uploadedMusic]);
   useEffect(() => { if (!result) return; const url = result.url; return () => URL.revokeObjectURL(url); }, [result]);
@@ -73,8 +89,15 @@ export default function MotionStudio() {
   // The mood follows the animation style until the user picks one.
   useEffect(() => { if (!moodTouched) setMood(moodForStyle(style)); }, [style, moodTouched]);
 
-  const mode: DurationMode = narration ? { kind: "audio", seconds: narration.seconds } : target === "auto" ? { kind: "auto" } : { kind: "target", seconds: Number(target) };
-  const timeline = useMemo(() => buildTimeline(script, mode, FPS), [script, mode.kind, narration?.seconds, target]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Automatic voice over is valid only for the exact sentences, language, voice and speed it was made from.
+  const voiceKey = useMemo(() => JSON.stringify([splitScript(script), ttsLang, ttsVoice, ttsSpeed]), [script, ttsLang, ttsVoice, ttsSpeed]);
+  const aiFresh = voiceMode === "ai" && aiNarration?.key === voiceKey ? aiNarration : null;
+  const narration = voiceMode === "ai" ? aiFresh?.narration ?? null : voiceMode === "manual" ? manualNarration : null;
+  const mode: DurationMode = aiFresh ? { kind: "scenes", seconds: aiFresh.sceneSeconds }
+    : narration ? { kind: "audio", seconds: narration.seconds }
+    : target === "auto" || voiceMode === "ai" ? { kind: "auto" } : { kind: "target", seconds: Number(target) };
+  const voiceBusy = voiceProgress !== null;
+  const timeline = useMemo(() => buildTimeline(script, mode, FPS), [script, mode.kind, aiFresh, narration?.seconds, target]); // eslint-disable-line react-hooks/exhaustive-deps
   const videoSeconds = timeline.ok ? timeline.seconds : 0;
   const titleError = validateTitle(title);
   const recording = recordingSeconds !== null;
@@ -87,7 +110,9 @@ export default function MotionStudio() {
     title: title.trim(), scenes: timeline.scenes, style, palette, audioSrc: narration?.url ?? null, captions,
     music, speech: narration?.speech ?? null,
   } : null;
-  const blocker = !timeline.ok ? timeline.error : titleError ?? (recording ? "Selesaikan perekaman narasi terlebih dahulu." : null);
+  const blocker = !timeline.ok ? timeline.error : titleError
+    ?? (recording ? "Selesaikan perekaman narasi terlebih dahulu." : null)
+    ?? (voiceMode === "ai" && !aiFresh ? (aiNarration ? "Naskah, bahasa, suara, atau kecepatan berubah. Ketuk “Buat suara otomatis” lagi." : "Ketuk “Buat suara otomatis” untuk membuat voice over dari naskah.") : null);
 
   // Inputs changed after a render: the downloaded file no longer matches the preview.
   useEffect(() => { setResult(null); }, [script, title, style, palette, target, captions, narration, musicMode, musicTrack, musicVolume, duck]);
@@ -134,6 +159,50 @@ export default function MotionStudio() {
     const err = validateAudioFile(f);
     if (err) return setAudioError(err);
     void loadNarrationFile(f);
+  }
+
+  async function generateVoice() {
+    if (voiceBusy) return;
+    const texts = splitScript(script);
+    const check = buildTimeline(script, { kind: "auto" }, FPS);
+    if (!check.ok) return setVoiceError(check.error);
+    setVoiceError(""); voiceCancel.current = false;
+    player.current?.pause();
+    const key = voiceKey;
+    try {
+      setVoiceProgress({ phase: "download", loaded: 0, total: MODEL_BYTES, label: "Menyiapkan model suara…" });
+      const engine = await loadVoiceEngine((loaded, total) => setVoiceProgress({ phase: "download", loaded, total, label: "Mengunduh model suara (sekali saja)…" }));
+      const clips: Float32Array[] = [];
+      for (const [i, text] of texts.entries()) {
+        if (voiceCancel.current) throw new Error("cancelled");
+        const k = clipKey(text, ttsLang, ttsVoice, ttsSpeed);
+        let clip = clipCache.current.get(k);
+        if (!clip) {
+          clip = await engine.synthesize(text, ttsLang, ttsVoice, {
+            speed: ttsSpeed,
+            onStep: async (step, total) => {
+              setVoiceProgress({ phase: "synth", loaded: i * total + step, total: texts.length * total, label: `Membuat suara scene ${i + 1}/${texts.length}…` });
+              // Let the browser paint progress between model steps.
+              await new Promise(r => setTimeout(r, 0));
+              if (voiceCancel.current) throw new Error("cancelled");
+            },
+          });
+          clipCache.current.set(k, clip);
+        }
+        clips.push(clip);
+      }
+      const { samples, sceneSeconds } = assembleNarration(clips, engine.sampleRate, FPS);
+      normalize(samples, 0.9, 3);
+      const file = new File([encodeWav([samples], engine.sampleRate)], `suara-otomatis-${ttsLang}.wav`, { type: "audio/wav" });
+      setAiNarration({
+        key, sceneSeconds,
+        narration: { file, url: URL.createObjectURL(file), seconds: samples.length / engine.sampleRate, speech: speechEnvelope(samples, engine.sampleRate, FPS), recorded: false },
+      });
+      setStatus(`Suara otomatis ${(samples.length / engine.sampleRate).toFixed(1)} dtk siap. Durasi tiap scene mengikuti ucapannya.`);
+    } catch (err) {
+      if (err instanceof Error && err.message === "cancelled") setStatus("Pembuatan suara dibatalkan.");
+      else setVoiceError(explainVoiceError(err));
+    } finally { setVoiceProgress(null); }
   }
 
   async function startRecording() {
@@ -260,7 +329,7 @@ export default function MotionStudio() {
     catch { setStatus("Browser tidak memberi izin clipboard. Gunakan Ekspor proyek JSON."); }
   }
 
-  const busy = rendering || recording || narrationBusy;
+  const busy = rendering || recording || narrationBusy || voiceBusy;
   const colors = PALETTES[palette];
   return (
     <main className="motion-shell">
@@ -272,7 +341,7 @@ export default function MotionStudio() {
       <section className="motion-intro">
         <div className="motion-eyebrow"><span className="live-dot" /> MOTION GRAPHICS LAB · REMOTION</div>
         <h1>Words that <em>move.</em><br />Ideas that stay.</h1>
-        <p>Tulis naskah, rekam narasi, tambahkan backsound, lihat pratinjau, lalu render MP4 vertikal 1080×1920 langsung di browser.</p>
+        <p>Tulis naskah, buat voice over otomatis (Indonesia/English), tambahkan backsound, lihat pratinjau, lalu render MP4 vertikal 1080×1920 langsung di browser.</p>
       </section>
 
       <div className="studio-grid">
@@ -290,7 +359,33 @@ export default function MotionStudio() {
           </div>
 
           <label className="field-label">Voice over / narasi</label>
-          <div className="audio-box">
+          <div className="seg" role="radiogroup" aria-label="Voice over">
+            {([["ai", "🤖 Otomatis"], ["manual", "🎙 Rekam / unggah"], ["none", "Tanpa"]] as [VoiceMode, string][]).map(([id, label]) =>
+              <button key={id} role="radio" aria-checked={voiceMode === id} className={voiceMode === id ? "active" : ""} disabled={busy} data-testid={"voice-" + id} onClick={() => setVoiceMode(id)}>{label}</button>)}
+          </div>
+          {voiceMode === "ai" && <div className="audio-box" data-testid="ai-voice">
+            <div className="field-row tight">
+              <div><label className="field-label" htmlFor="tts-lang">Bahasa</label>
+                <select id="tts-lang" data-testid="tts-lang" value={ttsLang} disabled={voiceBusy} onChange={e => setTtsLang(e.target.value as TtsLang)}>{TTS_LANGS.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}</select></div>
+              <div><label className="field-label" htmlFor="tts-voice">Suara</label>
+                <select id="tts-voice" data-testid="tts-voice" value={ttsVoice} disabled={voiceBusy} onChange={e => setTtsVoice(Number(e.target.value))}>{VOICES.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}</select></div>
+            </div>
+            <label className="field-label" htmlFor="tts-speed">Kecepatan bicara</label>
+            <select id="tts-speed" data-testid="tts-speed" value={ttsSpeed} disabled={voiceBusy} onChange={e => setTtsSpeed(Number(e.target.value))}>{SPEEDS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
+            {voiceProgress ? <div className="render-progress" data-testid="voice-progress">
+              <div><span>{voiceProgress.label}</span><b>{voiceProgress.phase === "download" ? `${(voiceProgress.loaded / 1e6).toFixed(0)} / ${(voiceProgress.total / 1e6).toFixed(0)} MB` : `${Math.round((voiceProgress.loaded / voiceProgress.total) * 100)}%`}</b></div>
+              <i><em style={{ width: Math.min(100, (voiceProgress.loaded / Math.max(1, voiceProgress.total)) * 100) + "%" }} /></i>
+              <button className="motion-secondary" onClick={() => { voiceCancel.current = true; }} disabled={voiceProgress.phase === "download"}>Batal</button>
+            </div> : <button className="motion-primary" onClick={() => void generateVoice()} disabled={busy || !timeline.ok && !aiNarration} data-testid="voice-generate">{aiFresh ? "↻ Buat ulang suara" : "🤖 Buat suara otomatis"}</button>}
+            {aiFresh && <>
+              <audio src={aiFresh.narration.url} controls preload="metadata" data-testid="ai-audio" />
+              <div className="audio-meta"><b>Suara otomatis · {TTS_LANGS.find(l => l.id === ttsLang)?.label} · {VOICES[ttsVoice]?.label}</b><small>{aiFresh.narration.seconds.toFixed(1)} dtk · durasi tiap scene mengikuti ucapannya</small></div>
+              <a className="text-link" href={aiFresh.narration.url} download={aiFresh.narration.file.name}>Unduh suara (WAV)</a>
+            </>}
+            <small>Dibuat di perangkat dengan model Supertonic 3 (gratis, tanpa server). Unduhan pertama ±{Math.round(MODEL_BYTES / 1e6)} MB, lalu tersimpan di browser. Ini suara buatan AI: jangan dipakai untuk meniru orang lain, dan sebutkan bahwa suaranya buatan AI.</small>
+            {voiceError && <p className="field-error" role="alert" data-testid="voice-error">{voiceError}</p>}
+          </div>}
+          {voiceMode === "manual" && <div className="audio-box">
             <input ref={audioInput} type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg" onChange={onAudio} className="file-hidden" data-testid="audio-input" />
             {recording ? <div className="rec-live" data-testid="recording">
               <span className="rec-dot" /><b>Merekam {recordingSeconds!.toFixed(1)} dtk</b><small>maks. {MAX_RECORDING_SECONDS} dtk</small>
@@ -312,7 +407,7 @@ export default function MotionStudio() {
             </>}
             {narrationBusy && <small data-testid="narration-busy">Memproses audio…</small>}
             {audioError && <p className="field-error" role="alert" data-testid="audio-error">{audioError}</p>}
-          </div>
+          </div>}
 
           <label className="field-label">Backsound</label>
           <div className="audio-box">
@@ -343,12 +438,11 @@ export default function MotionStudio() {
             </>}
             {musicError && <p className="field-error" role="alert" data-testid="music-error">{musicError}</p>}
           </div>
-          <div className="ai-voice"><b>Generator suara AI</b><small>Belum terhubung. Opsi gratis dengan Bahasa Indonesia yang berjalan di browser (Supertonic 3) masih perlu diuji di iPad. Sementara itu, rekam narasi langsung di atas.</small></div>
 
           <div className="field-row">
             <div><label className="field-label" htmlFor="motion-duration">Durasi</label>
-              <select id="motion-duration" data-testid="duration" value={narration ? "audio" : target} disabled={!!narration} onChange={e => setTarget(e.target.value)}>
-                {narration ? <option value="audio">Ikuti narasi ({narration.seconds.toFixed(1)} dtk)</option> : <>
+              <select id="motion-duration" data-testid="duration" value={narration ? "audio" : voiceMode === "ai" ? "auto" : target} disabled={!!narration || voiceMode === "ai"} onChange={e => setTarget(e.target.value)}>
+                {narration ? <option value="audio">Ikuti narasi ({narration.seconds.toFixed(1)} dtk)</option> : voiceMode === "ai" ? <option value="auto">Ikuti suara otomatis</option> : <>
                   <option value="auto">Otomatis (kecepatan baca)</option><option value="15">15 detik</option><option value="30">30 detik</option><option value="45">45 detik</option><option value="60">60 detik</option>
                 </>}
               </select></div>
@@ -362,7 +456,7 @@ export default function MotionStudio() {
           <div className="panel-actions">
             {rendering
               ? <button className="motion-cancel" onClick={() => abort.current?.abort()} data-testid="cancel">Batalkan render</button>
-              : <button className="motion-primary" onClick={() => void render()} disabled={!!blocker || narrationBusy || musicBusy} data-testid="render">Render MP4 <span>↓</span></button>}
+              : <button className="motion-primary" onClick={() => void render()} disabled={!!blocker || narrationBusy || musicBusy || voiceBusy} data-testid="render">Render MP4 <span>↓</span></button>}
             <button className="motion-secondary" onClick={exportProject} disabled={!props}>Proyek JSON</button>
           </div>
           <button className="text-link" onClick={copyBrief} disabled={!timeline.ok}>Salin brief teks</button>
