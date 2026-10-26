@@ -36,7 +36,7 @@ Remotion is free for individuals and companies with up to 3 employees; larger co
 
 ## AI voice generator
 
-Not integrated. The only free, browser-only option with an Indonesian voice found so far is Supertonic 3 (ONNX, OpenRAIL-M weights, archived repo, large one-time download). It needs testing on the target iPad before adding. Until then, record the narration in the app. Adding one later means a small server route that returns audio, guarded against abuse, plus the provider's key in Vercel environment variables.
+Not integrated. The only free, browser-only option with an Indonesian voice found so far is Supertonic 3 (ONNX, OpenRAIL-M weights, archived repo, large one-time download). It needs testing on the target iPad before adding. Until then, record the narration in the app.
 
 ## Render with the CLI (fallback / batch)
 
