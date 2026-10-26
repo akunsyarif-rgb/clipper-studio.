@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { CONCEPTS, detectCompare, detectNumber, detectVisual, ICONS, matchConcept, resolveVisual, stripMarks, wordKey } from "./visuals";
+import { CONCEPTS, detectCompare, detectNumber, detectSemanticConcept, detectVisual, ICONS, matchConcept, resolveVisual, stripMarks, wordKey } from "./visuals";
+import { CONTENT_PRESETS, PALETTES } from "./script";
 
 describe("matchConcept (Indonesian + English keywords)", () => {
   it.each([
@@ -31,6 +32,34 @@ describe("matchConcept (Indonesian + English keywords)", () => {
     for (const c of CONCEPTS) {
       expect(Array.isArray(c.icon) && c.icon.length).toBeTruthy();
       expect(ICONS[c.id]).toBeDefined();
+    }
+  });
+});
+
+describe("semantic visual mapping", () => {
+  it.each([
+    ["Al-Qur'an mengajarkan kita untuk bersabar.", "book"],
+    ["Awali harimu dengan doa dan dzikir.", "moon"],
+    ["Kunjungi masjid untuk shalat berjamaah.", "building"],
+    ["Iman, takwa, dan syukur perlu dijaga.", "heart"],
+    ["Gunakan teknologi AI untuk membantu pekerjaan.", "ai"],
+    ["Pelajari data sebelum mengambil keputusan.", "data"],
+    ["Bangun bisnis digital yang bermanfaat.", "work"],
+    ["Pendidikan membantu siswa berkembang.", "book"],
+    ["Buat video pendek untuk media sosial.", "video"],
+  ])("%s → %s", (text, id) => {
+    expect(detectSemanticConcept(text)).toBe(id);
+    expect(detectVisual(text).icon).toBe(id);
+  });
+});
+
+describe("content presets", () => {
+  it("provides six distinct reusable content starting points", () => {
+    expect(CONTENT_PRESETS).toHaveLength(6);
+    expect(new Set(CONTENT_PRESETS.map(p => p.id)).size).toBe(6);
+    for (const preset of CONTENT_PRESETS) {
+      expect(PALETTES[preset.palette]).toBeDefined();
+      expect(["hybrid", "kinetic", "popup", "cinematic"]).toContain(preset.style);
     }
   });
 });
