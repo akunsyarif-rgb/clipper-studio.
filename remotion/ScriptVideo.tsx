@@ -77,20 +77,21 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const d = scene.durationInFrames;
-  const enter = spring({ frame, fps, config: style === "popup" ? { damping: 8, stiffness: 170, mass: 0.6 } : { damping: 14, stiffness: 110, mass: 0.7 } });
+  const intensity = scene.narrative?.intensity ?? "emphasis";
+  const enter = spring({ frame, fps, config: intensity === "quiet" ? { damping: 22, stiffness: 80, mass: 0.8 } : intensity === "impact" && style === "popup" ? { damping: 8, stiffness: 170, mass: 0.6 } : { damping: 14, stiffness: 110, mass: 0.7 } });
   const fadeOut = interpolate(frame, [d - 8, d], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   // The first scene is visible from frame 0 so the video thumbnail is never blank.
-  const fadeIn = index === 0 ? 1 : interpolate(frame, [0, style === "cinematic" ? 14 : 6], [0, 1], { extrapolateRight: "clamp" });
-  const drift = interpolate(frame, [0, d], style === "cinematic" ? [40, -30] : [24, -6], { extrapolateRight: "clamp" });
-  const scale = style === "popup" ? interpolate(enter, [0, 1], [0.6, 1]) : interpolate(enter, [0, 1], [0.86, 1]);
-  const blur = style === "cinematic" && index > 0 ? interpolate(frame, [0, 14], [14, 0], { extrapolateRight: "clamp" }) : 0;
+  const fadeIn = index === 0 ? 1 : interpolate(frame, [0, intensity === "quiet" ? 8 : style === "cinematic" ? 14 : 6], [0, 1], { extrapolateRight: "clamp" });
+  const drift = interpolate(frame, [0, d], intensity === "quiet" ? [8, 0] : style === "cinematic" ? [40, -30] : [24, -6], { extrapolateRight: "clamp" });
+  const scale = intensity === "quiet" ? interpolate(enter, [0, 1], [0.98, 1]) : style === "popup" && intensity === "impact" ? interpolate(enter, [0, 1], [0.6, 1]) : interpolate(enter, [0, 1], [0.86, 1]);
+  const blur = style === "cinematic" && intensity !== "quiet" && index > 0 ? interpolate(frame, [0, 14], [14, 0], { extrapolateRight: "clamp" }) : 0;
 
   const visual = scene.visual ?? detectVisual(scene.text);
   const emphasis = new Set(visual.emphasis);
   const all = stripMarks(scene.text).split(/\s+/).filter(Boolean);
   const active = activeWordIndex(scene.text, frame, d, scene.wordStarts);
   // Kinetic/hybrid reveal the headline word by word in step with the narration; others show it at once.
-  const revealWords = style === "kinetic" || style === "hybrid";
+  const revealWords = intensity !== "quiet" && (style === "kinetic" || style === "hybrid");
   const hasTop = ["list", "question", "number", "quote"].includes(visual.template) && (visual.template !== "number" || !!visual.number);
   const baseSize = all.length <= 6 ? 108 : all.length <= 12 ? 86 : all.length <= 20 ? 68 : 54;
   // Leave room for the large visual above the headline and the cards below it.
@@ -115,7 +116,7 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
             const sinceSaid = frame - Math.floor((i / all.length) * d * 0.9);
             const underline = emph && said ? interpolate(revealWords ? sinceSaid : frame - 10, [0, 10], [0, 100], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 0;
             return (
-              <span key={i} style={{ position: "relative", display: "inline-block", whiteSpace: "nowrap", marginRight: "0.25em", opacity: shown ? 1 : 0.14, transform: `translateY(${(1 - pop) * (style === "kinetic" ? 42 : 30)}px) rotate(${style === "kinetic" ? (i % 2 === 0 ? -3 : 3) * (1 - pop) : 0}deg) scale(${style === "kinetic" ? 0.94 + 0.06 * pop : 1})`, color: emph || (revealWords && i === active) ? colors.accent : undefined, textShadow: style === "kinetic" && (emph || (revealWords && i === active)) ? `0 0 28px ${colors.accent}55` : undefined }}>
+              <span key={i} style={{ position: "relative", display: "inline-block", whiteSpace: "nowrap", marginRight: "0.25em", opacity: shown ? 1 : 0.14, transform: `translateY(${(1 - pop) * (style === "kinetic" ? 42 : 30)}px) rotate(${style === "kinetic" && intensity === "impact" ? (i % 2 === 0 ? -3 : 3) * (1 - pop) : 0}deg) scale(${style === "kinetic" && intensity !== "quiet" ? 0.94 + 0.06 * pop : 1})`, color: emph || (revealWords && i === active) ? colors.accent : undefined, textShadow: style === "kinetic" && intensity === "impact" && (emph || (revealWords && i === active)) ? `0 0 28px ${colors.accent}55` : undefined }}>
                 {w}
                 {emph && <span style={{ position: "absolute", left: 0, bottom: "-0.08em", height: "0.09em", width: `${underline}%`, borderRadius: 6, background: colors.accent }} />}
               </span>
