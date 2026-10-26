@@ -7,8 +7,8 @@ import { DEFAULT_MUSIC_VOLUME, encodeWav, MAX_RECORDING_SECONDS, MOODS, moodForS
 import { analyseNarration, decodeToMono, explainMicError, NarrationRecorder, recordingSupported, type Narration } from "@/lib/recorder";
 import { checkBrowserRender, environmentReport, RenderFailure, renderMp4 } from "@/lib/render";
 import {
-  buildTimeline, explainRenderError, FPS, HEIGHT, MAX_SECONDS, PALETTES, slug, splitScript, STYLES, validateAudioFile, validateTitle, WIDTH,
-  type DurationMode, type PaletteId, type StyleId, type VideoProps,
+  buildTimeline, CONTENT_PRESETS, explainRenderError, FPS, HEIGHT, MAX_SECONDS, PALETTES, slug, splitScript, STYLES, validateAudioFile, validateTitle, WIDTH,
+  type ContentPresetId, type DurationMode, type PaletteId, type StyleId, type VideoProps,
 } from "@/lib/script";
 import { explainVoiceError, loadVoiceEngine, MODEL_BYTES, VOICES } from "@/lib/tts/browser";
 import { assembleNarration, clipKey, SPEEDS } from "@/lib/tts/narration";
@@ -52,6 +52,7 @@ export default function MotionStudio() {
   const [title, setTitle] = useState("Sebuah pengingat");
   const [style, setStyle] = useState<StyleId>("hybrid");
   const [palette, setPalette] = useState<PaletteId>("violet");
+  const [contentPreset, setContentPreset] = useState<ContentPresetId | "custom">("custom");
   const [target, setTarget] = useState("auto");
   const [captions, setCaptions] = useState(true);
   const [manualNarration, setNarration] = useState<Narration | null>(null);
@@ -359,9 +360,20 @@ export default function MotionStudio() {
           <label className="field-label" htmlFor="motion-title">Judul / teks pembuka</label>
           <input id="motion-title" data-testid="title" value={title} onChange={e => setTitle(e.target.value)} maxLength={60} />
           {titleError && <p className="field-error">{titleError}</p>}
+          <label className="field-label" htmlFor="motion-preset">Template konten</label>
+          <select id="motion-preset" data-testid="content-preset" value={contentPreset} onChange={e => {
+            const id = e.target.value as ContentPresetId | "custom";
+            setContentPreset(id);
+            const preset = CONTENT_PRESETS.find(p => p.id === id);
+            if (preset) { setStyle(preset.style); setPalette(preset.palette); }
+          }}>
+            <option value="custom">Kustom · atur sendiri</option>
+            {CONTENT_PRESETS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
+          <p className="field-hint preset-hint">{CONTENT_PRESETS.find(p => p.id === contentPreset)?.description ?? "Pilih gaya animasi dan palet warna secara manual."}</p>
           <div className="field-row">
-            <div><label className="field-label" htmlFor="motion-style">Gaya animasi</label><select id="motion-style" data-testid="style" value={style} onChange={e => setStyle(e.target.value as StyleId)}>{STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></div>
-            <div><label className="field-label" htmlFor="motion-palette">Palet warna</label><select id="motion-palette" data-testid="palette" value={palette} onChange={e => setPalette(e.target.value as PaletteId)}>{(Object.keys(PALETTES) as PaletteId[]).map(p => <option key={p} value={p}>{PALETTES[p].label}</option>)}</select></div>
+            <div><label className="field-label" htmlFor="motion-style">Gaya animasi</label><select id="motion-style" data-testid="style" value={style} onChange={e => { setStyle(e.target.value as StyleId); setContentPreset("custom"); }}>{STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></div>
+            <div><label className="field-label" htmlFor="motion-palette">Palet warna</label><select id="motion-palette" data-testid="palette" value={palette} onChange={e => { setPalette(e.target.value as PaletteId); setContentPreset("custom"); }}>{(Object.keys(PALETTES) as PaletteId[]).map(p => <option key={p} value={p}>{PALETTES[p].label}</option>)}</select></div>
           </div>
 
           <label className="field-label">Voice over / narasi</label>
