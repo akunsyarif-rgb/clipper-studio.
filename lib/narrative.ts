@@ -67,7 +67,7 @@ export function planNarrative(texts: string[]): NarrativePlan[] {
       intensity = "emphasis";
       reason = "Bahasa menandai insight atau jawaban; tampilkan perubahan atau hubungan yang memperjelas penemuan.";
       continuityCue = "Gunakan elemen dari pertanyaan atau konflik sebelumnya untuk memperlihatkan jawabannya.";
-    } else if (patterns.tension.test(text) || /\?\s*$/.test(text)) {
+    } else if (patterns.tension.test(text) || (!first && /\?\s*$/.test(text))) {
       role = "tension";
       strategy = patterns.comparison.test(text) ? "comparison" : "typography";
       intensity = "impact";
