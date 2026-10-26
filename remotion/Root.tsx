@@ -12,6 +12,8 @@ export const defaultScriptProps: VideoProps = {
   palette: "violet",
   audioSrc: null,
   captions: true,
+  music: null,
+  speech: null,
 };
 
 export const RemotionRoot: React.FC = () => (

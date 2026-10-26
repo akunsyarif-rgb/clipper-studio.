@@ -1,6 +1,7 @@
 import React from "react";
 import { Audio } from "@remotion/media";
 import { AbsoluteFill, interpolate, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig, type CalculateMetadataFunction } from "remotion";
+import { musicGain } from "../lib/audio";
 import { activeWordIndex, captionLine, PALETTES, totalFrames, type Scene, type StyleId, type VideoProps } from "../lib/script";
 
 const FONT = "'Arial Black', 'Helvetica Neue', Arial, sans-serif";
@@ -61,9 +62,9 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
   );
 }
 
-export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions }) => {
+export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech }) => {
   const frame = useCurrentFrame();
-  const { durationInFrames } = useVideoConfig();
+  const { durationInFrames, fps } = useVideoConfig();
   const colors = PALETTES[palette] ?? PALETTES.violet;
   const progress = interpolate(frame, [0, Math.max(1, durationInFrames - 1)], [0, 100], { extrapolateRight: "clamp" });
   const wash = interpolate(frame % 360, [0, 180, 359], [0.4, 1, 0.4]);
@@ -74,6 +75,15 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
       <div style={{ position: "absolute", width: 700, height: 700, border: `1px solid ${colors.accent}45`, borderRadius: "50%", right: -380, top: 250, transform: `rotate(${frame * 0.3}deg)` }} />
       <div style={{ position: "absolute", left: 70, right: 70, top: 72, display: "flex", justifyContent: "space-between", color: `${colors.accent}cc`, font: "bold 18px monospace", letterSpacing: 3 }}><span>CLIPPER / MOTION</span><span>30 FPS</span></div>
       {audioSrc ? <Audio src={resolveAudio(audioSrc)} /> : null}
+      {music ? (
+        <Audio
+          src={resolveAudio(music.src)}
+          loop={music.loop}
+          loopVolumeCurveBehavior="extend"
+          // Without an analysed narration envelope, duck for the whole video whenever there is narration.
+          volume={f => musicGain(f, durationInFrames, fps, music, speech ?? (audioSrc ? [1] : null))}
+        />
+      ) : null}
       {scenes.map((scene, i) => {
         const start = from;
         from += scene.durationInFrames;

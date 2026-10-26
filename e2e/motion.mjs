@@ -16,6 +16,12 @@ const narration = join(dir, "narasi.wav");
 execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "sine=frequency=300:duration=6", "-ac", "1", "-ar", "44100", narration]);
 const tooLong = join(dir, "panjang.mp3");
 execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "anullsrc=r=22050:cl=mono", "-t", "200", "-b:a", "32k", tooLong]);
+// Fake microphone input: speech-like tone bursts. Chromium loops this file as the mic.
+const micFile = join(dir, "mic.wav");
+execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "sine=frequency=240:duration=8", "-af", "volume='if(lt(mod(t,1.2),0.8),1,0)':eval=frame", "-ac", "1", "-ar", "48000", micFile]);
+// A short music loop (shorter than the video, so it must loop).
+const musicFile = join(dir, "musik.wav");
+execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "sine=frequency=520:duration=3", "-ac", "2", "-ar", "44100", musicFile]);
 const notAudio = join(dir, "catatan.txt");
 writeFileSync(notAudio, "bukan audio");
 
@@ -24,6 +30,10 @@ function probe(file) {
   const v = out.streams.find(s => s.codec_type === "video");
   const a = out.streams.find(s => s.codec_type === "audio");
   return { duration: Number(out.format.duration), width: v?.width, height: v?.height, fps: v?.r_frame_rate, video: v?.codec_name, audio: a?.codec_name ?? null };
+}
+function segmentVolume(file, from, to) {
+  const log = spawnSync("ffmpeg", ["-v", "info", "-ss", String(from), "-to", String(to), "-i", file, "-af", "volumedetect", "-f", "null", "-"]).stderr.toString();
+  return Number(/mean_volume: (-?[\d.]+) dB/.exec(log)?.[1] ?? NaN);
 }
 function volumeLog(file) {
   // volumedetect reports on stderr.
@@ -45,7 +55,7 @@ function assert(cond, msg) { if (!cond) throw new Error(msg); }
 try {
   if (await fetch(BASE).then(() => true, () => false)) throw new Error(`Port ${PORT} is already in use; stop the old server first.`);
   for (let i = 0; i < 60; i++) { try { await fetch(BASE); break; } catch { await new Promise(r => setTimeout(r, 500)); } }
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", `--use-file-for-fake-audio-capture=${micFile}`] });
   const page = await (await browser.newContext({ acceptDownloads: true })).newPage();
   const pageErrors = [];
   let telemetryBlocked = false;
@@ -96,7 +106,7 @@ try {
 
   await step("narration drives scene timing and preview", async () => {
     await page.getByTestId("audio-input").setInputFiles(narration);
-    await page.getByText("6.0 dtk · durasi video mengikuti audio").waitFor({ timeout: 10000 });
+    await page.getByText("6.0 dtk · durasi video mengikuti narasi").waitFor({ timeout: 10000 });
     assert(await page.getByTestId("duration").isDisabled(), "duration follows audio");
     const rows = await page.getByTestId("scenes").locator(".scene-row").count();
     assert(rows === 3, `expected 3 scenes, got ${rows}`);
@@ -200,6 +210,54 @@ try {
     assert(info.video === "h264" && info.width === 1080 && info.height === 1920, `video ${info.video} ${info.width}x${info.height}`);
     await p.close();
     return `${info.duration.toFixed(2)}s h264 1080x1920`;
+  });
+
+  await step("records narration from the microphone and uses it as the timeline", async () => {
+    await page.getByTestId("script").fill("Rekaman langsung dari mikrofon.\nDurasi mengikuti suara.");
+    await page.getByTestId("record-start").click();
+    await page.getByTestId("recording").waitFor({ timeout: 10000 });
+    await page.waitForTimeout(4200);
+    await page.getByTestId("record-stop").click();
+    await page.getByText("Rekaman mikrofon").waitFor({ timeout: 20000 });
+    const label = await page.getByTestId("duration").inputValue();
+    assert(label === "audio", `duration should follow the recording, got ${label}`);
+    const text = await page.locator("#motion-duration option").first().textContent();
+    const secs = Number(/\(([\d.]+) dtk\)/.exec(text)?.[1]);
+    assert(secs > 3.5 && secs < 5.5, `recorded length ${secs}s`);
+    return `recorded ${secs}s`;
+  });
+
+  await step("renders narration + automatic backsound", async () => {
+    await page.getByTestId("music-auto").click();
+    await page.getByTestId("music-status").filter({ hasText: "siap" }).waitFor({ timeout: 60000 });
+    const status = await page.getByTestId("music-status").textContent();
+    const expected = Number(/Backsound ([\d.]+) dtk/.exec(status)?.[1]);
+    const info = await renderAndCheck("narration-auto-music", true, expected);
+    return `${info}`;
+  });
+
+  await step("renders with an uploaded music track that loops under no narration", async () => {
+    await page.getByTestId("audio-remove").click();
+    await page.getByTestId("script").fill("Musik unggahan diulang.\nSampai video selesai.");
+    await page.getByTestId("duration").selectOption("15");
+    await page.getByTestId("music-input").setInputFiles(musicFile);
+    await page.getByText("diulang (loop) sampai video selesai").waitFor({ timeout: 10000 });
+    await page.getByTestId("render").click();
+    await page.getByTestId("result").waitFor({ timeout: 300000 });
+    const [download] = await Promise.all([page.waitForEvent("download"), page.getByTestId("download").click()]);
+    const out = join(dir, "uploaded-music.mp4");
+    await download.saveAs(out);
+    const p = probe(out);
+    assert(p.audio === "aac" && Math.abs(p.duration - 15) < 0.2, `audio ${p.audio}, duration ${p.duration}`);
+    // The 3 s track must still be audible near the end (looped), and silent at the very end (fade-out).
+    const late = segmentVolume(out, 11, 12.5);
+    assert(late > -45, `music should loop to the end, level at 11–12.5 s is ${late} dB`);
+    return `15.00s aac, loop level ${late} dB at 11–12.5 s`;
+  });
+
+  await step("can switch backsound off again", async () => {
+    await page.getByTestId("music-none").click();
+    assert(!(await page.getByTestId("music-volume").isVisible()), "volume control hidden without backsound");
   });
 
   await step("no horizontal scroll on iPhone-size viewport", async () => {
