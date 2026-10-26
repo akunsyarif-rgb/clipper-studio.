@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CONCEPTS, detectCompare, detectNumber, detectSemanticConcept, detectVisual, ICONS, matchConcept, resolveVisual, stripMarks, wordKey } from "./visuals";
-import { CONTENT_PRESETS, PALETTES } from "./script";
+import { CONTENT_PRESETS, PALETTES, STYLES } from "./script";
 
 describe("matchConcept (Indonesian + English keywords)", () => {
   it.each([
@@ -54,12 +54,12 @@ describe("semantic visual mapping", () => {
 });
 
 describe("content presets", () => {
-  it("provides six distinct reusable content starting points", () => {
-    expect(CONTENT_PRESETS).toHaveLength(6);
-    expect(new Set(CONTENT_PRESETS.map(p => p.id)).size).toBe(6);
+  it("provides seven distinct reusable content starting points", () => {
+    expect(CONTENT_PRESETS).toHaveLength(7);
+    expect(new Set(CONTENT_PRESETS.map(p => p.id)).size).toBe(7);
     for (const preset of CONTENT_PRESETS) {
       expect(PALETTES[preset.palette]).toBeDefined();
-      expect(["hybrid", "kinetic", "popup", "cinematic"]).toContain(preset.style);
+      expect(STYLES.map(st => st.id)).toContain(preset.style);
     }
   });
 });

@@ -342,7 +342,7 @@ try {
     await page.getByTestId("music-none").click();
     await page.getByTestId("script").fill("Negeri ini berdiri di atas lebih dari 17.000 pulau.\nAda lebih dari 1.300 suku dan 700 bahasa daerah.\nMerdeka pada tahun 1945.");
     await page.getByTestId("duration").selectOption("15");
-    const rows = await page.getByTestId("scenes").locator(".scene-info b").allTextContents();
+    const rows = await page.getByTestId("scenes").locator(".scene-info > b").allTextContents();
     assert(rows.length === 3, `3 scenes expected, got ${rows.length}: ${JSON.stringify(rows)}`);
     assert(rows[0].includes("17.000") && rows[1].includes("1.300"), `numbers kept whole: ${JSON.stringify(rows)}`);
     const player = page.locator(".player-wrap");

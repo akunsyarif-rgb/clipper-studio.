@@ -14,17 +14,18 @@ export const MIN_SCENE_SECONDS = 1.2;
 /** Average narration speed used when there is no audio to measure (Indonesian, ~150 wpm). */
 export const WORDS_PER_SECOND = 2.5;
 
-export type StyleId = "hybrid" | "kinetic" | "popup" | "cinematic";
-export type PaletteId = "violet" | "gold" | "pearl" | "forest" | "obsidian";
+export type StyleId = "hybrid" | "kinetic" | "popup" | "cinematic" | "editorial";
+export type PaletteId = "violet" | "gold" | "pearl" | "forest" | "obsidian" | "ivory";
 
 export const STYLES: { id: StyleId; label: string }[] = [
   { id: "hybrid", label: "Hybrid" },
   { id: "kinetic", label: "Kinetic typography" },
   { id: "popup", label: "Pop-up" },
   { id: "cinematic", label: "Cinematic" },
+  { id: "editorial", label: "Quiet editorial" },
 ];
 
-export type ContentPresetId = "cinematic-motivation" | "kinetic-social" | "education" | "business-tech" | "islamic-reflection" | "storytelling";
+export type ContentPresetId = "cinematic-motivation" | "kinetic-social" | "education" | "business-tech" | "islamic-reflection" | "storytelling" | "quiet-editorial";
 
 export const CONTENT_PRESETS: { id: ContentPresetId; label: string; description: string; style: StyleId; palette: PaletteId }[] = [
   { id: "cinematic-motivation", label: "Cinematic Motivation", description: "Motivasi dengan gerak halus dan atmosfer sinematik", style: "cinematic", palette: "gold" },
@@ -33,6 +34,7 @@ export const CONTENT_PRESETS: { id: ContentPresetId; label: string; description:
   { id: "business-tech", label: "Business / Tech", description: "Tampilan modern untuk AI, aplikasi, dan bisnis digital", style: "kinetic", palette: "obsidian" },
   { id: "islamic-reflection", label: "Islamic Reflection", description: "Palet hutan-sage untuk refleksi dan pengingat Islami", style: "cinematic", palette: "forest" },
   { id: "storytelling", label: "Storytelling", description: "Narasi bertahap dengan suasana sinematik", style: "cinematic", palette: "violet" },
+  { id: "quiet-editorial", label: "Quiet Editorial", description: "Minimalis, ruang lega, gerak tenang yang menuntun satu fokus", style: "editorial", palette: "ivory" },
 ];
 
 export const PALETTES: Record<PaletteId, { label: string; bg1: string; bg2: string; accent: string; text: string }> = {
@@ -41,6 +43,7 @@ export const PALETTES: Record<PaletteId, { label: string; bg1: string; bg2: stri
   pearl: { label: "Pearl / Black", bg1: "#e9edf2", bg2: "#bfc8d5", accent: "#242c3a", text: "#141821" },
   forest: { label: "Forest / Sage", bg1: "#0d211d", bg2: "#24483b", accent: "#b9d7ad", text: "#f7f5eb" },
   obsidian: { label: "Obsidian / Electric", bg1: "#090d16", bg2: "#17263b", accent: "#73e0ff", text: "#f4f7ff" },
+  ivory: { label: "Ivory / Forest", bg1: "#f5f2e8", bg2: "#e4e8da", accent: "#2f5d46", text: "#16251e" },
 };
 
 export type Scene = {

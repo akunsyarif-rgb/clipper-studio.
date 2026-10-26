@@ -148,6 +148,8 @@ export type SceneVisual = {
   number?: NumberInfo;
   compare?: CompareInfo;
   cta?: string;
+  /** The creator picked the icon by hand; quiet layouts that normally omit icons still show it. */
+  iconPinned?: boolean;
 };
 
 export type VisualOverride = { template?: Template; icon?: string | "none" };
@@ -322,6 +324,7 @@ export function resolveVisual(text: string, override?: VisualOverride): SceneVis
     if (v.template === "list" && v.listIndex === undefined) v.listIndex = null;
   }
   if (override.icon) v.icon = override.icon === "none" ? null : override.icon in ICONS ? override.icon : v.icon;
+  if (override.icon && v.icon) v.iconPinned = true;
   return v;
 }
 

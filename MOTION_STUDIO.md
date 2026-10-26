@@ -130,3 +130,21 @@ On `/motion`, **Video sumber** → make a transcript → *Pakai transkrip untuk 
 - The plan is automatic (`autoCuts` in `lib/visuals.ts`): the first scene is always the speaker, a scene with a recognised concept/number/template becomes a graphic, and two graphics never follow each other. Each scene has a **Layar** picker (*Otomatis / Video + subtitle / Grafis*) plus the existing *Tampilan* and *Ikon* pickers.
 - The Pearl palette is selected by default for the light cutaways; change it freely.
 - Models: *Akurat* (base) is the default; *Paling akurat* (small, ~250 MB) is clearly better for Indonesian but slower and needs more memory (iPad: try base first).
+
+## Quiet Editorial Motion (composition families)
+
+Each scene is drawn by one of five composition families, picked by `chooseFamily` (`lib/composition.ts`) from the scene's narrative role/strategy and its detected visual. The choice is shown in the scene list.
+
+| Family | Chosen when | Layout |
+|---|---|---|
+| Editorial | hook, continuation, resolution, question, quote | centred headline, one drawn rule, generous space |
+| Kinetic type | tension, reveal | words brighten as they are spoken; at most two focus words take the accent |
+| Explainer | numbered step, cause → effect (`diagram`), explanation, application | step marker or icon label; "A karena B" is split into two blocks with an arrow |
+| Comparison | a detected "bukan X, tapi Y" / "X vs Y" | stacked cards; the rejected option is struck through, the better one arrives when the narration reaches it |
+| Data / product | a statistic (not a year), a call to action | the figure or action is the hero, the sentence is its context |
+
+- **Safe areas** (`lib/layout.ts`): content stays inside 110 px side margins, 220 px from the top and 380 px from the bottom (platform UI). Burned-in captions sit just above the bottom safe edge and the content box shrinks to make room for them.
+- **Text fitting**: `fitText` picks the largest font size at which the words wrap, at word boundaries, inside the box. The composition measures words with a canvas in the font the browser actually renders, and draws the computed lines itself, so the render matches what was checked. If text is too long it goes below the preferred minimum size instead of being cropped.
+- **Quiet editorial style + Ivory / Forest palette**: calm springs, no blur, particles or rotating ring. Preset *Quiet Editorial*.
+- A manually chosen icon (`iconPinned`) is shown in every family. Automatic icons appear only in the explainer, to keep a single focus.
+- All motion is computed from the frame; there are no timers and no randomness.
