@@ -6,6 +6,7 @@ The script-to-video studio is at `/motion`.
 
 1. **Script**: write the narration text. Each line or sentence becomes a scene. Very long sentences are split at commas/words, and one-word fragments are merged into the previous scene. Limits: 3,000 characters, 20 scenes, 180 seconds.
 2. **Title, style, palette**: opening text (max 48 characters); Hybrid / Kinetic typography / Pop-up / Cinematic; Violet-Cyan / Midnight-Gold / Pearl-Black / Forest-Sage / Obsidian-Electric. Forest-Sage suits calm, nature and Islamic-reflection videos; Obsidian-Electric suits technology, AI and business explainers.
+   - Cinematic style adds a lightweight ambient particle layer generated from deterministic CSS-positioned elements. It uses no external images, random state or new package; other styles do not render this layer.
 3. **Voice over**: choose *Otomatis* (default), *Rekam / unggah*, or *Tanpa* (none).
    - **Otomatis (AI)**: text-to-speech in **Indonesian or English** with 10 voices (Wanita 1–5, Pria 1–5) and three speeds, generated **on the device**. Details are under "Automatic voice over" below.
      - Each scene is synthesised separately, so a scene lasts exactly as long as its speech (+0.15 s lead-in, +0.35 s pause), and subtitles and transitions follow the voice.
