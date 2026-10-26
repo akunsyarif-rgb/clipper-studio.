@@ -1,4 +1,5 @@
 // Pure script → timeline logic shared by the UI, the Remotion composition and unit tests.
+import type { Music } from "./audio";
 
 export const FPS = 30;
 export const WIDTH = 1080;
@@ -37,6 +38,10 @@ export type VideoProps = {
   /** blob:/http(s):/data: URL in the browser, or a file name inside public/ for CLI renders. */
   audioSrc: string | null;
   captions: boolean;
+  /** Background music, mixed under the narration. */
+  music: Music | null;
+  /** Narration speech activity per frame (0..1) for ducking; null when unknown. */
+  speech: number[] | null;
 };
 
 const words = (s: string) => s.split(/\s+/).filter(Boolean);

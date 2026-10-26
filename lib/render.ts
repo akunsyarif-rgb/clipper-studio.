@@ -41,7 +41,7 @@ function describe(err: unknown): string {
 
 export async function renderMp4(props: VideoProps, opts: { signal: AbortSignal; onProgress: (fraction: number) => void; onRetry?: () => void }): Promise<Blob> {
   const { renderMediaOnWeb } = await import("@remotion/web-renderer");
-  const muted = !props.audioSrc;
+  const muted = !props.audioSrc && !props.music;
   const failures: string[] = [];
   let tried = 0;
   for (const attempt of ATTEMPTS) {
