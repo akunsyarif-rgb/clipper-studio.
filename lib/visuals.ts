@@ -263,8 +263,8 @@ export function detectSemanticConcept(text: string): string | null {
   const t = stripMarks(text).toLocaleLowerCase("id");
   const rules: [string, RegExp][] = [
     ["book", /\b(al[- ]?qur.?an|qur.?an|quran|ayat|surah|surat)\b/i],
-    ["building", /\b(masjid|mushola|musala|mosque)\b/i],
-    ["moon", /\b(doa|berdoa|pray|prayer|dzikir|zikir|dhikr|shalat|salat|ibadah|worship)\b/i],
+    ["home", /\b(masjid|mushola|musala|mosque)\b/i],
+    ["calm", /\b(doa|berdoa|pray|prayer|dzikir|zikir|dhikr|shalat|salat|ibadah|worship)\b/i],
     ["heart", /\b(iman|takwa|taqwa|ikhlas|sabar|syukur|tawakal|tawakkul|faith|gratitude|sincerity)\b/i],
     ["work", /\b(bisnis|usaha|penghasilan|pendapatan|profit|revenue|business|entrepreneur|wirausaha|pelanggan|customer)\b/i],
     ["ai", /\b(ai|kecerdasan buatan|artificial intelligence|machine learning|otomatisasi|automation|teknologi|technology|software|coding|programming|aplikasi|app|digital)\b/i],
