@@ -115,7 +115,7 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
             const sinceSaid = frame - Math.floor((i / all.length) * d * 0.9);
             const underline = emph && said ? interpolate(revealWords ? sinceSaid : frame - 10, [0, 10], [0, 100], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 0;
             return (
-              <span key={i} style={{ position: "relative", display: "inline-block", whiteSpace: "nowrap", marginRight: "0.25em", opacity: shown ? 1 : 0.14, transform: `translateY(${(1 - pop) * 30}px)`, color: emph || (revealWords && i === active) ? colors.accent : undefined }}>
+              <span key={i} style={{ position: "relative", display: "inline-block", whiteSpace: "nowrap", marginRight: "0.25em", opacity: shown ? 1 : 0.14, transform: `translateY(${(1 - pop) * (style === "kinetic" ? 42 : 30)}px) rotate(${style === "kinetic" ? (i % 2 === 0 ? -3 : 3) * (1 - pop) : 0}deg) scale(${style === "kinetic" ? 0.94 + 0.06 * pop : 1})`, color: emph || (revealWords && i === active) ? colors.accent : undefined, textShadow: style === "kinetic" && (emph || (revealWords && i === active)) ? `0 0 28px ${colors.accent}55` : undefined }}>
                 {w}
                 {emph && <span style={{ position: "absolute", left: 0, bottom: "-0.08em", height: "0.09em", width: `${underline}%`, borderRadius: 6, background: colors.accent }} />}
               </span>
@@ -142,10 +142,21 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
   const colors = PALETTES[palette] ?? PALETTES.violet;
   const progress = interpolate(frame, [0, Math.max(1, durationInFrames - 1)], [0, 100], { extrapolateRight: "clamp" });
   const wash = interpolate(frame % 360, [0, 180, 359], [0.4, 1, 0.4]);
+  // Deterministic, lightweight ambient particles (cinematic only, never over the speaker): no image assets, randomness, or extra dependencies.
+  const particles = style === "cinematic" && !video ? Array.from({ length: 16 }, (_, i) => {
+    const x = (i * 37 + 11) % 100;
+    const y = (i * 61 + 7) % 100;
+    const phase = (frame + i * 19) % 180;
+    const drift = interpolate(phase, [0, 179], [22, -22]);
+    const opacity = 0.12 + (Math.sin((frame + i * 23) / 18) + 1) * 0.09;
+    const size = i % 4 === 0 ? 4 : 2;
+    return { x, y, drift, opacity, size, key: i };
+  }) : [];
   let from = 0;
   return (
     <AbsoluteFill style={{ background: `linear-gradient(145deg, ${colors.bg1} 0%, ${colors.bg2} 100%)`, overflow: "hidden" }}>
       <AbsoluteFill style={{ background: `radial-gradient(circle at 80% 20%, ${colors.accent}22 0%, transparent 38%)`, opacity: wash }} />
+      {particles.map(p => <div key={p.key} aria-hidden="true" style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: p.size, height: p.size, borderRadius: "50%", background: colors.accent, opacity: p.opacity, transform: `translateY(${p.drift}px)`, pointerEvents: "none" }} />)}
       <div style={{ position: "absolute", width: 700, height: 700, border: `1px solid ${colors.accent}45`, borderRadius: "50%", right: -380, top: 250, transform: `rotate(${frame * 0.3}deg)` }} />
       {!video && <div style={{ position: "absolute", left: 70, right: 70, top: 72, display: "flex", justifyContent: "space-between", color: `${colors.accent}cc`, font: "bold 18px monospace", letterSpacing: 3 }}><span>CLIPPER / MOTION</span><span>30 FPS</span></div>}
       {video ? <AbsoluteFill><Video src={resolveAudio(video.src)} objectFit="cover" /></AbsoluteFill> : null}

@@ -5,7 +5,9 @@ The script-to-video studio is at `/motion`.
 ## Workflow
 
 1. **Script**: write the narration text. Each line or sentence becomes a scene. Very long sentences are split at commas/words, and one-word fragments are merged into the previous scene. Limits: 3,000 characters, 20 scenes, 180 seconds.
-2. **Title, style, palette**: opening text (max 48 characters); Hybrid / Kinetic typography / Pop-up / Cinematic; Violet-Cyan / Midnight-Gold / Pearl-Black.
+2. **Title, style, palette**: opening text (max 48 characters); Hybrid / Kinetic typography / Pop-up / Cinematic; Violet-Cyan / Midnight-Gold / Pearl-Black / Forest-Sage / Obsidian-Electric. Forest-Sage suits calm, nature and Islamic-reflection videos; Obsidian-Electric suits technology, AI and business explainers.
+   - Cinematic style adds a lightweight ambient particle layer generated from deterministic CSS-positioned elements. It uses no external images, random state or new package; other styles do not render this layer.
+   - In a source-video edit the particle layer is not drawn, so the speaker stays clear.
 3. **Voice over**: choose *Otomatis* (default), *Rekam / unggah*, or *Tanpa* (none).
    - **Otomatis (AI)**: text-to-speech in **Indonesian or English** with 10 voices (Wanita 1–5, Pria 1–5) and three speeds, generated **on the device**. Details are under "Automatic voice over" below.
      - Each scene is synthesised separately, so a scene lasts exactly as long as its speech (+0.15 s lead-in, +0.35 s pause), and subtitles and transitions follow the voice.
@@ -38,9 +40,24 @@ Remotion is free for individuals and companies with up to 3 employees; larger co
 - Set `NEXT_PUBLIC_REMOTION_LICENSE_KEY` in Vercel to your license key, or to `free-license` if you qualify for the free license. Without it, the browser console shows a reminder.
 - The web renderer reports a usage event (site origin and success flag, no video content) to `remotion.pro`. If that host is blocked (ad blocker, firewall), an unhandled "Failed to fetch" may appear in the console. The rendered file is not affected.
 
+## Content presets (Motion Visual Pack)
+
+The studio offers six reusable starting presets in the **Template konten** selector. Presets only set the existing animation style and colour palette; users can still adjust both manually, and the script, audio, scene overrides, preview and local MP4 renderer remain the same.
+
+| Preset | Style | Palette | Intended use |
+|---|---|---|---|
+| Cinematic Motivation | Cinematic | Midnight / Gold | Motivation, reflective voiceover |
+| Kinetic Social | Kinetic typography | Violet / Cyan | Fast hooks and short-form social videos |
+| Education / Explainer | Hybrid | Pearl / Black | Lessons and clear explanations |
+| Business / Tech | Kinetic typography | Obsidian / Electric | AI, software and digital business |
+| Islamic Reflection | Cinematic | Forest / Sage | Islamic reminders and calm reflection |
+| Storytelling | Cinematic | Violet / Cyan | Narrative-led videos |
+
+The presets are starting points, not separate rendering engines. They add no dependencies, API calls, subscriptions, or server-side render costs. Kinetic typography uses staggered word entrances with a subtle alternating rotation/scale and a glow on the active or emphasised word; the existing narration-timed word reveal is preserved.
+
 ## Smart visuals (icons, templates, emphasis)
 
-Every scene gets a visual that matches its text. Detection is automatic and works for Indonesian and English (`lib/visuals.ts`), and each scene can be corrected by hand.
+Every scene gets a visual that matches its text. Detection is automatic and works for Indonesian and English (`lib/visuals.ts`), and each scene can be corrected by hand. Semantic phrase rules take priority for Quran/ayat, prayer, mosque, faith, AI/technology, data/research, business, education, growth, challenges, solutions and video creation, then fall back to the existing bilingual keyword matcher.
 
 | Text pattern | Template | On screen |
 |---|---|---|

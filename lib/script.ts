@@ -14,7 +14,7 @@ export const MIN_SCENE_SECONDS = 1.2;
 export const WORDS_PER_SECOND = 2.5;
 
 export type StyleId = "hybrid" | "kinetic" | "popup" | "cinematic";
-export type PaletteId = "violet" | "gold" | "pearl";
+export type PaletteId = "violet" | "gold" | "pearl" | "forest" | "obsidian";
 
 export const STYLES: { id: StyleId; label: string }[] = [
   { id: "hybrid", label: "Hybrid" },
@@ -23,10 +23,23 @@ export const STYLES: { id: StyleId; label: string }[] = [
   { id: "cinematic", label: "Cinematic" },
 ];
 
+export type ContentPresetId = "cinematic-motivation" | "kinetic-social" | "education" | "business-tech" | "islamic-reflection" | "storytelling";
+
+export const CONTENT_PRESETS: { id: ContentPresetId; label: string; description: string; style: StyleId; palette: PaletteId }[] = [
+  { id: "cinematic-motivation", label: "Cinematic Motivation", description: "Motivasi dengan gerak halus dan atmosfer sinematik", style: "cinematic", palette: "gold" },
+  { id: "kinetic-social", label: "Kinetic Social", description: "Hook cepat, tipografi dinamis untuk Shorts/Reels", style: "kinetic", palette: "violet" },
+  { id: "education", label: "Education / Explainer", description: "Penjelasan bersih, kontras tinggi, mudah dibaca", style: "hybrid", palette: "pearl" },
+  { id: "business-tech", label: "Business / Tech", description: "Tampilan modern untuk AI, aplikasi, dan bisnis digital", style: "kinetic", palette: "obsidian" },
+  { id: "islamic-reflection", label: "Islamic Reflection", description: "Palet hutan-sage untuk refleksi dan pengingat Islami", style: "cinematic", palette: "forest" },
+  { id: "storytelling", label: "Storytelling", description: "Narasi bertahap dengan suasana sinematik", style: "cinematic", palette: "violet" },
+];
+
 export const PALETTES: Record<PaletteId, { label: string; bg1: string; bg2: string; accent: string; text: string }> = {
   violet: { label: "Violet / Cyan", bg1: "#15132f", bg2: "#542b79", accent: "#67f5ed", text: "#ffffff" },
   gold: { label: "Midnight / Gold", bg1: "#11151e", bg2: "#473522", accent: "#f6ce78", text: "#ffffff" },
   pearl: { label: "Pearl / Black", bg1: "#e9edf2", bg2: "#bfc8d5", accent: "#242c3a", text: "#141821" },
+  forest: { label: "Forest / Sage", bg1: "#0d211d", bg2: "#24483b", accent: "#b9d7ad", text: "#f7f5eb" },
+  obsidian: { label: "Obsidian / Electric", bg1: "#090d16", bg2: "#17263b", accent: "#73e0ff", text: "#f4f7ff" },
 };
 
 export type Scene = {
@@ -206,8 +219,10 @@ export function activeWordIndex(text: string, frameInScene: number, sceneFrames:
     for (let i = 0; i < n; i++) if (frameInScene >= wordStarts[i]) active = i;
     return active;
   }
+  // Estimated timing only: advance the marker by 3 frames (100 ms at 30 fps) to correct the observed fixed lag.
+  const HIGHLIGHT_LEAD_FRAMES = Math.round(FPS * 0.1);
   const speaking = Math.max(1, sceneFrames * 0.9);
-  return Math.min(n - 1, Math.floor((Math.max(0, frameInScene) / speaking) * n));
+  return Math.min(n - 1, Math.floor(((Math.max(0, frameInScene) + HIGHLIGHT_LEAD_FRAMES) / speaking) * n));
 }
 
 /**
