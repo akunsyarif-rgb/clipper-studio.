@@ -263,12 +263,12 @@ export function detectSemanticConcept(text: string): string | null {
   const t = stripMarks(text).toLocaleLowerCase("id");
   const rules: [string, RegExp][] = [
     ["book", /\b(al[- ]?qur.?an|qur.?an|quran|ayat|surah|surat)\b/i],
-    ["moon", /\b(doa|berdoa|pray|prayer|dzikir|zikir|dhikr|shalat|salat|ibadah|worship)\b/i],
     ["building", /\b(masjid|mushola|musala|mosque)\b/i],
+    ["moon", /\b(doa|berdoa|pray|prayer|dzikir|zikir|dhikr|shalat|salat|ibadah|worship)\b/i],
     ["heart", /\b(iman|takwa|taqwa|ikhlas|sabar|syukur|tawakal|tawakkul|faith|gratitude|sincerity)\b/i],
+    ["work", /\b(bisnis|usaha|penghasilan|pendapatan|profit|revenue|business|entrepreneur|wirausaha|pelanggan|customer)\b/i],
     ["ai", /\b(ai|kecerdasan buatan|artificial intelligence|machine learning|otomatisasi|automation|teknologi|technology|software|coding|programming|aplikasi|app|digital)\b/i],
     ["data", /\b(data|statistik|analitik|analytics|dashboard|riset|research|laporan|report)\b/i],
-    ["work", /\b(bisnis|usaha|penghasilan|pendapatan|profit|revenue|business|entrepreneur|wirausaha|pelanggan|customer)\b/i],
     ["book", /\b(belajar|pembelajaran|pendidikan|pelajaran|mengajar|guru|siswa|murid|education|learning|teach|teacher|student|study|lesson)\b/i],
     ["heart", /\b(cinta|kasih sayang|peduli|compassion|love|kindness|empathy)\b/i],
     ["growth", /\b(berkembang|pertumbuhan|kemajuan|progres|growth|progress|improve|improvement)\b/i],
