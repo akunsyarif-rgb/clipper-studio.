@@ -35,7 +35,8 @@ export default function Home() {
   const [resultUrl, setResultUrl] = useState("");
   const [errorDetail, setErrorDetail] = useState("");
 
-  useEffect(() => () => { if (src) URL.revokeObjectURL(src); if (resultUrl) URL.revokeObjectURL(resultUrl); }, [src, resultUrl]);
+  useEffect(() => { if (!src) return; return () => URL.revokeObjectURL(src); }, [src]);
+  useEffect(() => { if (!resultUrl) return; return () => URL.revokeObjectURL(resultUrl); }, [resultUrl]);
 
   function onPick(e: ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]; if (!f) return;
