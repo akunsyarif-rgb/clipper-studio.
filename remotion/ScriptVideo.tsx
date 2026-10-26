@@ -85,10 +85,21 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
   const colors = PALETTES[palette] ?? PALETTES.violet;
   const progress = interpolate(frame, [0, Math.max(1, durationInFrames - 1)], [0, 100], { extrapolateRight: "clamp" });
   const wash = interpolate(frame % 360, [0, 180, 359], [0.4, 1, 0.4]);
+  // Deterministic, lightweight ambient particles: no image assets, randomness, or extra dependencies.
+  const particles = style === "cinematic" ? Array.from({ length: 16 }, (_, i) => {
+    const x = (i * 37 + 11) % 100;
+    const y = (i * 61 + 7) % 100;
+    const phase = (frame + i * 19) % 180;
+    const drift = interpolate(phase, [0, 179], [22, -22]);
+    const opacity = 0.12 + (Math.sin((frame + i * 23) / 18) + 1) * 0.09;
+    const size = i % 4 === 0 ? 4 : 2;
+    return { x, y, drift, opacity, size, key: i };
+  }) : [];
   let from = 0;
   return (
     <AbsoluteFill style={{ background: `linear-gradient(145deg, ${colors.bg1} 0%, ${colors.bg2} 100%)`, overflow: "hidden" }}>
       <AbsoluteFill style={{ background: `radial-gradient(circle at 80% 20%, ${colors.accent}22 0%, transparent 38%)`, opacity: wash }} />
+      {particles.map(p => <div key={p.key} aria-hidden="true" style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: p.size, height: p.size, borderRadius: "50%", background: colors.accent, opacity: p.opacity, transform: `translateY(${p.drift}px)`, pointerEvents: "none" }} />)}
       <div style={{ position: "absolute", width: 700, height: 700, border: `1px solid ${colors.accent}45`, borderRadius: "50%", right: -380, top: 250, transform: `rotate(${frame * 0.3}deg)` }} />
       <div style={{ position: "absolute", left: 70, right: 70, top: 72, display: "flex", justifyContent: "space-between", color: `${colors.accent}cc`, font: "bold 18px monospace", letterSpacing: 3 }}><span>CLIPPER / MOTION</span><span>30 FPS</span></div>
       {audioSrc ? <Audio src={resolveAudio(audioSrc)} /> : null}
