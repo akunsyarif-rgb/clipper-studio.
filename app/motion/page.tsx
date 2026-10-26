@@ -7,14 +7,14 @@ import { DEFAULT_MUSIC_VOLUME, encodeWav, MAX_RECORDING_SECONDS, MOODS, moodForS
 import { analyseNarration, decodeToMono, explainMicError, NarrationRecorder, recordingSupported, type Narration } from "@/lib/recorder";
 import { checkBrowserRender, environmentReport, RenderFailure, renderMp4 } from "@/lib/render";
 import {
-  buildTimeline, explainRenderError, FPS, HEIGHT, MAX_SECONDS, PALETTES, slug, splitScript, STYLES, validateAudioFile, validateTitle, WIDTH,
+  buildTimeline, explainRenderError, FPS, HEIGHT, MAX_SECONDS, MIN_SCENE_SECONDS, PALETTES, slug, splitScript, STYLES, validateAudioFile, validateTitle, WIDTH,
   type DurationMode, type PaletteId, type StyleId, type VideoProps,
 } from "@/lib/script";
 import { explainVoiceError, loadVoiceEngine, MODEL_BYTES, VOICES } from "@/lib/tts/browser";
 import { assembleNarration, clipKey, SPEEDS } from "@/lib/tts/narration";
 import { spokenText } from "@/lib/tts/numbers";
 import { TTS_LANGS, type TtsLang } from "@/lib/tts/supertonic";
-import { allWords, HANDOFF_KEY, parseHandoff, sceneTimings, transcriptText, type Transcript } from "@/lib/transcript";
+import { allWords, shiftWords, HANDOFF_KEY, parseHandoff, sceneTimings, transcriptText, type Transcript } from "@/lib/transcript";
 import { autoCuts, ICONS, resolveVisual, type Cut, stripMarks, TEMPLATES, type Template, type VisualOverride } from "@/lib/visuals";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
 import TranscriptPanel from "../TranscriptPanel";
@@ -96,6 +96,7 @@ export default function MotionStudio() {
   const [asrBusy, setAsrBusy] = useState(false);
   // Edit mode: the uploaded video is the base layer (with its own audio); scenes become captions or cutaway graphics.
   const [videoEdit, setVideoEdit] = useState(false);
+  const [captionOffset, setCaptionOffset] = useState(0);
   const [cutOverrides, setCutOverrides] = useState<Record<string, Cut>>({});
   useEffect(() => { if (!source) return; const url = source.url; return () => URL.revokeObjectURL(url); }, [source]);
   function onSourceVideo(e: ChangeEvent<HTMLInputElement>) {
@@ -132,7 +133,7 @@ export default function MotionStudio() {
   const aiFresh = voiceMode === "ai" && aiNarration?.key === voiceKey ? aiNarration : null;
   const narration = voiceMode === "ai" ? aiFresh?.narration ?? null : voiceMode === "manual" ? manualNarration : null;
   // Transcript timing applies while the script still matches the transcript words and the narration is the original audio.
-  const timings = useMemo(() => imported ? sceneTimings(splitScript(script), allWords(imported), FPS, imported.duration) : null, [imported, script]);
+  const timings = useMemo(() => imported ? sceneTimings(splitScript(script), shiftWords(allWords(imported), captionOffset), FPS, imported.duration) : null, [imported, script, captionOffset]);
   const timed = voiceMode !== "ai" && timings && (!narration || Math.abs(narration.seconds - imported!.duration) <= 1) ? timings : null;
   const mode: DurationMode = aiFresh ? { kind: "scenes", seconds: aiFresh.sceneSeconds }
     : timed ? { kind: "scenes", seconds: timed.seconds }
@@ -151,7 +152,7 @@ export default function MotionStudio() {
   const sceneVisuals = timeline.ok ? timeline.scenes.map(sc => resolveVisual(sc.text, overrides[sc.text])) : [];
   const planned = autoCuts(sceneVisuals);
   const sceneList = timeline.ok ? timeline.scenes.map((sc, i) => ({
-    ...sc, visual: sceneVisuals[i], ...(timed && !aiFresh ? { wordStarts: timed.wordStarts[i] } : {}),
+    ...sc, visual: sceneVisuals[i], ...(timed && !aiFresh ? { wordStarts: timed.wordStarts[i], wordEnds: timed.wordEnds[i] } : {}),
     ...(videoEdit && source ? { cut: cutOverrides[sc.text] ?? planned[i] } : {}),
   })) : [];
   const props: VideoProps | null = timeline.ok ? {
@@ -413,7 +414,7 @@ export default function MotionStudio() {
               <video ref={sourceVideo} src={source.url} controls playsInline preload="metadata" style={{ width: "100%", maxHeight: 220, borderRadius: 10, background: "#000" }} />
               <button className="text-button" disabled={asrBusy} onClick={() => { setSource(null); setImported(null); setVideoEdit(false); }}>Ganti video ({source.file.name})</button>
               <TranscriptPanel key={source.url} file={source.file} video={sourceVideo} range={{ start: 0, duration: source.seconds }} locked={false} onWorking={setAsrBusy} onCopy={setScript}
-                onUse={t => { setScript(transcriptText(t)); setImported(t); setVoiceMode("none"); setNarration(null); setVideoEdit(true); setPalette("pearl"); setOffer(null); }} />
+                onUse={t => { setScript(transcriptText(t)); setImported(t); setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptionOffset(0); setPalette("pearl"); setOffer(null); }} />
             </>}
           {sourceError && <p className="field-error" role="alert">{sourceError}</p>}
           <label className="field-label" htmlFor="motion-script">Naskah <span className="field-hint">satu baris/kalimat = satu scene · *kata* untuk menonjolkan</span></label>

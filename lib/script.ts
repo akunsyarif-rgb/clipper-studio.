@@ -36,6 +36,8 @@ export type Scene = {
   visual?: SceneVisual;
   /** Frame (from the scene's first frame) at which each word is spoken; from a transcript. Even spread when absent. */
   wordStarts?: number[];
+  /** Frame at which each word ends; captions over a source video hide in silent gaps. */
+  wordEnds?: number[];
   /** Source-video edits only: show the speaker ("video", default) or cut to this scene's graphic ("graphic"). */
   cut?: Cut;
 };
@@ -206,6 +208,35 @@ export function activeWordIndex(text: string, frameInScene: number, sceneFrames:
   }
   const speaking = Math.max(1, sceneFrames * 0.9);
   return Math.min(n - 1, Math.floor((Math.max(0, frameInScene) / speaking) * n));
+}
+
+/**
+ * Phrase-based caption chunks for a source-video edit: at most `maxWords` words and `maxChars` characters,
+ * and a chunk also ends at a comma/period. Returns the chunk that holds the active word.
+ */
+export function phraseChunks(text: string, maxWords = 4, maxChars = 26): { start: number; words: string[] }[] {
+  const all = words(text);
+  const out: { start: number; words: string[] }[] = [];
+  let i = 0;
+  while (i < all.length) {
+    const chunk: string[] = [];
+    let len = 0;
+    for (let k = i; k < all.length && chunk.length < maxWords; k++) {
+      const add = all[k].length + (chunk.length ? 1 : 0);
+      if (chunk.length && len + add > maxChars) break;
+      chunk.push(all[k]); len += add;
+      if (/[,.;:!?…]["')]*$/.test(all[k])) break;
+    }
+    out.push({ start: i, words: chunk });
+    i += chunk.length;
+  }
+  return out;
+}
+
+export function phraseLine(text: string, activeIndex: number, maxWords = 4, maxChars = 26): { words: string[]; activeInLine: number; firstIndex: number } {
+  if (activeIndex < 0) return { words: [], activeInLine: -1, firstIndex: 0 };
+  const chunk = phraseChunks(text, maxWords, maxChars).find(c => activeIndex >= c.start && activeIndex < c.start + c.words.length);
+  return chunk ? { words: chunk.words, activeInLine: activeIndex - chunk.start, firstIndex: chunk.start } : { words: [], activeInLine: -1, firstIndex: 0 };
 }
 
 /** Groups words into short caption lines (max ~4 words) and returns the line holding the active word. */

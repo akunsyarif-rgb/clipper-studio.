@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { audioArgs } from "./clip";
 import { autoCuts, detectVisual } from "./visuals";
-import { activeWordIndex, buildTimeline, FPS, splitScript } from "./script";
+import { activeWordIndex, buildTimeline, FPS, phraseChunks, phraseLine, splitScript } from "./script";
 import {
-  activeAt, allWords, editSegment, explainTranscribeError, formatSrtTime, groupSegments, mergeSubwords, parseHandoff, parseWords,
+  activeAt, allWords, editSegment, explainTranscribeError, formatSrtTime, groupSegments, mergeSubwords, parseHandoff, parseWords, shiftWords,
   sceneTimings, serializeHandoff, spreadWords, toSrt, transcriptFromSegments, transcriptFromWords, transcriptText, validateTranscribeRange,
   type RawChunk,
 } from "./transcript";
@@ -204,5 +204,38 @@ describe("autoCuts (source-video edit plan)", () => {
   });
   it("stays on the speaker for plain statements", () => {
     expect(autoCuts([v("Ya begitulah."), v("Sudah lama sekali.")])).toEqual(["video", "video"]);
+  });
+});
+
+describe("phrase captions", () => {
+  it("chunks by words, characters and punctuation without losing or reordering words", () => {
+    const text = "Belum satu bulan di jalan ini, gerakan pertunukan untuk kutan Perhari sudah menembus angkat 172 orang.";
+    const chunks = phraseChunks(text);
+    expect(chunks.flatMap(c => c.words).join(" ")).toBe(text);
+    for (const c of chunks) { expect(c.words.length).toBeLessThanOrEqual(4); expect(c.words.join(" ").length).toBeLessThanOrEqual(26 + 12); }
+    expect(chunks.find(c => c.words.includes("ini,"))!.words.at(-1)).toBe("ini,");
+  });
+  it("finds the chunk of the active word", () => {
+    const l = phraseLine("Satu dua tiga empat lima enam", 4);
+    expect(l.words).toEqual(["lima", "enam"]);
+    expect(l.activeInLine).toBe(0);
+    expect(phraseLine("Satu dua", -1).words).toEqual([]);
+  });
+});
+
+describe("shiftWords and word ends", () => {
+  const t = transcriptFromWords(SAMPLE, 5, "id");
+  it("shifts, clamps at 0 and keeps order", () => {
+    const early = shiftWords(allWords(t), -0.5);
+    expect(early[0].start).toBe(0);
+    for (let i = 1; i < early.length; i++) expect(early[i].start).toBeGreaterThanOrEqual(early[i - 1].start);
+    expect(shiftWords(allWords(t), 0.3)[0].start).toBeCloseTo(0.5, 5);
+  });
+  it("sceneTimings gives word ends after word starts and counts too-short scenes", () => {
+    const r = sceneTimings(splitScript(transcriptText(t)), allWords(t), FPS, 5)!;
+    r.wordStarts.forEach((ws, i) => ws.forEach((st, j) => expect(r.wordEnds[i][j]).toBeGreaterThanOrEqual(st)));
+    expect(r.tooShort).toBe(0);
+    const tiny = sceneTimings(["Ya.", "Baik."], [{ text: "Ya.", start: 0, end: 0.3 }, { text: "Baik.", start: 0.5, end: 0.9 }], FPS, 1)!;
+    expect(tiny.tooShort).toBe(2);
   });
 });

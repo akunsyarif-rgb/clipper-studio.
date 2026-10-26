@@ -1,6 +1,6 @@
 // Pure transcript logic shared by the UI, the motion studio and unit tests. No browser APIs here.
 // Times are seconds relative to the start of the transcribed range (the audio that was fed to the engine).
-import { MAX_SCENE_CHARS, MAX_SECONDS } from "./script";
+import { MAX_SCENE_CHARS, MAX_SECONDS, MIN_SCENE_SECONDS } from "./script";
 
 /** Transcription is limited to the same 3 minutes as the motion studio. */
 export const MAX_TRANSCRIBE_SECONDS = MAX_SECONDS;
@@ -156,6 +156,17 @@ export function allWords(t: Transcript): Word[] {
   return t.segments.flatMap(s => s.words);
 }
 
+/** Moves every word by `offset` seconds (caption nudge). Words never start before 0 or overlap their neighbour. */
+export function shiftWords(words: Word[], offset: number): Word[] {
+  let cursor = 0;
+  return words.map(w => {
+    const start = Math.max(cursor, w.start + offset, 0);
+    const end = Math.max(start, w.end + offset);
+    cursor = start;
+    return { text: w.text, start: round3(start), end: round3(end) };
+  });
+}
+
 /** Segment and word shown at time `at` (seconds in transcript time), or null in a silent gap. */
 export function activeAt(t: Transcript, at: number): { segment: number; word: number } | null {
   const si = t.segments.findIndex(s => at >= s.start && at < s.end);
@@ -176,7 +187,14 @@ export function toSrt(t: Transcript): string {
   return t.segments.map((s, i) => `${i + 1}\n${formatSrtTime(s.start)} --> ${formatSrtTime(s.end)}\n${s.text}\n`).join("\n");
 }
 
-export type SceneTimings = { seconds: number[]; wordStarts: number[][] };
+export type SceneTimings = {
+  seconds: number[];
+  wordStarts: number[][];
+  /** Frame (from the scene's first frame) at which each word ends. */
+  wordEnds: number[][];
+  /** Scenes shorter than the studio's minimum scene length: they would be stretched and push later captions late. */
+  tooShort: number;
+};
 
 /**
  * Maps the lines of a motion script onto transcript timing. `texts` are the scene texts (splitScript output);
@@ -199,8 +217,11 @@ export function sceneTimings(texts: string[], words: Word[], fps: number, totalS
   const bounds = [...starts, Math.max(endFrame, starts[starts.length - 1] + 1)];
   const seconds = texts.map((_, i) => (bounds[i + 1] - bounds[i]) / fps);
   if (seconds.some(s => s <= 0)) return null;
-  const wordStarts = split.map((w, i) => w.map((_, j) => Math.max(0, Math.round(words[first[i] + j].start * fps) - bounds[i])));
-  return { seconds, wordStarts };
+  const rel = (sec: number, i: number) => Math.max(0, Math.round(sec * fps) - bounds[i]);
+  const wordStarts = split.map((w, i) => w.map((_, j) => rel(words[first[i] + j].start, i)));
+  const wordEnds = split.map((w, i) => w.map((_, j) => Math.max(wordStarts[i][j], rel(words[first[i] + j].end, i))));
+  const tooShort = seconds.filter(x => x < MIN_SCENE_SECONDS - 1e-6).length;
+  return { seconds, wordStarts, wordEnds, tooShort };
 }
 
 /** Handoff from the clipper to the motion studio (sessionStorage, same tab session, nothing leaves the device). */
