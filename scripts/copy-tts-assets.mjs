@@ -37,17 +37,23 @@ for (const name of ["ort-wasm-simd-threaded.wasm", "ort-wasm-simd-threaded.mjs"]
   if (!existsSync(to) || statSync(to).size !== statSync(from).size) copyFileSync(from, to);
 }
 
-// 2. Supertonic 3 model.
+// 2. Supertonic 3 model, published as ≤16 MB parts plus manifest.json (keeps every static file small for any
+//    host/CDN limit; the browser fetches the parts and joins them).
+const PART_BYTES = 16 * 1024 * 1024;
 const out = join(root, "public", "supertonic");
 mkdirSync(out, { recursive: true });
-const pending = Object.entries(MODEL).filter(([f, hash]) => !existsSync(join(out, f)) || sha256(readFileSync(join(out, f))) !== hash);
-if (pending.length) {
+const manifestPath = join(out, "manifest.json");
+const current = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, "utf8")) : null;
+const upToDate = current && Object.entries(MODEL).every(([f, hash]) => current.files?.[f]?.sha256 === hash && current.files[f].parts.every(p => existsSync(join(out, p))));
+let assembled = 0;
+if (!upToDate) {
   const manifestText = readFileSync(join(pkgDir("@3sln/donki-lle-voice-multi"), "voice.js"), "utf8");
-  const manifest = JSON.parse(manifestText.slice(manifestText.indexOf("export default") + "export default".length).trim().replace(/;$/, ""));
-  for (const [file, hash] of pending) {
-    const info = manifest.files[file];
+  const source = JSON.parse(manifestText.slice(manifestText.indexOf("export default") + "export default".length).trim().replace(/;$/, ""));
+  const files = {};
+  for (const [file, hash] of Object.entries(MODEL)) {
+    const info = source.files[file];
     if (!info) throw new Error(`model manifest has no ${file}`);
-    const parts = info.parts.map(part => {
+    const chunks = info.parts.map(part => {
       const [, pkg, chunk] = /^(@3sln\/[^@]+)@[^/]+\/c\/(\d+\.js)$/.exec(part) ?? [];
       if (!pkg) throw new Error(`unexpected chunk reference ${part}`);
       const text = readFileSync(join(pkgDir(pkg), "c", chunk), "utf8");
@@ -55,10 +61,18 @@ if (pending.length) {
       if (!m) throw new Error(`chunk ${part} is not a plain base64 string`);
       return Buffer.from(m[1], "base64");
     });
-    const data = Buffer.concat(parts);
+    const data = Buffer.concat(chunks);
     if (data.length !== info.size || sha256(data) !== hash) throw new Error(`${file}: checksum mismatch, refusing to use it`);
-    writeFileSync(join(out, file), data);
+    const parts = [];
+    for (let o = 0, i = 0; o < data.length; o += PART_BYTES, i++) {
+      const name = `${file}.part${i}`;
+      writeFileSync(join(out, name), data.subarray(o, o + PART_BYTES));
+      parts.push(name);
+    }
+    files[file] = { size: data.length, sha256: hash, parts };
+    assembled++;
   }
+  writeFileSync(manifestPath, JSON.stringify({ model: "Supertonic 3 (sherpa-onnx export)", files }, null, 2));
 }
 writeFileSync(join(out, "NOTICE.txt"), [
   "Supertonic 3 text-to-speech model, (c) Supertone Inc.",
@@ -68,4 +82,4 @@ writeFileSync(join(out, "NOTICE.txt"), [
   "presented as human-made. Redistributed here unmodified (ONNX export by sherpa-onnx).",
   "",
 ].join("\n"));
-console.log(`tts assets ready (${pending.length ? `assembled ${pending.length} model file(s)` : "model up to date"})`);
+console.log(`tts assets ready (${assembled ? `assembled ${assembled} model file(s)` : "model up to date"})`);

@@ -44,7 +44,7 @@ Remotion is free for individuals and companies with up to 3 employees; larger co
 - **Engine**: `lib/tts/supertonic.ts` ports Supertone's MIT web helper (duration predictor → text encoder → 8 flow-matching steps → vocoder) to onnxruntime-web 1.30 (WASM, single thread). `lib/tts/browser.ts` loads it.
 - **Assets**: `scripts/copy-tts-assets.mjs` runs before dev, build and test.
   - It reassembles the model from the pinned `@3sln/donki-lle-voice-multi*` npm packages, which store it as base64 data. The data is parsed as text and never executed, and every file is verified against a SHA-256.
-  - It writes the model to `public/supertonic/` (~145 MB) and the ORT runtime to `public/ort/` (~14 MB). Both are served by Vercel as static files.
+  - It writes the model to `public/supertonic/` (~145 MB) as ≤16 MB parts plus `manifest.json`, so every static file stays small for any host or CDN limit; the browser joins the parts. The ORT runtime goes to `public/ort/` (~14 MB). Both are served by Vercel as static files.
 - **Download**: the first use downloads ~145 MB and keeps it in Cache Storage, so later uses on the same device work from the cache.
 - **Performance**: one sentence takes roughly 2× its spoken length to synthesise on the CI machine (single-thread WASM), and the browser stays responsive between model steps. The iPad speed has to be checked on the device.
 - **Bandwidth**: every new device downloads ~145 MB from the site. On Vercel Hobby (100 GB/month) that is roughly 700 first-time devices per month.

@@ -5,7 +5,7 @@ import { MODEL_FILES, parseIndexer, parseVoiceBank, Supertonic, type OrtModule, 
 export const MODEL_BASE = "/supertonic/";
 const CACHE = "clipper-supertonic-3-v1";
 
-/** Approximate sizes for download progress (bytes). */
+/** File sizes for download progress (bytes). */
 const SIZES: Record<string, number> = {
   "duration_predictor.onnx": 3700147, "text_encoder.onnx": 36416150, "vector_estimator.onnx": 78400833, "vocoder.onnx": 25991073,
   "tts.json": 8253, "unicode_indexer.bin": 262144, "voice.bin": 517168,
@@ -18,37 +18,52 @@ export const VOICES = [
   { id: 5, label: "Pria 1" }, { id: 6, label: "Pria 2" }, { id: 7, label: "Pria 3" }, { id: 8, label: "Pria 4" }, { id: 9, label: "Pria 5" },
 ];
 
-async function fetchAsset(name: string, onBytes: (n: number) => void): Promise<ArrayBuffer> {
-  const url = MODEL_BASE + name;
-  let cache: Cache | null = null;
-  try { cache = typeof caches !== "undefined" ? await caches.open(CACHE) : null; } catch { cache = null; }
+type Manifest = { files: Record<string, { size: number; sha256: string; parts: string[] }> };
+
+async function openCache(): Promise<Cache | null> {
+  try { return typeof caches !== "undefined" ? await caches.open(CACHE) : null; } catch { return null; }
+}
+
+/** Fetches one static file, from Cache Storage when present, reporting bytes as they arrive. */
+async function fetchPart(cache: Cache | null, url: string, onBytes: (n: number) => void): Promise<Uint8Array> {
   const hit = await cache?.match(url).catch(() => undefined);
-  if (hit) { const buf = await hit.arrayBuffer(); onBytes(buf.byteLength); return buf; }
+  if (hit) { const buf = new Uint8Array(await hit.arrayBuffer()); onBytes(buf.byteLength); return buf; }
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Gagal mengunduh model suara (${name}: HTTP ${res.status}).`);
-  let buf: ArrayBuffer;
+  if (!res.ok) throw new Error(`Gagal mengunduh model suara (${url.split("/").pop()}: HTTP ${res.status}).`);
+  const chunks: Uint8Array[] = [];
+  let loaded = 0;
   if (res.body) {
     const reader = res.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let loaded = 0;
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      chunks.push(value);
-      loaded += value.byteLength;
-      onBytes(loaded);
+      chunks.push(value); loaded += value.byteLength; onBytes(loaded);
     }
-    const all = new Uint8Array(loaded);
-    let o = 0;
-    for (const c of chunks) { all.set(c, o); o += c.byteLength; }
-    buf = all.buffer;
   } else {
-    buf = await res.arrayBuffer();
-    onBytes(buf.byteLength);
+    chunks.push(new Uint8Array(await res.arrayBuffer())); loaded = chunks[0].byteLength; onBytes(loaded);
   }
+  const buf = new Uint8Array(loaded);
+  let o = 0;
+  for (const c of chunks) { buf.set(c, o); o += c.byteLength; }
   // Storage can be full or unavailable (private mode); the app still works without the cache.
-  await cache?.put(url, new Response(buf.slice(0), { headers: { "Content-Type": "application/octet-stream" } })).catch(() => undefined);
+  await cache?.put(url, new Response(buf.slice(), { headers: { "Content-Type": "application/octet-stream" } })).catch(() => undefined);
   return buf;
+}
+
+/** Downloads a model file published as ≤16 MB parts (see scripts/copy-tts-assets.mjs) and joins them. */
+async function fetchAsset(cache: Cache | null, manifest: Manifest, name: string, onBytes: (n: number) => void): Promise<ArrayBuffer> {
+  const info = manifest.files[name];
+  if (!info) throw new Error(`Model suara tidak lengkap (${name}).`);
+  const out = new Uint8Array(info.size);
+  let offset = 0;
+  for (const part of info.parts) {
+    const base = offset;
+    const buf = await fetchPart(cache, MODEL_BASE + part, n => onBytes(base + n));
+    out.set(buf, offset);
+    offset += buf.byteLength;
+  }
+  if (offset !== info.size) throw new Error(`Model suara rusak (${name}). Muat ulang halaman lalu coba lagi.`);
+  return out.buffer;
 }
 
 let engine: Promise<Supertonic> | null = null;
@@ -60,14 +75,18 @@ export function loadVoiceEngine(onProgress: (loaded: number, total: number) => v
     ort.env.wasm.wasmPaths = "/ort/";
     // Multi-threading needs cross-origin isolation, which this site does not enable.
     ort.env.wasm.numThreads = 1;
+    const cache = await openCache();
+    const manifestRes = await fetch(MODEL_BASE + "manifest.json", { cache: "no-cache" });
+    if (!manifestRes.ok) throw new Error(`Gagal mengunduh model suara (manifest: HTTP ${manifestRes.status}).`);
+    const manifest = (await manifestRes.json()) as Manifest;
     const loaded: Record<string, number> = {};
     const report = (name: string) => (n: number) => { loaded[name] = n; onProgress(Object.values(loaded).reduce((a, b) => a + b, 0), MODEL_BYTES); };
     const sessions = [];
     for (const f of MODEL_FILES) {
-      const buf = await fetchAsset(f, report(f));
+      const buf = await fetchAsset(cache, manifest, f, report(f));
       sessions.push(await ort.InferenceSession.create(new Uint8Array(buf), { executionProviders: ["wasm"], graphOptimizationLevel: "all" }));
     }
-    const [cfgBuf, indexerBuf, voiceBuf] = await Promise.all(["tts.json", "unicode_indexer.bin", "voice.bin"].map(f => fetchAsset(f, report(f))));
+    const [cfgBuf, indexerBuf, voiceBuf] = await Promise.all(["tts.json", "unicode_indexer.bin", "voice.bin"].map(f => fetchAsset(cache, manifest, f, report(f))));
     const cfg = JSON.parse(new TextDecoder().decode(cfgBuf)) as TtsConfig;
     const [durationPredictor, textEncoder, vectorEstimator, vocoder] = sessions;
     return new Supertonic(ort as unknown as OrtModule, { durationPredictor, textEncoder, vectorEstimator, vocoder }, cfg, parseIndexer(indexerBuf), parseVoiceBank(voiceBuf));

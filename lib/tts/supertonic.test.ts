@@ -93,16 +93,18 @@ describe("narration assembly", () => {
 // Runs the real Supertonic 3 model (assembled into public/supertonic by `npm run pretest`) with
 // onnxruntime-web's WASM backend, exactly as the browser does.
 const dir = join(process.cwd(), "public", "supertonic");
-const hasModel = MODEL_FILES.every(f => existsSync(join(dir, f)));
+const hasModel = existsSync(join(dir, "manifest.json"));
 describe.skipIf(!hasModel)("Supertonic 3 synthesis", () => {
   let tts: Supertonic;
   const load = async () => {
     if (tts) return tts;
     const ort = await import("onnxruntime-web");
     ort.env.wasm.numThreads = 1;
-    const ab = (f: string) => { const b = readFileSync(join(dir, f)); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); };
+    // Join the published ≤16 MB parts exactly like the browser loader does.
+    const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")) as { files: Record<string, { size: number; parts: string[] }> };
+    const ab = (f: string) => { const b = Buffer.concat(manifest.files[f].parts.map(p => readFileSync(join(dir, p)))); expect(b.length).toBe(manifest.files[f].size); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); };
     const [durationPredictor, textEncoder, vectorEstimator, vocoder] = await Promise.all(MODEL_FILES.map(f => ort.InferenceSession.create(new Uint8Array(ab(f)))));
-    tts = new Supertonic(ort as unknown as OrtModule, { durationPredictor, textEncoder, vectorEstimator, vocoder }, JSON.parse(readFileSync(join(dir, "tts.json"), "utf8")) as TtsConfig, parseIndexer(ab("unicode_indexer.bin")), parseVoiceBank(ab("voice.bin")));
+    tts = new Supertonic(ort as unknown as OrtModule, { durationPredictor, textEncoder, vectorEstimator, vocoder }, JSON.parse(new TextDecoder().decode(ab("tts.json"))) as TtsConfig, parseIndexer(ab("unicode_indexer.bin")), parseVoiceBank(ab("voice.bin")));
     return tts;
   };
 
