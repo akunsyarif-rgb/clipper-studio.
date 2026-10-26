@@ -1,0 +1,14 @@
+/node_modules
+/.next/
+/out/
+/build
+next-env.d.ts
+*.tsbuildinfo
+/public/ffmpeg/
+/test-results/
+/playwright-report/
+.DS_Store
+*.pem
+npm-debug.log*
+.env*
+.vercel
