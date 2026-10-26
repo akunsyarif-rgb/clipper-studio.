@@ -345,6 +345,17 @@ try {
     return `auto ${autos.length} templates ok, override applied, ${info}`;
   });
 
+  await step("a [jeda] tag adds silence without being shown, spoken or captioned", async () => {
+    await page.getByTestId("voice-none").click();
+    await page.getByTestId("music-none").click();
+    await page.getByTestId("script").fill("Satu dua tiga empat. [jeda 2s]\nLima enam tujuh delapan.");
+    await page.getByTestId("duration").selectOption("15");
+    const rows = await page.getByTestId("scenes").locator(".scene-info > b").allTextContents();
+    assert(rows.length === 2 && rows.every(r => !/jeda|\[|\]/i.test(r)), `scene texts: ${JSON.stringify(rows)}`);
+    const info = await renderAndCheck("pause", false, 15);
+    return `2 scenes, tag hidden, ${info}`;
+  });
+
   await step("numbers with thousands separators stay in one scene and one line", async () => {
     await page.getByTestId("voice-none").click();
     await page.getByTestId("music-none").click();

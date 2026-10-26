@@ -187,6 +187,76 @@ export function toSrt(t: Transcript): string {
   return t.segments.map((s, i) => `${i + 1}\n${formatSrtTime(s.start)} --> ${formatSrtTime(s.end)}\n${s.text}\n`).join("\n");
 }
 
+/** Lower-case letters and digits only; empty for pure punctuation. */
+const norm = (w: string) => w.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\p{L}\p{N}]+/gu, "");
+
+/** Edit distance between two words as a share of the longer one: 0 identical, 1 nothing in common. */
+function wordDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a || !b) return 0.5;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length] / Math.max(a.length, b.length);
+}
+
+/** A script is accepted as "the same speech, edited" at or above this share of aligned words. */
+export const MIN_ALIGN_SIMILARITY = 0.75;
+/** Time given to a script word the speaker never said (seconds), when it has no neighbours to share time with. */
+const EXTRA_WORD_SECONDS = 0.25;
+
+/**
+ * Aligns an edited script to the transcript words (edit-distance alignment over whole words, like fixing
+ * typos or merging/splitting words after reading the captions). Returns one timed word per script word, or null
+ * when the script is too different to trust the transcript's timing. Idea from MoneyPrinterTurbo's
+ * subtitle correction (MIT); implementation is original.
+ */
+export function alignWords(script: string[], words: Word[]): Word[] | null {
+  const n = script.length, m = words.length;
+  if (n === 0 || m === 0) return null;
+  const a = script.map(norm), b = words.map(w => norm(w.text));
+  // cost[i][j]: cheapest way to align the first i script words with the first j transcript words.
+  const cost = Array.from({ length: n + 1 }, () => new Float64Array(m + 1));
+  for (let i = 1; i <= n; i++) cost[i][0] = i;
+  for (let j = 1; j <= m; j++) cost[0][j] = j;
+  for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) {
+    cost[i][j] = Math.min(cost[i - 1][j] + 1, cost[i][j - 1] + 1, cost[i - 1][j - 1] + wordDistance(a[i - 1], b[j - 1]));
+  }
+  // Trace back: which transcript word (if any) each script word was aligned with, and how well.
+  const at: (number | null)[] = Array(n).fill(null);
+  let good = 0, i = n, j = m;
+  while (i > 0 && j > 0) {
+    const d = wordDistance(a[i - 1], b[j - 1]);
+    if (cost[i][j] === cost[i - 1][j - 1] + d) {
+      // A pair that shares less than half of its letters is a substitution in name only.
+      if (d < 0.5) { at[i - 1] = j - 1; good++; }
+      i--; j--;
+    } else if (cost[i][j] === cost[i - 1][j] + 1) i--;
+    else j--;
+  }
+  if (good / Math.max(n, m) < MIN_ALIGN_SIMILARITY) return null;
+  // Words with no counterpart share the gap between their aligned neighbours.
+  const out: Word[] = new Array(n);
+  for (let k = 0; k < n; k++) if (at[k] !== null) out[k] = { text: script[k], start: words[at[k]!].start, end: words[at[k]!].end };
+  for (let k = 0; k < n; k++) {
+    if (at[k] !== null) continue;
+    let e = k;
+    while (e < n && at[e] === null) e++;
+    const run = e - k;
+    const prevEnd = k > 0 ? out[k - 1].end : null;
+    const nextStart = e < n ? out[e].start : null;
+    const from = prevEnd ?? Math.max(0, (nextStart ?? 0) - run * EXTRA_WORD_SECONDS);
+    const to = nextStart ?? from + run * EXTRA_WORD_SECONDS;
+    const slot = Math.max(0, (to - from) / run);
+    for (let r = 0; r < run; r++) out[k + r] = { text: script[k + r], start: round3(from + r * slot), end: round3(from + (r + 1) * slot) };
+    k = e - 1;
+  }
+  return out;
+}
+
 export type SceneTimings = {
   seconds: number[];
   wordStarts: number[][];
@@ -194,6 +264,8 @@ export type SceneTimings = {
   wordEnds: number[][];
   /** Scenes shorter than the studio's minimum scene length: they would be stretched and push later captions late. */
   tooShort: number;
+  /** True when the script was edited after transcription and its words were aligned to the transcript, not matched one to one. */
+  aligned: boolean;
 };
 
 /**
@@ -205,8 +277,14 @@ export type SceneTimings = {
 export function sceneTimings(texts: string[], words: Word[], fps: number, totalSeconds?: number): SceneTimings | null {
   const split = texts.map(t => t.replace(/\*/g, "").split(/\s+/).filter(Boolean));
   const count = split.reduce((a, w) => a + w.length, 0);
-  if (texts.length === 0 || count !== words.length) return null;
-  if (split.some(w => w.length === 0)) return null;
+  if (texts.length === 0 || split.some(w => w.length === 0)) return null;
+  // An edit that keeps the word count is matched one to one; one that merges, splits or adds words is aligned.
+  let aligned = false;
+  if (count !== words.length) {
+    const fit = alignWords(split.flat(), words);
+    if (!fit) return null;
+    words = fit; aligned = true;
+  }
   let at = 0;
   const first: number[] = [];
   for (const w of split) { first.push(at); at += w.length; }
@@ -221,7 +299,7 @@ export function sceneTimings(texts: string[], words: Word[], fps: number, totalS
   const wordStarts = split.map((w, i) => w.map((_, j) => rel(words[first[i] + j].start, i)));
   const wordEnds = split.map((w, i) => w.map((_, j) => Math.max(wordStarts[i][j], rel(words[first[i] + j].end, i))));
   const tooShort = seconds.filter(x => x < MIN_SCENE_SECONDS - 1e-6).length;
-  return { seconds, wordStarts, wordEnds, tooShort };
+  return { seconds, wordStarts, wordEnds, tooShort, aligned };
 }
 
 /** Handoff from the clipper to the motion studio (sessionStorage, same tab session, nothing leaves the device). */

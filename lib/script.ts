@@ -57,6 +57,8 @@ export type Scene = {
   wordStarts?: number[];
   /** Frame at which each word ends; captions over a source video hide in silent gaps. */
   wordEnds?: number[];
+  /** Silence at the end of the scene (from a [jeda] tag); the words are spread over the frames before it. */
+  pauseFrames?: number;
   /** Source-video edits only: show the speaker ("video", default) or cut to this scene's graphic ("graphic"). */
   cut?: Cut;
 };
@@ -103,8 +105,67 @@ export function splitSentences(line: string): string[] {
   return out;
 }
 
-/** Splits a script into scene texts: paragraphs/lines first, then sentences, then long sentences at commas/words. */
+export const MIN_PAUSE_SECONDS = 0.1;
+export const MAX_PAUSE_SECONDS = 10;
+export const DEFAULT_PAUSE_SECONDS = 1;
+/** [jeda], [jeda 1.5], [jeda 500ms], [pause 2s], also with round brackets. Never read aloud or shown. */
+const PAUSE_TAG = /[[(]\s*(?:jeda|pause)(?![^\W\d])(?:\s*[:：]?\s*([^\])]*?))?\s*[\])]/giu;
+/** Private-use character standing in for a tag while the script is split; it can never occur in real text. */
+const MARK = "\uE000";
+
+/** Seconds for the tag's argument; null for an invalid one (the tag is then ignored). Clamped to 0.1–10 s. */
+function pauseSeconds(arg: string | undefined): number | null {
+  if (arg === undefined || !arg.trim()) return DEFAULT_PAUSE_SECONDS;
+  const m = /^(\d+(?:[.,]\d+)?)\s*(ms|s|dtk|detik|sec|secs|second|seconds)?$/i.exec(arg.trim());
+  if (!m) return null;
+  const value = Number(m[1].replace(",", "."));
+  const seconds = /^ms$/i.test(m[2] ?? "") ? value / 1000 : value;
+  if (!(seconds > 0)) return null;
+  return Math.min(MAX_PAUSE_SECONDS, Math.max(MIN_PAUSE_SECONDS, seconds));
+}
+
+/**
+ * Splits a script into scene texts (tags removed) and the silence, in seconds, that follows each scene.
+ * A tag after a sentence, or in the middle of one, pauses after the scene it ends; tags at the very start are ignored.
+ */
+export function splitScriptWithPauses(script: string): { texts: string[]; pauses: number[] } {
+  const durations: number[] = [];
+  const marked = script.replace(PAUSE_TAG, (_all, arg: string | undefined) => {
+    const seconds = pauseSeconds(arg);
+    if (seconds === null) return " ";
+    durations.push(seconds);
+    return ` ${MARK} `;
+  });
+  const texts: string[] = [];
+  const pauses: number[] = [];
+  let next = 0;
+  for (const raw of splitScriptText(marked)) {
+    let seenWord = false;
+    const kept: string[] = [];
+    for (const token of raw.split(/\s+/).filter(Boolean)) {
+      if (token === MARK) {
+        const seconds = durations[next++];
+        // Before any word of this scene the silence belongs to the scene before it.
+        if (seenWord) pauses[texts.length] = (pauses[texts.length] ?? 0) + seconds;
+        else if (texts.length > 0) pauses[texts.length - 1] += seconds;
+        continue;
+      }
+      seenWord = true;
+      kept.push(token);
+    }
+    if (kept.length === 0) continue;
+    texts.push(kept.join(" "));
+    pauses[texts.length - 1] ??= 0;
+  }
+  return { texts, pauses: pauses.map(p => Math.min(MAX_PAUSE_SECONDS, p)) };
+}
+
 export function splitScript(script: string): string[] {
+  return splitScriptWithPauses(script).texts;
+}
+
+/** Splits a script into scene texts: paragraphs/lines first, then sentences, then long sentences at commas/words. */
+function splitScriptText(script: string): string[] {
   const out: string[] = [];
   for (const line of script.replace(/\r/g, "").split(/\n+/)) {
     const clean = line.replace(/\s+/g, " ").trim();
@@ -148,10 +209,16 @@ export type TimelineResult =
   | { ok: true; scenes: Scene[]; totalFrames: number; seconds: number; warnings: string[] }
   | { ok: false; error: string };
 
+/** `pauseFrames` for a scene, never more than leaves one frame of speech. */
+function pauseOf(seconds: number, sceneFrames: number, fps: number): { pauseFrames?: number } {
+  const frames = Math.min(Math.round(seconds * fps), Math.max(0, sceneFrames - 1));
+  return frames > 0 ? { pauseFrames: frames } : {};
+}
+
 export function buildTimeline(script: string, mode: DurationMode, fps = FPS): TimelineResult {
   if (!script.trim()) return { ok: false, error: "Naskah masih kosong. Tulis minimal satu kalimat." };
   if (script.length > MAX_SCRIPT_CHARS) return { ok: false, error: `Naskah terlalu panjang (${script.length} karakter). Batas ${MAX_SCRIPT_CHARS} karakter.` };
-  const texts = splitScript(script);
+  const { texts, pauses } = splitScriptWithPauses(script);
   if (texts.length === 0) return { ok: false, error: "Naskah tidak berisi teks yang bisa dijadikan scene." };
   if (texts.length > MAX_SCENES) return { ok: false, error: `Naskah menghasilkan ${texts.length} scene. Batas ${MAX_SCENES} scene; ringkas atau gabungkan kalimat.` };
 
@@ -160,7 +227,7 @@ export function buildTimeline(script: string, mode: DurationMode, fps = FPS): Ti
     const frames = mode.seconds.map(x => sceneFrames(x, fps));
     const sum = frames.reduce((a, b) => a + b, 0);
     if (sum / fps > MAX_SECONDS) return { ok: false, error: `Durasi suara ${(sum / fps).toFixed(1)} detik melebihi batas ${MAX_SECONDS} detik. Ringkas naskahnya.` };
-    return { ok: true, scenes: texts.map((text, i) => ({ text, durationInFrames: frames[i] })), totalFrames: sum, seconds: sum / fps, warnings: [] };
+    return { ok: true, scenes: texts.map((text, i) => ({ text, durationInFrames: frames[i], ...pauseOf(pauses[i], frames[i], fps) })), totalFrames: sum, seconds: sum / fps, warnings: [] };
   }
 
   const warnings: string[] = [];
@@ -171,14 +238,15 @@ export function buildTimeline(script: string, mode: DurationMode, fps = FPS): Ti
   } else if (mode.kind === "target") {
     total = mode.seconds;
   } else {
-    total = texts.reduce((acc, t) => acc + Math.min(8, Math.max(2, weight(t) / WORDS_PER_SECOND)), 0);
+    total = texts.reduce((acc, t, i) => acc + Math.min(8, Math.max(2, weight(t) / WORDS_PER_SECOND)) + pauses[i], 0);
   }
   if (total > MAX_SECONDS) {
     return { ok: false, error: mode.kind === "audio"
       ? `Audio narasi ${total.toFixed(1)} detik melebihi batas ${MAX_SECONDS} detik. Potong audionya atau bagi menjadi beberapa video.`
       : `Durasi video ${total.toFixed(1)} detik melebihi batas ${MAX_SECONDS} detik. Ringkas naskahnya.` };
   }
-  const minTotal = texts.length * MIN_SCENE_SECONDS;
+  const pauseTotal = pauses.reduce((a, b) => a + b, 0);
+  const minTotal = texts.length * MIN_SCENE_SECONDS + pauseTotal;
   if (total < minTotal) {
     return { ok: false, error: mode.kind === "audio"
       ? `Audio narasi (${total.toFixed(1)} dtk) terlalu pendek untuk ${texts.length} scene. Minimal ${minTotal.toFixed(1)} dtk, atau kurangi kalimat.`
@@ -186,20 +254,21 @@ export function buildTimeline(script: string, mode: DurationMode, fps = FPS): Ti
   }
 
   if (mode.kind !== "audio") {
-    const needed = texts.reduce((a, t) => a + weight(t) / WORDS_PER_SECOND, 0);
+    const needed = texts.reduce((a, t) => a + weight(t) / WORDS_PER_SECOND, 0) + pauseTotal;
     if (mode.kind === "target" && needed > total * 1.25) warnings.push(`Naskah butuh sekitar ${Math.round(needed)} dtk untuk dibaca nyaman; durasi ${total} dtk akan terasa cepat.`);
   }
 
-  // Distribute frames proportionally to reading weight, with a minimum per scene, and make the sum exact.
+  // Pauses are exact; the rest is shared by reading weight, with a minimum per scene, and the sum is made exact.
   const totalFrames = Math.max(1, Math.round(total * fps));
   const minFrames = Math.ceil(MIN_SCENE_SECONDS * fps);
+  const pauseFr = pauses.map(p => Math.round(p * fps));
   const weights = texts.map(weight);
   const sumW = weights.reduce((a, b) => a + b, 0);
-  const spare = totalFrames - minFrames * texts.length;
-  const frames = weights.map(w => minFrames + Math.floor((spare * w) / sumW));
+  const spare = totalFrames - pauseFr.reduce((a, b) => a + b, 0) - minFrames * texts.length;
+  const frames = weights.map((w, i) => pauseFr[i] + minFrames + Math.floor((spare * w) / sumW));
   let rest = totalFrames - frames.reduce((a, b) => a + b, 0);
   for (let i = 0; rest > 0; i = (i + 1) % frames.length, rest--) frames[i]++;
-  const scenes = texts.map((text, i) => ({ text, durationInFrames: frames[i] }));
+  const scenes = texts.map((text, i) => ({ text, durationInFrames: frames[i], ...pauseOf(pauses[i], frames[i], fps) }));
   return { ok: true, scenes, totalFrames, seconds: totalFrames / fps, warnings };
 }
 
@@ -219,6 +288,11 @@ export const HIGHLIGHT_LEAD_FRAMES = Math.round(FPS * 0.1);
  * Caption timing inside one scene: the words are spread over the scene (leaving a short tail),
  * so with narration the highlighted word follows the voice at the scene's average pace.
  */
+/** Frames of a scene in which it is actually spoken (the scene without its trailing pause). */
+export function spokenFrames(scene: Pick<Scene, "durationInFrames" | "pauseFrames">): number {
+  return Math.max(1, scene.durationInFrames - (scene.pauseFrames ?? 0));
+}
+
 export function activeWordIndex(text: string, frameInScene: number, sceneFrames: number, wordStarts?: number[]): number {
   const n = words(text).length;
   if (n === 0) return -1;

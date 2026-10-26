@@ -7,7 +7,7 @@ import { DEFAULT_MUSIC_VOLUME, encodeWav, MAX_RECORDING_SECONDS, MOODS, moodForS
 import { analyseNarration, decodeToMono, explainMicError, NarrationRecorder, recordingSupported, type Narration } from "@/lib/recorder";
 import { checkBrowserRender, environmentReport, RenderFailure, renderMp4 } from "@/lib/render";
 import {
-  buildTimeline, CONTENT_PRESETS, explainRenderError, FPS, HEIGHT, MAX_SECONDS, MIN_SCENE_SECONDS, PALETTES, slug, splitScript, STYLES, validateAudioFile, validateTitle, WIDTH,
+  buildTimeline, CONTENT_PRESETS, explainRenderError, FPS, HEIGHT, MAX_SECONDS, MIN_SCENE_SECONDS, PALETTES, slug, splitScript, splitScriptWithPauses, STYLES, validateAudioFile, validateTitle, WIDTH,
   type ContentPresetId, type DurationMode, type PaletteId, type StyleId, type VideoProps,
 } from "@/lib/script";
 import { explainVoiceError, loadVoiceEngine, MODEL_BYTES, VOICES } from "@/lib/tts/browser";
@@ -145,7 +145,7 @@ export default function MotionStudio() {
   useEffect(() => { if (!moodTouched) setMood(moodForStyle(style)); }, [style, moodTouched]);
 
   // Automatic voice over is valid only for the exact sentences, language, voice and speed it was made from.
-  const voiceKey = useMemo(() => JSON.stringify([splitScript(script), ttsLang, ttsVoice, ttsSpeed]), [script, ttsLang, ttsVoice, ttsSpeed]);
+  const voiceKey = useMemo(() => JSON.stringify([splitScriptWithPauses(script), ttsLang, ttsVoice, ttsSpeed]), [script, ttsLang, ttsVoice, ttsSpeed]);
   const aiFresh = voiceMode === "ai" && aiNarration?.key === voiceKey ? aiNarration : null;
   const narration = voiceMode === "ai" ? aiFresh?.narration ?? null : voiceMode === "manual" ? manualNarration : null;
   // Transcript timing applies while the script still matches the transcript words and the narration is the original audio.
@@ -169,7 +169,7 @@ export default function MotionStudio() {
   const narrativePlan = timeline.ok ? planNarrative(timeline.scenes.map(sc => sc.text)) : [];
   const planned = autoCuts(sceneVisuals);
   const sceneList = timeline.ok ? timeline.scenes.map((sc, i) => ({
-    ...sc, visual: sceneVisuals[i], narrative: narrativePlan[i], ...(timed && !aiFresh ? { wordStarts: timed.wordStarts[i], wordEnds: timed.wordEnds[i] } : {}),
+    ...sc, visual: sceneVisuals[i], narrative: narrativePlan[i], ...(timed && !aiFresh ? { wordStarts: timed.wordStarts[i], wordEnds: timed.wordEnds[i], pauseFrames: undefined } : {}),
     ...(videoEdit && source ? { cut: cutOverrides[sc.text] ?? planned[i] } : {}),
   })) : [];
   const props: VideoProps | null = timeline.ok ? {
@@ -233,7 +233,7 @@ export default function MotionStudio() {
 
   async function generateVoice() {
     if (voiceBusy) return;
-    const texts = splitScript(script);
+    const { texts, pauses } = splitScriptWithPauses(script);
     const check = buildTimeline(script, { kind: "auto" }, FPS);
     if (!check.ok) return setVoiceError(check.error);
     setVoiceError(""); voiceCancel.current = false;
@@ -263,7 +263,7 @@ export default function MotionStudio() {
         }
         clips.push(clip);
       }
-      const { samples, sceneSeconds } = assembleNarration(clips, engine.sampleRate, FPS);
+      const { samples, sceneSeconds } = assembleNarration(clips, engine.sampleRate, FPS, pauses);
       normalize(samples, 0.9, 3);
       const file = new File([encodeWav([samples], engine.sampleRate)], `suara-otomatis-${ttsLang}.wav`, { type: "audio/wav" });
       setAiNarration({
@@ -431,6 +431,7 @@ export default function MotionStudio() {
           {imported && videoEdit && <label className="field-label">Geser waktu subtitle: {captionOffset > 0 ? "+" : ""}{captionOffset.toFixed(1)} dtk <span className="field-hint">kurangi jika teks muncul terlambat, tambah jika terlalu cepat</span>
             <input type="range" min={-1} max={1} step={0.1} value={captionOffset} onChange={e => setCaptionOffset(Number(e.target.value))} data-testid="caption-offset" />
           </label>}
+          {timed && timed.aligned && <div className="notice" data-testid="aligned-notice">Naskah sudah diedit setelah transkripsi; kata-katanya diselaraskan dengan ucapan asli, jadi waktu caption mungkin bergeser sedikit di bagian yang diubah.</div>}
           {timed && timed.tooShort > 0 && <div className="notice notice-error" data-testid="short-warning">{timed.tooShort} scene lebih pendek dari {MIN_SCENE_SECONDS} dtk, sehingga akan diperpanjang dan membuat subtitle sesudahnya bergeser. Gabungkan barisnya di kolom Naskah, tetapi pertahankan kata-katanya.</div>}
           <div className="field-label">Video sumber <span className="field-hint">opsional · unggah video, ucapannya jadi naskah &amp; subtitle otomatis (maks. 3 menit)</span></div>
           {!source
@@ -445,6 +446,7 @@ export default function MotionStudio() {
           <label className="field-label" htmlFor="motion-script">Naskah <span className="field-hint">satu baris/kalimat = satu scene · *kata* untuk menonjolkan</span></label>
           <textarea id="motion-script" data-testid="script" value={script} onChange={e => setScript(e.target.value)} rows={7} placeholder="Tulis naskah video…" />
           <div className="char-count">{script.length} / 3000</div>
+          <small className="field-hint" data-testid="pause-hint">Jeda: tulis <code>[jeda 1s]</code> setelah kalimat (0,1–10 dtk). Tidak dibacakan dan tidak tampil.</small>
           <label className="field-label" htmlFor="motion-title">Judul / teks pembuka</label>
           <input id="motion-title" data-testid="title" value={title} onChange={e => setTitle(e.target.value)} maxLength={60} />
           {titleError && <p className="field-error">{titleError}</p>}

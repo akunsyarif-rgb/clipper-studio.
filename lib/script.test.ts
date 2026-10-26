@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   activeWordIndex, buildTimeline, captionLine, explainRenderError, FPS, MAX_SCENE_CHARS, MAX_SCENES, MAX_SECONDS, MIN_SCENE_SECONDS,
-  slug, splitScript, totalFrames, validateAudioFile, validateTitle,
+  slug, splitScript, splitScriptWithPauses, spokenFrames, totalFrames, validateAudioFile, validateTitle,
 } from "./script";
 
 describe("splitScript", () => {
@@ -108,5 +108,65 @@ describe("validation helpers", () => {
   it("makes safe file names", () => {
     expect(slug("Sebuah Pengingat: Mulai!")).toBe("sebuah-pengingat-mulai");
     expect(slug("???")).toBe("video");
+  });
+});
+
+describe("pause tags", () => {
+  it("removes tags from the scene text and records the silence after the scene", () => {
+    const r = splitScriptWithPauses("Jangan menyerah. [jeda 1.5s] Mulai sekarang. [pause 500ms]");
+    expect(r.texts).toEqual(["Jangan menyerah.", "Mulai sekarang."]);
+    expect(r.pauses).toEqual([1.5, 0.5]);
+  });
+
+  it("never lets a tag reach the scene text, TTS or captions", () => {
+    for (const t of splitScript("Satu [jeda] dua [Jeda: 2] tiga (pause 3s) empat [jeda abc] lima.")) expect(t).not.toMatch(/jeda|pause|\[|\]|/i);
+  });
+
+  it("uses 1 s for a bare tag, clamps to 0.1–10 s and ignores invalid or non-positive values", () => {
+    expect(splitScriptWithPauses("Halo dunia. [jeda]").pauses).toEqual([1]);
+    expect(splitScriptWithPauses("Halo dunia. [jeda 20]").pauses).toEqual([10]);
+    expect(splitScriptWithPauses("Halo dunia. [jeda 20ms]").pauses).toEqual([0.1]);
+    expect(splitScriptWithPauses("Halo dunia. [jeda abc]").pauses).toEqual([0]);
+    expect(splitScriptWithPauses("Halo dunia. [jeda 0]").pauses).toEqual([0]);
+  });
+
+  it("adds up consecutive tags (capped) and ignores a tag before any speech", () => {
+    expect(splitScriptWithPauses("[jeda 2] Halo dunia. [jeda 3] [jeda 4] [jeda 5]").pauses).toEqual([10]);
+    expect(splitScriptWithPauses("[jeda 2] Halo dunia.").texts).toEqual(["Halo dunia."]);
+  });
+
+  it("a tag in the middle of a sentence pauses after the scene that contains it", () => {
+    expect(splitScriptWithPauses("Tunggu dulu [jeda 2] lalu mulai.")).toEqual({ texts: ["Tunggu dulu lalu mulai."], pauses: [2] });
+  });
+
+  it("does not change scripts without tags", () => {
+    const script = "Satu kalimat. Dua kalimat?\nBaris baru.";
+    expect(splitScriptWithPauses(script)).toEqual({ texts: splitScript(script), pauses: [0, 0, 0] });
+    expect(splitScript(script)).toEqual(["Satu kalimat.", "Dua kalimat?", "Baris baru."]);
+  });
+
+  it("lengthens the scene and reports the silence in pauseFrames (auto timing)", () => {
+    const plain = buildTimeline("Halo dunia semua. Sampai jumpa lagi.", { kind: "auto" });
+    const paused = buildTimeline("Halo dunia semua. [jeda 2s] Sampai jumpa lagi.", { kind: "auto" });
+    if (!plain.ok || !paused.ok) throw new Error("timeline");
+    expect(paused.scenes[0].durationInFrames - plain.scenes[0].durationInFrames).toBe(60);
+    expect(paused.scenes[0].pauseFrames).toBe(60);
+    expect(paused.scenes[1].pauseFrames).toBeUndefined();
+  });
+
+  it("gives a paused scene a larger share of a fixed duration", () => {
+    const r = buildTimeline("Halo dunia semua. [jeda 3s] Sampai jumpa lagi.", { kind: "target", seconds: 30 });
+    const plain = buildTimeline("Halo dunia semua. Sampai jumpa lagi.", { kind: "target", seconds: 30 });
+    if (!r.ok || !plain.ok) throw new Error("timeline");
+    expect(r.totalFrames).toBe(plain.totalFrames);
+    expect(r.scenes[0].durationInFrames).toBeGreaterThan(plain.scenes[0].durationInFrames);
+  });
+
+  it("spreads highlighted words over the spoken part only", () => {
+    const text = "satu dua tiga empat";
+    const s = { durationInFrames: 150, pauseFrames: 60 };
+    expect(activeWordIndex(text, spokenFrames(s) - 1, spokenFrames(s))).toBe(3);
+    expect(spokenFrames({ durationInFrames: 30 })).toBe(30);
+    expect(spokenFrames({ durationInFrames: 30, pauseFrames: 99 })).toBe(1);
   });
 });

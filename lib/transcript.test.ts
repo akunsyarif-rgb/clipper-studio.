@@ -3,7 +3,7 @@ import { audioArgs } from "./clip";
 import { autoCuts, detectVisual } from "./visuals";
 import { activeWordIndex, buildTimeline, FPS, phraseChunks, phraseLine, splitScript } from "./script";
 import {
-  activeAt, allWords, editSegment, explainTranscribeError, formatSrtTime, groupSegments, mergeSubwords, parseHandoff, parseWords, shiftWords,
+  activeAt, alignWords, allWords, editSegment, explainTranscribeError, formatSrtTime, groupSegments, mergeSubwords, parseHandoff, parseWords, shiftWords,
   sceneTimings, serializeHandoff, spreadWords, toSrt, transcriptFromSegments, transcriptFromWords, transcriptText, validateTranscribeRange,
   type RawChunk,
 } from "./transcript";
@@ -237,5 +237,57 @@ describe("shiftWords and word ends", () => {
     expect(r.tooShort).toBe(0);
     const tiny = sceneTimings(["Ya.", "Baik."], [{ text: "Ya.", start: 0, end: 0.3 }, { text: "Baik.", start: 0.5, end: 0.9 }], FPS, 1)!;
     expect(tiny.tooShort).toBe(2);
+  });
+});
+
+describe("alignWords / edited scripts (fuzzy timing)", () => {
+  const words = allWords(transcriptFromWords(SAMPLE, 5, "id"));
+  const w = (text: string) => text.split(/\s+/);
+
+  it("maps a script with fixed typos one to one", () => {
+    const r = alignWords(w("Jangan tunggu semangat dateng. Mulailah sekarang"), words)!;
+    expect(r.map(x => x.start)).toEqual(words.map(x => x.start));
+  });
+
+  it("keeps timing when a word is added and gives the new word time between its neighbours", () => {
+    const r = alignWords(w("Jangan tunggu semangat itu datang. Mulailah sekarang"), words)!;
+    expect(r).toHaveLength(6 + 1);
+    expect(r[3].start).toBeGreaterThanOrEqual(words[2].end - 1e-9);
+    expect(r[3].end).toBeLessThanOrEqual(words[3].start + 1e-9);
+    expect(r[4].start).toBe(words[3].start);
+    expect(r[6].start).toBe(words[5].start);
+  });
+
+  it("keeps timing when a word is dropped", () => {
+    const r = alignWords(w("Jangan tunggu datang. Mulailah sekarang"), words)!;
+    expect(r.map(x => x.start)).toEqual([0.2, 0.6, 1.6, 3.0, 3.6]);
+  });
+
+  it("keeps timing when two transcript words are written as one", () => {
+    const r = alignWords(w("Jangan tunggu semangat datang. Mulailah sekarang"), words.map((x, i) => (i === 4 ? { ...x, text: "Mulai" } : x)))!;
+    expect(r).toHaveLength(6);
+  });
+
+  it("returns monotonic times", () => {
+    const r = alignWords(w("Jangan tunggu semangat yang datang. Mulailah dari sekarang"), words)!;
+    for (let i = 1; i < r.length; i++) expect(r[i].start).toBeGreaterThanOrEqual(r[i - 1].start - 1e-9);
+  });
+
+  it("refuses a script that adds as many words as it keeps", () => {
+    expect(alignWords(w("Jangan sekali-kali tunggu semangat yang besar datang. Mulailah dari sekarang juga"), words)).toBeNull();
+  });
+
+  it("refuses scripts that are mostly different", () => {
+    expect(alignWords(w("Kata lain sama sekali berbeda dari ucapan"), words)).toBeNull();
+    expect(alignWords([], words)).toBeNull();
+  });
+
+  it("is used by sceneTimings when the word count changed, and says so", () => {
+    const t = transcriptFromWords(SAMPLE, 5, "id");
+    const r = sceneTimings(splitScript("Jangan tunggu semangat itu datang.\nMulailah sekarang"), allWords(t), FPS, 5)!;
+    expect(r.aligned).toBe(true);
+    expect(r.seconds.reduce((a, b) => a + b, 0)).toBeCloseTo(5, 5);
+    expect(r.wordStarts[1][0]).toBe(0);
+    expect(sceneTimings(splitScript("Jangan tunggu semangat datang.\nMulailah sekarang"), allWords(t), FPS, 5)!.aligned).toBe(false);
   });
 });

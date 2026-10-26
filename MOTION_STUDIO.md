@@ -152,3 +152,16 @@ Each scene is drawn by one of five composition families, picked by `chooseFamily
 ## Subtitle export (.srt)
 
 After a render with captions on (script videos), *Unduh subtitle (.srt)* saves the captions as an SRT file next to the MP4. `lib/srt.ts` uses the same phrase chunks and word timing as the burned-in captions, so the file matches the video, and the last cue never runs past the video. Idea taken from MoneyPrinterTurbo (MIT) after reviewing its subtitle pipeline; no code was copied.
+
+## Pause tags (`[jeda]`)
+
+Write `[jeda]`, `[jeda 1.5s]`, `[jeda 500ms]` or `[pause 2]` (round brackets work too) in the script to leave silence after a sentence. The tag is never shown, spoken or captioned; it adds 0.1–10 s (default 1 s) at the end of the scene it follows. A tag in the middle of a sentence pauses after the whole scene; a tag before any speech is ignored; invalid values are ignored; several tags in a row add up (capped at 10 s).
+
+- **Automatic voice**: the silence is added to the narration track and the scene length (`assembleNarration`). Changing a pause makes the voice stale, and regenerating reuses the cached sentences.
+- **Other modes**: the pause is exact and the rest of the duration is shared by reading weight.
+- **Captions and SRT** spread the words over the spoken part only (`Scene.pauseFrames`, `spokenFrames`).
+- With a transcribed source video the tags are ignored: the audio is already fixed.
+
+## Edited scripts keep transcript timing
+
+When a script comes from a transcript and is edited afterwards, `sceneTimings` first matches words one to one (same word count). If the count changed (words added, dropped, merged or split) it aligns the script to the transcript with a word-level edit-distance alignment (`alignWords`) and spreads new words between their neighbours. It is used only when at least 75% of the words still match; otherwise the studio falls back to its normal timing. A notice tells the creator that caption timing was aligned, not measured. Idea from MoneyPrinterTurbo's subtitle correction (MIT); the implementation is original.

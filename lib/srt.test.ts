@@ -45,3 +45,12 @@ describe("scenesToSrt", () => {
     expect(srt).toMatch(/^1\n00:00:00,\d{3} --> 00:00:\d{2},\d{3}\nHalo dunia\.\n$/);
   });
 });
+
+describe("pauses", () => {
+  it("ends the last cue before the pause and keeps the next scene's cues in place", () => {
+    const first = scene("Halo dunia semua.", 150, { pauseFrames: 60 });
+    const cues = sceneCues([first, scene("Lalu lanjut.", 60)]);
+    expect(cues[0].end).toBeLessThanOrEqual((150 - 60) / 30 + 1e-9);
+    expect(cues.at(-1)!.start).toBeGreaterThanOrEqual(150 / 30 - 1e-9);
+  });
+});
