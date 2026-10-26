@@ -82,3 +82,10 @@ button.scene-row{width:100%;text-align:left;color:inherit;font:inherit;backgroun
 
 .narrative-hint{display:block;margin-top:5px;font-size:10px;line-height:1.4;letter-spacing:.04em;text-transform:uppercase;color:var(--m-accent,var(--m-muted))}
 .narrative-reason{display:block;margin-top:3px;font-size:11px;line-height:1.45;font-weight:400;color:var(--m-muted)}
+
+
+/* Narrative-first guidance: readable, quiet metadata rather than another decorative card. */
+.scene-info .narrative-hint{display:block;margin-top:6px;color:#b9b0ff;font-size:10px;font-weight:700;letter-spacing:.035em}
+.scene-info .narrative-reason,.scene-info .narrative-continuity{display:block;margin-top:4px;color:var(--m-muted);font-size:10px;font-weight:400;line-height:1.5;white-space:normal}
+.scene-info .narrative-continuity b{color:#a8dfd2;font-weight:700}
+@media(max-width:520px){.scene-info .narrative-reason,.scene-info .narrative-continuity{font-size:11px;line-height:1.45}}
