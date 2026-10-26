@@ -38,6 +38,24 @@ Remotion is free for individuals and companies with up to 3 employees; larger co
 - Set `NEXT_PUBLIC_REMOTION_LICENSE_KEY` in Vercel to your license key, or to `free-license` if you qualify for the free license. Without it, the browser console shows a reminder.
 - The web renderer reports a usage event (site origin and success flag, no video content) to `remotion.pro`. If that host is blocked (ad blocker, firewall), an unhandled "Failed to fetch" may appear in the console. The rendered file is not affected.
 
+## Smart visuals (icons, templates, emphasis)
+
+Every scene gets a visual that matches its text. Detection is automatic and works for Indonesian and English (`lib/visuals.ts`), and each scene can be corrected by hand.
+
+| Text pattern | Template | On screen |
+|---|---|---|
+| "Pertama/Kedua…", "First/Second…", "Terakhir/Finally", "Langkah 3", "2)" | Langkah | Numbered ring badge (✓ for the last step) |
+| Ends with `?` | Tanya | Big wobbling question mark |
+| `80%`, `Rp 50.000`, `$1,200`, `3x`, "5 cara", "three tips" | Angka | Number counting up, progress bar, unit label |
+| "X, bukan Y", "bukan X tapi Y", "X lebih baik dari Y", "X beats Y", "X instead of Y", "X vs Y" | ✗/✓ | Two cards: crossed-out ✗ and highlighted ✓ (neutral for "vs") |
+| "Follow/ikuti/klik/coba/start now/mulai sekarang…" | Ajakan | Pulsing button with the action word, plus a cursor |
+| Text in quotes | Kutipan | Large quotation mark |
+| Anything else | Ikon | Concept icon |
+
+- **Icons**: there are about 95 bilingual concepts (time, money, growth, idea, target, start, discipline, health, learning, team, shopping, …), drawn with Lucide line icons (ISC licence). Each icon is drawn stroke by stroke and then floats. Matching handles Indonesian affixes ("mulai" → "memulai", "main" → "bermain") without false hits ("idea" ≠ "ideal", "main" ≠ "remain").
+- **Emphasis**: the word that triggered the icon, and any number, is shown in the accent colour with an underline that grows once the word is spoken. Wrap words in `*asterisks*` in the script to choose the emphasis yourself. The asterisks are not shown and not spoken.
+- **Manual correction**: each scene in the timeline has two pickers, *Tampilan* (template) and *Ikon*. Both show what *Otomatis* detected. Corrections are kept per sentence, so editing other sentences does not reset them.
+
 ## Automatic voice over
 
 - **Model**: Supertonic 3 by Supertone Inc. It is multilingual (31 languages; the app exposes Indonesian and English) and was released as an ONNX export by sherpa-onnx. Model weights are under OpenRAIL-M: commercial use is allowed, but the use restrictions apply (no impersonation without consent, no deceptive or harmful content, disclose that the voice is AI-generated). See `public/supertonic/NOTICE.txt` after a build.

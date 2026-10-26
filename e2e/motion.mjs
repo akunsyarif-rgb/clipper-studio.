@@ -315,6 +315,28 @@ try {
     return `voice in ${secs.toFixed(1)}s, ${info}`;
   });
 
+  await step("detects scene visuals and applies manual corrections in preview and render", async () => {
+    await page.getByTestId("voice-none").click();
+    await page.getByTestId("music-none").click();
+    await page.getByTestId("script").fill("Pilih disiplin, bukan sekadar motivasi.\n80% kreator menyerah di bulan pertama.\nFollow untuk tips berikutnya!");
+    await page.getByTestId("duration").selectOption("15");
+    const autos = await page.locator('[data-testid="scene-template"] option:checked').allTextContents();
+    assert(autos.join("|") === "Otomatis · ✗/✓|Otomatis · Angka|Otomatis · Ajakan", `auto templates: ${autos.join("|")}`);
+    const player = page.locator(".player-wrap");
+    await page.getByTestId("scene-item").nth(0).locator(".scene-row").click();
+    await player.locator('[data-visual="compare"]').waitFor({ timeout: 5000 });
+    await page.getByTestId("scene-item").nth(1).locator(".scene-row").click();
+    await player.locator('[data-visual="number"]').waitFor({ timeout: 5000 });
+    // Manual correction: scene 1 becomes "icon + text" with the money icon.
+    await page.getByTestId("scene-template").nth(0).selectOption("statement");
+    await page.getByTestId("scene-icon").nth(0).selectOption("money");
+    await page.getByTestId("scene-item").nth(0).locator(".scene-row").click();
+    await player.locator('[data-visual="icon-money"]').waitFor({ timeout: 5000 });
+    assert(await player.locator('[data-visual="compare"]').count() === 0, "compare replaced by the override");
+    const info = await renderAndCheck("visuals", false, 15);
+    return `auto ${autos.length} templates ok, override applied, ${info}`;
+  });
+
   await step("no horizontal scroll on iPhone-size viewport", async () => {
     const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
     await phone.goto(BASE);

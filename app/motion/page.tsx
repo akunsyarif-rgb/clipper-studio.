@@ -13,6 +13,7 @@ import {
 import { explainVoiceError, loadVoiceEngine, MODEL_BYTES, VOICES } from "@/lib/tts/browser";
 import { assembleNarration, clipKey, SPEEDS } from "@/lib/tts/narration";
 import { TTS_LANGS, type TtsLang } from "@/lib/tts/supertonic";
+import { ICONS, resolveVisual, stripMarks, TEMPLATES, type Template, type VisualOverride } from "@/lib/visuals";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
 import "./motion.css";
 
@@ -79,6 +80,8 @@ export default function MotionStudio() {
   const [result, setResult] = useState<{ url: string; name: string; size: number } | null>(null);
   const [renderError, setRenderError] = useState("");
   const [errorDetail, setErrorDetail] = useState("");
+  /** Manual visual corrections, keyed by scene text so they survive edits to other sentences. */
+  const [overrides, setOverrides] = useState<Record<string, VisualOverride>>({});
 
   useEffect(() => { if (!manualNarration) return; const url = manualNarration.url; return () => URL.revokeObjectURL(url); }, [manualNarration]);
   useEffect(() => { if (!aiNarration) return; const url = aiNarration.narration.url; return () => URL.revokeObjectURL(url); }, [aiNarration]);
@@ -107,7 +110,7 @@ export default function MotionStudio() {
   const music: Music | null = musicTrack ? { src: musicTrack.url, volume: musicVolume / 100, duck, loop: musicMode === "upload" } : null;
 
   const props: VideoProps | null = timeline.ok ? {
-    title: title.trim(), scenes: timeline.scenes, style, palette, audioSrc: narration?.url ?? null, captions,
+    title: title.trim(), scenes: timeline.scenes.map(sc => ({ ...sc, visual: resolveVisual(sc.text, overrides[sc.text]) })), style, palette, audioSrc: narration?.url ?? null, captions,
     music, speech: narration?.speech ?? null,
   } : null;
   const blocker = !timeline.ok ? timeline.error : titleError
@@ -175,10 +178,11 @@ export default function MotionStudio() {
       const clips: Float32Array[] = [];
       for (const [i, text] of texts.entries()) {
         if (voiceCancel.current) throw new Error("cancelled");
-        const k = clipKey(text, ttsLang, ttsVoice, ttsSpeed);
+        const spoken = stripMarks(text);
+        const k = clipKey(spoken, ttsLang, ttsVoice, ttsSpeed);
         let clip = clipCache.current.get(k);
         if (!clip) {
-          clip = await engine.synthesize(text, ttsLang, ttsVoice, {
+          clip = await engine.synthesize(spoken, ttsLang, ttsVoice, {
             speed: ttsSpeed,
             onStep: async (step, total) => {
               setVoiceProgress({ phase: "synth", loaded: i * total + step, total: texts.length * total, label: `Membuat suara scene ${i + 1}/${texts.length}…` });
@@ -347,7 +351,7 @@ export default function MotionStudio() {
       <div className="studio-grid">
         <section className="studio-panel">
           <div className="panel-heading"><div><small>01 / NASKAH & AUDIO</small><h2>Atur video</h2></div><span className="local-tag">Lokal · tanpa server</span></div>
-          <label className="field-label" htmlFor="motion-script">Naskah <span className="field-hint">satu baris atau kalimat = satu scene</span></label>
+          <label className="field-label" htmlFor="motion-script">Naskah <span className="field-hint">satu baris/kalimat = satu scene · *kata* untuk menonjolkan</span></label>
           <textarea id="motion-script" data-testid="script" value={script} onChange={e => setScript(e.target.value)} rows={7} placeholder="Tulis naskah video…" />
           <div className="char-count">{script.length} / 3000</div>
           <label className="field-label" htmlFor="motion-title">Judul / teks pembuka</label>
@@ -476,16 +480,48 @@ export default function MotionStudio() {
           <p className="preview-disclaimer">Pratinjau memakai komposisi yang sama dengan hasil render, jadi teks, durasi scene, narasi, dan backsound identik dengan MP4.</p>
           <div className="timeline-heading"><h3>Timeline scene</h3><span>{timeline.ok ? `${timeline.scenes.length} scene · maks. ${MAX_SECONDS} dtk` : ""}</span></div>
           <div className="scene-list" data-testid="scenes">{timeline.ok && (() => { let t = 0; return timeline.scenes.map((s, i) => { const from = t; t += s.durationInFrames; return (
-            <button className="scene-row" key={i} onClick={() => player.current?.seekTo(from)}>
-              <span className="scene-index">{String(i + 1).padStart(2, "0")}</span>
-              <div className="scene-info"><b>{s.text}</b></div>
-              <div className="scene-meta"><b>{(from / FPS).toFixed(1)}–{(t / FPS).toFixed(1)}s</b><small>{(s.durationInFrames / FPS).toFixed(1)} dtk</small></div>
-            </button>); }); })()}</div>
+            <div className="scene-item" key={i} data-testid="scene-item">
+              <button className="scene-row" onClick={() => player.current?.seekTo(from)}>
+                <span className="scene-index">{String(i + 1).padStart(2, "0")}</span>
+                <div className="scene-info"><b>{stripMarks(s.text)}</b></div>
+                <div className="scene-meta"><b>{(from / FPS).toFixed(1)}–{(t / FPS).toFixed(1)}s</b><small>{(s.durationInFrames / FPS).toFixed(1)} dtk</small></div>
+              </button>
+              <SceneVisualControls text={s.text} override={overrides[s.text]} disabled={rendering}
+                onChange={o => setOverrides(prev => { const next = { ...prev }; if (o.template || o.icon) next[s.text] = o; else delete next[s.text]; return next; })} />
+            </div>); }); })()}</div>
         </section>
       </div>
 
       <section className="remotion-note"><span className="remotion-icon">R</span><div><b>Render di browser, tanpa biaya server</b><p>MP4 dibuat di perangkat Anda dengan Remotion Web Renderer (WebCodecs). Naskah, rekaman, dan musik tidak diunggah. Backsound otomatis disintesis di perangkat dengan Tone.js.</p></div><span className="status-chip">NO PAID RENDER</span></section>
       <footer className="motion-footer"><span>CLIPPER STUDIO / MOTION LAB</span><span>Built with Remotion</span></footer>
     </main>
+  );
+}
+
+/** Per-scene visual correction: template and icon, each "Otomatis" unless the user picks one. */
+function SceneVisualControls({ text, override, disabled, onChange }: { text: string; override?: VisualOverride; disabled: boolean; onChange: (o: VisualOverride) => void }) {
+  const auto = resolveVisual(text);
+  const current = resolveVisual(text, override);
+  const autoIcon = auto.icon ? ICONS[auto.icon]?.label : "tanpa ikon";
+  return (
+    <div className="scene-visual">
+      <label>
+        <span>Tampilan</span>
+        <select value={override?.template ?? ""} disabled={disabled} data-testid="scene-template"
+          onChange={e => onChange({ ...override, template: (e.target.value || undefined) as Template | undefined })}>
+          <option value="">Otomatis · {TEMPLATES.find(x => x.id === auto.template)?.label}</option>
+          {TEMPLATES.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}
+        </select>
+      </label>
+      <label>
+        <span>Ikon</span>
+        <select value={override?.icon ?? ""} disabled={disabled || current.template === "compare" || current.template === "cta"} data-testid="scene-icon"
+          onChange={e => onChange({ ...override, icon: e.target.value || undefined })}>
+          <option value="">Otomatis · {autoIcon}</option>
+          <option value="none">Tanpa ikon</option>
+          {Object.entries(ICONS).sort((a, b) => a[1].label.localeCompare(b[1].label, "id")).map(([id, v]) => <option key={id} value={id}>{v.label}</option>)}
+        </select>
+      </label>
+    </div>
   );
 }
