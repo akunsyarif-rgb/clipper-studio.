@@ -42,7 +42,7 @@ export function planNarrative(texts: string[]): NarrativePlan[] {
     // The opening scene establishes the question/context; a question mark alone is not a conflict beat.
     if (first) {
       role = "hook";
-      strategy = /\\?\\s*$/.test(text) ? "typography" : patterns.concrete.test(text) ? "footage" : "typography";
+      strategy = /\?\s*$/.test(text) ? "typography" : patterns.concrete.test(text) ? "footage" : "typography";
       intensity = "impact";
       reason = "Buka dengan satu fokus yang relevan agar penonton memahami topik dan ingin mengikuti kelanjutannya.";
       continuityCue = "Perkenalkan satu objek, pertanyaan, atau gagasan yang bisa berkembang pada adegan berikutnya.";
@@ -51,7 +51,7 @@ export function planNarrative(texts: string[]): NarrativePlan[] {
 
     if (first) {
       role = "hook";
-      strategy = /\\?\\s*$/.test(text) ? "typography" : patterns.concrete.test(text) ? "footage" : "typography";
+      strategy = /\?\s*$/.test(text) ? "typography" : patterns.concrete.test(text) ? "footage" : "typography";
       intensity = "impact";
       reason = "Buka dengan satu fokus dan hierarki teks yang jelas; ini rekomendasi awal yang dapat diabaikan kreator.";
       continuityCue = "Perkenalkan satu objek, pertanyaan, atau gagasan yang bisa berkembang pada adegan berikutnya.";
