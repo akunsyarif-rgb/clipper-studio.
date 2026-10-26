@@ -40,15 +40,35 @@ async function audioDuration(file: File, url: string): Promise<number> {
   return (await decodeToMono(file)).seconds;
 }
 
+const MAX_VIDEO_BYTES = 300 * 1024 ** 2;
+
+async function videoDuration(url: string): Promise<number> {
+  return await new Promise<number>((resolve, reject) => {
+    const el = document.createElement("video");
+    el.preload = "metadata";
+    el.onloadedmetadata = () => {
+      const seconds = el.duration;
+      el.removeAttribute("src"); el.load();
+      if (Number.isFinite(seconds) && seconds > 0) resolve(seconds);
+      else reject(new Error("Durasi video tidak dapat dibaca."));
+    };
+    el.onerror = () => reject(new Error("Browser tidak dapat membaca video ini."));
+    el.src = url;
+  });
+}
+
 export default function MotionStudio() {
   const player = useRef<PlayerRef>(null);
   const audioInput = useRef<HTMLInputElement>(null);
+  const videoInput = useRef<HTMLInputElement>(null);
   const musicInput = useRef<HTMLInputElement>(null);
   const abort = useRef<AbortController | null>(null);
   const recorder = useRef<NarrationRecorder | null>(null);
   const clipCache = useRef(new Map<string, Float32Array>());
   const voiceCancel = useRef(false);
   const [script, setScript] = useState(SAMPLE);
+  const [videoClip, setVideoClip] = useState<Track | null>(null);
+  const [videoError, setVideoError] = useState("");
   const [title, setTitle] = useState("Sebuah pengingat");
   const [style, setStyle] = useState<StyleId>("hybrid");
   const [palette, setPalette] = useState<PaletteId>("violet");
@@ -89,6 +109,7 @@ export default function MotionStudio() {
   useEffect(() => { if (!aiNarration) return; const url = aiNarration.narration.url; return () => URL.revokeObjectURL(url); }, [aiNarration]);
   useEffect(() => { if (!generated) return; const url = generated.url; return () => URL.revokeObjectURL(url); }, [generated]);
   useEffect(() => { if (!uploadedMusic) return; const url = uploadedMusic.url; return () => URL.revokeObjectURL(url); }, [uploadedMusic]);
+  useEffect(() => { if (!videoClip) return; const url = videoClip.url; return () => URL.revokeObjectURL(url); }, [videoClip]);
   useEffect(() => { if (!result) return; const url = result.url; return () => URL.revokeObjectURL(url); }, [result]);
   useEffect(() => () => { abort.current?.abort(); recorder.current?.cancel(); }, []);
   // The mood follows the animation style until the user picks one.
@@ -98,11 +119,12 @@ export default function MotionStudio() {
   const voiceKey = useMemo(() => JSON.stringify([splitScript(script), ttsLang, ttsVoice, ttsSpeed]), [script, ttsLang, ttsVoice, ttsSpeed]);
   const aiFresh = voiceMode === "ai" && aiNarration?.key === voiceKey ? aiNarration : null;
   const narration = voiceMode === "ai" ? aiFresh?.narration ?? null : voiceMode === "manual" ? manualNarration : null;
-  const mode: DurationMode = aiFresh ? { kind: "scenes", seconds: aiFresh.sceneSeconds }
+  const mode: DurationMode = videoClip ? { kind: "target", seconds: videoClip.seconds }
+    : aiFresh ? { kind: "scenes", seconds: aiFresh.sceneSeconds }
     : narration ? { kind: "audio", seconds: narration.seconds }
     : target === "auto" || voiceMode === "ai" ? { kind: "auto" } : { kind: "target", seconds: Number(target) };
   const voiceBusy = voiceProgress !== null;
-  const timeline = useMemo(() => buildTimeline(script, mode, FPS), [script, mode.kind, aiFresh, narration?.seconds, target]); // eslint-disable-line react-hooks/exhaustive-deps
+  const timeline = useMemo(() => buildTimeline(script, mode, FPS), [script, mode.kind, aiFresh, narration?.seconds, target, videoClip?.seconds]); // eslint-disable-line react-hooks/exhaustive-deps
   const videoSeconds = timeline.ok ? timeline.seconds : 0;
   const titleError = validateTitle(title);
   const recording = recordingSeconds !== null;
@@ -112,15 +134,17 @@ export default function MotionStudio() {
   const music: Music | null = musicTrack ? { src: musicTrack.url, volume: musicVolume / 100, duck, loop: musicMode === "upload" } : null;
 
   const props: VideoProps | null = timeline.ok ? {
-    title: title.trim(), scenes: timeline.scenes.map(sc => ({ ...sc, visual: resolveVisual(sc.text, overrides[sc.text]) })), style, palette, audioSrc: narration?.url ?? null, captions,
-    music, speech: narration?.speech ?? null,
+    title: title.trim(), scenes: timeline.scenes.map(sc => ({ ...sc, visual: resolveVisual(sc.text, overrides[sc.text]) })), style, palette,
+    audioSrc: videoClip ? null : narration?.url ?? null, captions,
+    music: videoClip ? null : music, speech: videoClip ? null : narration?.speech ?? null,
+    backgroundVideoSrc: videoClip?.url ?? null, backgroundVideoAudio: !!videoClip,
   } : null;
   const blocker = !timeline.ok ? timeline.error : titleError
     ?? (recording ? "Selesaikan perekaman narasi terlebih dahulu." : null)
-    ?? (voiceMode === "ai" && !aiFresh ? (aiNarration ? "Naskah, bahasa, suara, atau kecepatan berubah. Ketuk “Buat suara otomatis” lagi." : "Ketuk “Buat suara otomatis” untuk membuat voice over dari naskah.") : null);
+    ?? (!videoClip && voiceMode === "ai" && !aiFresh ? (aiNarration ? "Naskah, bahasa, suara, atau kecepatan berubah. Ketuk “Buat suara otomatis” lagi." : "Ketuk “Buat suara otomatis” untuk membuat voice over dari naskah.") : null);
 
   // Inputs changed after a render: the downloaded file no longer matches the preview.
-  useEffect(() => { setResult(null); }, [script, title, style, palette, target, captions, narration, musicMode, musicTrack, musicVolume, duck]);
+  useEffect(() => { setResult(null); }, [script, title, style, palette, target, captions, narration, musicMode, musicTrack, musicVolume, duck, videoClip]);
 
   const generate = useCallback(async (seconds: number, m: Mood, s: number): Promise<Generated | null> => {
     setMusicBusy(true); setMusicError("");
@@ -248,6 +272,22 @@ export default function MotionStudio() {
     setRecordingSeconds(null); setStatus("Perekaman dibatalkan.");
   }
 
+  async function onVideo(e: ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]; e.target.value = "";
+    if (!f) return;
+    setVideoError("");
+    if (!(f.type.startsWith("video/") || /\.(mp4|mov|m4v|webm)$/i.test(f.name))) return setVideoError("Pilih video MP4, MOV, M4V, atau WebM.");
+    if (f.size <= 0) return setVideoError("Berkas video kosong.");
+    if (f.size > MAX_VIDEO_BYTES) return setVideoError("Berkas melebihi batas 300 MB. Coba kompres video terlebih dahulu.");
+    const url = URL.createObjectURL(f);
+    try {
+      const seconds = await videoDuration(url);
+      if (seconds > MAX_SECONDS) throw new Error("Durasi klip maksimal 3 menit (180 detik).");
+      setVideoClip({ file: f, url, seconds }); setVoiceMode("none"); setMusicMode("none");
+      setStatus(`Klip ${seconds.toFixed(1)} detik siap. Audio asli dipertahankan dan motion graphics akan ditambahkan di atasnya.`);
+    } catch (err) { URL.revokeObjectURL(url); setVideoError(err instanceof Error ? err.message : "Video tidak dapat dibaca."); }
+  }
+
   async function onMusic(e: ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     e.target.value = "";
@@ -278,7 +318,7 @@ export default function MotionStudio() {
       if (!g) return;
       renderProps = { ...props, music: { src: g.url, volume: musicVolume / 100, duck, loop: false } };
     }
-    const support = await checkBrowserRender(!renderProps.audioSrc && !renderProps.music).catch(e => String(e));
+    const support = await checkBrowserRender(!renderProps.audioSrc && !renderProps.music && !renderProps.backgroundVideoAudio).catch(e => String(e));
     if (support) { setRenderError(support); return; }
     player.current?.pause();
     const controller = new AbortController();
@@ -312,8 +352,10 @@ export default function MotionStudio() {
     if (!props) return;
     const project = {
       ...props,
-      audioSrc: narration ? narration.file.name : null,
-      music: music && musicTrack ? { ...music, src: musicTrack.file.name } : null,
+      audioSrc: videoClip ? null : narration ? narration.file.name : null,
+      music: music && musicTrack && !videoClip ? { ...music, src: musicTrack.file.name } : null,
+      backgroundVideoSrc: videoClip ? videoClip.file.name : null,
+      backgroundVideoAudio: !!videoClip,
       fps: FPS, width: WIDTH, height: HEIGHT, durationInFrames: timeline.ok ? timeline.totalFrames : 0,
     };
     const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
@@ -321,7 +363,7 @@ export default function MotionStudio() {
     const a = document.createElement("a");
     a.href = url; a.download = `${slug(title || "video")}-props.json`; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    const files = [narration?.file.name, musicTrack?.file.name].filter(Boolean);
+    const files = [videoClip?.file.name, narration?.file.name, musicTrack?.file.name].filter(Boolean);
     setStatus(files.length ? `Proyek diunduh. Untuk render CLI, salin ${files.map(f => `"${f}"`).join(" dan ")} ke folder public/ (unduh lewat tombol di bagian audio), lalu ikuti MOTION_STUDIO.md.` : "Proyek diunduh. Lihat MOTION_STUDIO.md untuk render lewat CLI.");
   }
 
@@ -354,6 +396,18 @@ export default function MotionStudio() {
       <div className="studio-grid">
         <section className="studio-panel">
           <div className="panel-heading"><div><small>01 / NASKAH & AUDIO</small><h2>Atur video</h2></div><span className="local-tag">Lokal · tanpa server</span></div>
+          <label className="field-label">Klip video (opsional)</label>
+          <div className="audio-box" data-testid="video-overlay">
+            <input ref={videoInput} type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm" onChange={e => void onVideo(e)} className="file-hidden" data-testid="video-input" />
+            {videoClip ? <>
+              <div className="audio-meta"><b>{videoClip.file.name}</b><small>{videoClip.seconds.toFixed(1)} dtk · {(videoClip.file.size / 1024 ** 2).toFixed(1)} MB · audio asli aktif</small></div>
+              <div className="field-row tight"><button className="motion-secondary" onClick={() => videoInput.current?.click()} disabled={busy}>Ganti klip</button><button className="motion-secondary" onClick={() => { setVideoClip(null); setVideoError(""); setStatus("Mode Motion Graphics biasa dipulihkan."); }} disabled={busy}>Hapus klip</button></div>
+              <small>Mode Video Overlay memakai durasi klip sebagai timeline dan mempertahankan audio aslinya. Voice-over dan backsound tambahan dinonaktifkan saat mode ini aktif.</small>
+            </> : <button className="motion-secondary full" onClick={() => videoInput.current?.click()} disabled={busy}>＋ Unggah klip video (maks. 3 menit)</button>}
+            <small>Diproses di browser. Batas ukuran 300 MB untuk menjaga memori perangkat; format MP4, MOV, M4V, atau WebM.</small>
+            {videoError && <p className="field-error" role="alert" data-testid="video-error">{videoError}</p>}
+          </div>
+
           <label className="field-label" htmlFor="motion-script">Naskah <span className="field-hint">satu baris/kalimat = satu scene · *kata* untuk menonjolkan</span></label>
           <textarea id="motion-script" data-testid="script" value={script} onChange={e => setScript(e.target.value)} rows={7} placeholder="Tulis naskah video…" />
           <div className="char-count">{script.length} / 3000</div>
@@ -376,6 +430,7 @@ export default function MotionStudio() {
             <div><label className="field-label" htmlFor="motion-palette">Palet warna</label><select id="motion-palette" data-testid="palette" value={palette} onChange={e => { setPalette(e.target.value as PaletteId); setContentPreset("custom"); }}>{(Object.keys(PALETTES) as PaletteId[]).map(p => <option key={p} value={p}>{PALETTES[p].label}</option>)}</select></div>
           </div>
 
+          {!videoClip && <>
           <label className="field-label">Voice over / narasi</label>
           <div className="seg" role="radiogroup" aria-label="Voice over">
             {([["ai", "🤖 Otomatis"], ["manual", "🎙 Rekam / unggah"], ["none", "Tanpa"]] as [VoiceMode, string][]).map(([id, label]) =>
@@ -457,10 +512,12 @@ export default function MotionStudio() {
             {musicError && <p className="field-error" role="alert" data-testid="music-error">{musicError}</p>}
           </div>
 
+          </>}
+
           <div className="field-row">
             <div><label className="field-label" htmlFor="motion-duration">Durasi</label>
-              <select id="motion-duration" data-testid="duration" value={narration ? "audio" : voiceMode === "ai" ? "auto" : target} disabled={!!narration || voiceMode === "ai"} onChange={e => setTarget(e.target.value)}>
-                {narration ? <option value="audio">Ikuti narasi ({narration.seconds.toFixed(1)} dtk)</option> : voiceMode === "ai" ? <option value="auto">Ikuti suara otomatis</option> : <>
+              <select id="motion-duration" data-testid="duration" value={videoClip ? "video" : narration ? "audio" : voiceMode === "ai" ? "auto" : target} disabled={!!videoClip || !!narration || voiceMode === "ai"} onChange={e => setTarget(e.target.value)}>
+                {videoClip ? <option value="video">Ikuti klip ({videoClip.seconds.toFixed(1)} dtk)</option> : narration ? <option value="audio">Ikuti narasi ({narration.seconds.toFixed(1)} dtk)</option> : voiceMode === "ai" ? <option value="auto">Ikuti suara otomatis</option> : <>
                   <option value="auto">Otomatis (kecepatan baca)</option><option value="15">15 detik</option><option value="30">30 detik</option><option value="45">45 detik</option><option value="60">60 detik</option>
                 </>}
               </select></div>
