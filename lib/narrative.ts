@@ -39,7 +39,13 @@ export function planNarrative(texts: string[]): NarrativePlan[] {
     let reason = "Pertahankan fokus pada narasi; grafis tambahan belum diperlukan.";
     let continuityCue = index === 0 ? "Mulai dengan satu fokus visual yang jelas." : "Pertahankan satu elemen atau gagasan dari adegan sebelumnya.";
 
-    if (patterns.resolution.test(text) || (last && !patterns.application.test(text) && !patterns.tension.test(text) && !patterns.explanation.test(text))) {
+    if (first) {
+      role = "hook";
+      strategy = /\\?\\s*$/.test(text) ? "typography" : patterns.concrete.test(text) ? "footage" : "typography";
+      intensity = "impact";
+      reason = "Buka dengan satu fokus dan hierarki teks yang jelas; ini rekomendasi awal yang dapat diabaikan kreator.";
+      continuityCue = "Perkenalkan satu objek, pertanyaan, atau gagasan yang bisa berkembang pada adegan berikutnya.";
+    } else if (patterns.resolution.test(text) || (last && !patterns.application.test(text) && !patterns.tension.test(text) && !patterns.explanation.test(text))) {
       role = "resolution";
       strategy = "typography";
       intensity = "quiet";
