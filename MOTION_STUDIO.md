@@ -52,7 +52,7 @@ The studio offers six reusable starting presets in the **Template konten** selec
 | Islamic Reflection | Cinematic | Forest / Sage | Islamic reminders and calm reflection |
 | Storytelling | Cinematic | Violet / Cyan | Narrative-led videos |
 
-The presets are starting points, not separate rendering engines. They add no dependencies, API calls, subscriptions, or server-side render costs.
+The presets are starting points, not separate rendering engines. They add no dependencies, API calls, subscriptions, or server-side render costs. Kinetic typography uses staggered word entrances with a subtle alternating rotation/scale and a glow on the active or emphasised word; the existing narration-timed word reveal is preserved.
 
 ## Smart visuals (icons, templates, emphasis)
 
