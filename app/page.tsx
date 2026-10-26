@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 type Mode = "upload" | "youtube";
 function videoId(raw: string) {
@@ -29,7 +30,7 @@ export default function Home() {
     setMessage("Sumber dan pengaturan valid pada prototipe. Mesin pemrosesan video belum terhubung; klip belum dibuat atau diunduh.");
   }
   return <main className="shell">
-    <header><a className="brand" href="/"><span className="logo">▶</span>clipper<span className="light">studio</span></a><span className="pill"><i/> MVP PREVIEW</span></header>
+    <header><Link className="brand" href="/"><span className="logo">▶</span>clipper<span className="light">studio</span></Link><span className="pill"><i/> MVP PREVIEW</span></header>
     <section className="hero"><div className="eyebrow">VIDEO WORKSPACE</div><h1>Video panjang.<br/><em>Potongan yang tepat.</em></h1><p>Siapkan klip untuk Shorts, Reels, dan TikTok. Mulai dari video di perangkat atau tautan YouTube.</p></section>
     <section className="card">
       <div className="heading"><div><small>LANGKAH 01</small><h2>Pilih sumber video</h2></div><span>Pilih satu sumber</span></div>

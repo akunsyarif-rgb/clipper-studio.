@@ -22,3 +22,6 @@ npm-debug.log*
 
 # vercel
 .vercel
+/public/e2e-*
+/props.json
+/test-results/

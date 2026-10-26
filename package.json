@@ -6,21 +6,36 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "node e2e/run.mjs",
     "remotion:studio": "remotion studio remotion/index.ts",
-    "render:motion": "remotion render remotion/index.ts MotionGraphics30 out/motion-graphics.mp4"
+    "render:motion": "remotion render remotion/index.ts MotionGraphics30 out/motion-graphics.mp4",
+    "render:script": "remotion render remotion/index.ts ScriptVideo out/script-video.mp4 --props=props.json"
   },
   "dependencies": {
-    "@remotion/cli": "^4.0.300",
-    "@remotion/renderer": "^4.0.300",
+    "@remotion/media": "4.0.538",
+    "@remotion/player": "4.0.538",
+    "@remotion/web-renderer": "4.0.538",
     "next": "15.5.28",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "remotion": "^4.0.300"
+    "remotion": "4.0.538"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "3.3.7",
+    "@remotion/cli": "4.0.538",
+    "@remotion/renderer": "4.0.538",
     "@types/node": "^22.15.30",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.7",
-    "typescript": "^5.8.3"
+    "eslint": "9.39.5",
+    "eslint-config-next": "15.5.28",
+    "typescript": "^5.8.3",
+    "vitest": "5.0.5"
+  },
+  "overrides": {
+    "zod": "4.6.7"
   }
 }
