@@ -34,6 +34,8 @@ export type Scene = {
   durationInFrames: number;
   /** Template, icon and emphasis; detected from the text when absent (e.g. older project JSON). */
   visual?: SceneVisual;
+  /** Frame (from the scene's first frame) at which each word is spoken; from a transcript. Even spread when absent. */
+  wordStarts?: number[];
 };
 
 export type VideoProps = {
@@ -189,9 +191,15 @@ export function totalFrames(scenes: Scene[]): number {
  * Caption timing inside one scene: the words are spread over the scene (leaving a short tail),
  * so with narration the highlighted word follows the voice at the scene's average pace.
  */
-export function activeWordIndex(text: string, frameInScene: number, sceneFrames: number): number {
+export function activeWordIndex(text: string, frameInScene: number, sceneFrames: number, wordStarts?: number[]): number {
   const n = words(text).length;
   if (n === 0) return -1;
+  // Transcript timing: the last word whose start has been reached (before the first word, the first one is shown).
+  if (wordStarts && wordStarts.length === n) {
+    let active = 0;
+    for (let i = 0; i < n; i++) if (frameInScene >= wordStarts[i]) active = i;
+    return active;
+  }
   const speaking = Math.max(1, sceneFrames * 0.9);
   return Math.min(n - 1, Math.floor((Math.max(0, frameInScene) / speaking) * n));
 }

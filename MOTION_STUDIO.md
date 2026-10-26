@@ -92,3 +92,14 @@ The CLI needs Chromium and FFmpeg. Remotion downloads them on first use.
 npm run lint && npm run typecheck && npm test && npm run build
 npm run test:e2e   # after build (runs e2e/clipper.mjs and e2e/motion.mjs): renders MP4s in headless Chromium and checks them with ffprobe (needs ffmpeg + Playwright)
 ```
+
+## Auto transcript & captions (from the clipper)
+
+On the clipper page (`/`), after choosing a video, **Transkrip otomatis** turns the speech of the selected range into timed text.
+
+- **Engine**: Whisper (`Xenova/whisper-base`, or `whisper-tiny` for speed) via Transformers.js + onnxruntime-web (WebAssembly), in a Web Worker. Indonesian and English. Free, no API key, nothing is uploaded: the audio is extracted on the device with the existing FFmpeg WASM (`lib/engine.ts` → `extractAudio`, 16 kHz mono) and recognised on the device. The model (~80 MB / ~40 MB, 8-bit) is downloaded once from the Hugging Face Hub and cached by the browser. The WebAssembly runtime is self-hosted at `public/ort-asr` (copied by `scripts/copy-ffmpeg-core.mjs`).
+- **Timing**: per word when the model returns word timestamps; otherwise per segment (words are then spread evenly inside the segment and the panel says so). `lib/transcript.ts` cleans the timestamps (monotonic, clamped), groups words into segments (pause, sentence end, ≤140 characters, ≤10 s, ≥1.2 s) and writes SRT.
+- **Limits**: the selected range must be ≤ 3 minutes (same as the motion studio) and the video keeps the existing 1 GB / 60 minute source limits. Nothing was raised.
+- **Editing**: each segment is an editable box. Word timing is kept if the word count is unchanged; otherwise the new words are spread over the segment. Emptying a box removes the segment.
+- **Captions follow the original audio**: the preview under the video highlights the spoken word while the original video plays. No audio is added or changed; the exported MP4 is not touched (subtitles are not burned into the clipper export).
+- **Motion graphics**: *Kirim ke Motion Graphics* stores the transcript in `sessionStorage` (same tab, not uploaded). On `/motion`, *Impor ke naskah* fills the script (one segment = one scene) and switches to *Rekam / unggah*. While the script still has exactly the transcript words, scene lengths and the highlighted caption word follow the transcript timing (`sceneTimings`, `Scene.wordStarts`). Upload the original audio of the clip as the narration so voice and captions agree; an audio of a different length (>1 s) falls back to the normal proportional timing, and so does an edited script. Icons, numbers, templates and emphasis are detected from the transcript text exactly as for a typed script, so keyword visuals never change the subtitle words.

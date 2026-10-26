@@ -31,7 +31,7 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
   const visual = scene.visual ?? detectVisual(scene.text);
   const emphasis = new Set(visual.emphasis);
   const all = stripMarks(scene.text).split(/\s+/).filter(Boolean);
-  const active = activeWordIndex(scene.text, frame, d);
+  const active = activeWordIndex(scene.text, frame, d, scene.wordStarts);
   // Kinetic/hybrid reveal the headline word by word in step with the narration; others show it at once.
   const revealWords = style === "kinetic" || style === "hybrid";
   const hasTop = ["list", "question", "number", "quote"].includes(visual.template) && (visual.template !== "number" || !!visual.number);

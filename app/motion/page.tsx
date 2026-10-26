@@ -14,6 +14,7 @@ import { explainVoiceError, loadVoiceEngine, MODEL_BYTES, VOICES } from "@/lib/t
 import { assembleNarration, clipKey, SPEEDS } from "@/lib/tts/narration";
 import { spokenText } from "@/lib/tts/numbers";
 import { TTS_LANGS, type TtsLang } from "@/lib/tts/supertonic";
+import { allWords, HANDOFF_KEY, parseHandoff, sceneTimings, transcriptText, type Transcript } from "@/lib/transcript";
 import { ICONS, resolveVisual, stripMarks, TEMPLATES, type Template, type VisualOverride } from "@/lib/visuals";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
 import "./motion.css";
@@ -83,6 +84,10 @@ export default function MotionStudio() {
   const [errorDetail, setErrorDetail] = useState("");
   /** Manual visual corrections, keyed by scene text so they survive edits to other sentences. */
   const [overrides, setOverrides] = useState<Record<string, VisualOverride>>({});
+  // Transcript handed over from the clipper: `offer` is waiting in sessionStorage, `imported` was applied to the script.
+  const [offer, setOffer] = useState<{ source: string; transcript: Transcript } | null>(null);
+  const [imported, setImported] = useState<Transcript | null>(null);
+  useEffect(() => { try { setOffer(parseHandoff(sessionStorage.getItem(HANDOFF_KEY))); } catch { /* storage blocked: no offer */ } }, []);
 
   useEffect(() => { if (!manualNarration) return; const url = manualNarration.url; return () => URL.revokeObjectURL(url); }, [manualNarration]);
   useEffect(() => { if (!aiNarration) return; const url = aiNarration.narration.url; return () => URL.revokeObjectURL(url); }, [aiNarration]);
@@ -97,11 +102,15 @@ export default function MotionStudio() {
   const voiceKey = useMemo(() => JSON.stringify([splitScript(script), ttsLang, ttsVoice, ttsSpeed]), [script, ttsLang, ttsVoice, ttsSpeed]);
   const aiFresh = voiceMode === "ai" && aiNarration?.key === voiceKey ? aiNarration : null;
   const narration = voiceMode === "ai" ? aiFresh?.narration ?? null : voiceMode === "manual" ? manualNarration : null;
+  // Transcript timing applies while the script still matches the transcript words and the narration is the original audio.
+  const timings = useMemo(() => imported ? sceneTimings(splitScript(script), allWords(imported), FPS, imported.duration) : null, [imported, script]);
+  const timed = voiceMode !== "ai" && timings && (!narration || Math.abs(narration.seconds - imported!.duration) <= 1) ? timings : null;
   const mode: DurationMode = aiFresh ? { kind: "scenes", seconds: aiFresh.sceneSeconds }
+    : timed ? { kind: "scenes", seconds: timed.seconds }
     : narration ? { kind: "audio", seconds: narration.seconds }
     : target === "auto" || voiceMode === "ai" ? { kind: "auto" } : { kind: "target", seconds: Number(target) };
   const voiceBusy = voiceProgress !== null;
-  const timeline = useMemo(() => buildTimeline(script, mode, FPS), [script, mode.kind, aiFresh, narration?.seconds, target]); // eslint-disable-line react-hooks/exhaustive-deps
+  const timeline = useMemo(() => buildTimeline(script, mode, FPS), [script, mode.kind, aiFresh, narration?.seconds, target, timed]); // eslint-disable-line react-hooks/exhaustive-deps
   const videoSeconds = timeline.ok ? timeline.seconds : 0;
   const titleError = validateTitle(title);
   const recording = recordingSeconds !== null;
@@ -111,7 +120,7 @@ export default function MotionStudio() {
   const music: Music | null = musicTrack ? { src: musicTrack.url, volume: musicVolume / 100, duck, loop: musicMode === "upload" } : null;
 
   const props: VideoProps | null = timeline.ok ? {
-    title: title.trim(), scenes: timeline.scenes.map(sc => ({ ...sc, visual: resolveVisual(sc.text, overrides[sc.text]) })), style, palette, audioSrc: narration?.url ?? null, captions,
+    title: title.trim(), scenes: timeline.scenes.map((sc, i) => ({ ...sc, visual: resolveVisual(sc.text, overrides[sc.text]), ...(timed && !aiFresh ? { wordStarts: timed.wordStarts[i] } : {}) })), style, palette, audioSrc: narration?.url ?? null, captions,
     music, speech: narration?.speech ?? null,
   } : null;
   const blocker = !timeline.ok ? timeline.error : titleError
@@ -353,6 +362,15 @@ export default function MotionStudio() {
       <div className="studio-grid">
         <section className="studio-panel">
           <div className="panel-heading"><div><small>01 / NASKAH & AUDIO</small><h2>Atur video</h2></div><span className="local-tag">Lokal · tanpa server</span></div>
+          {offer && !imported && <div className="notice" data-testid="transcript-offer">
+            Transkrip dari Clipper tersedia: <strong>{offer.source}</strong> ({allWords(offer.transcript).length} kata, {Math.round(offer.transcript.duration)} dtk).{" "}
+            <button className="text-button" data-testid="transcript-import" onClick={() => { setScript(transcriptText(offer.transcript)); setImported(offer.transcript); setVoiceMode("manual"); setOffer(null); }}>Impor ke naskah</button>
+          </div>}
+          {imported && <div className="notice" data-testid="transcript-status">
+            {timed ? "Subtitle mengikuti waktu kata dari transkrip. Unggah audio asli video pada Voice over → Rekam / unggah agar suara dan subtitle sama."
+              : timings ? "Audio yang dipilih tidak sama panjang dengan transkrip, jadi waktu dibagi otomatis. Unggah audio asli klip yang sama."
+              : "Naskah sudah diubah dari transkrip, jadi waktu kata tidak dipakai lagi. Subtitle dibagi otomatis."}
+          </div>}
           <label className="field-label" htmlFor="motion-script">Naskah <span className="field-hint">satu baris/kalimat = satu scene · *kata* untuk menonjolkan</span></label>
           <textarea id="motion-script" data-testid="script" value={script} onChange={e => setScript(e.target.value)} rows={7} placeholder="Tulis naskah video…" />
           <div className="char-count">{script.length} / 3000</div>

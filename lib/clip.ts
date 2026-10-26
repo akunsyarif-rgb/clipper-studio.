@@ -122,6 +122,21 @@ export function ffmpegArgs(input: string, range: { start: number; duration: numb
   ];
 }
 
+export const AUDIO_OUTPUT_NAME = "clipper-audio.pcm";
+
+/** Decodes just the audio of a range to raw 16 kHz mono signed 16-bit PCM, the input format of the speech model. */
+export function audioArgs(input: string, range: { start: number; duration: number }): string[] {
+  return [
+    "-ss", range.start.toFixed(3),
+    "-i", input,
+    "-t", range.duration.toFixed(3),
+    "-vn", "-map", "0:a:0",
+    "-ac", "1", "-ar", "16000",
+    "-f", "s16le", "-acodec", "pcm_s16le",
+    "-y", AUDIO_OUTPUT_NAME,
+  ];
+}
+
 /** Reads "time=00:00:05.12" from an FFmpeg log line; returns seconds or NaN. */
 export function logTime(message: string): number {
   const m = /time=\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)/.exec(message);

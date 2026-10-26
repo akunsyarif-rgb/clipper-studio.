@@ -36,3 +36,11 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .motion-link>span:nth-child(2){display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
 .motion-link strong{font-size:12px}.motion-link small{font-size:10px;color:#7c8880;line-height:1.5}
 .motion-link b{font-size:11px;color:var(--green);white-space:nowrap}
+.asr-panel{margin-top:6px}
+.asr-caption{margin-top:14px;min-height:54px;display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:0 2px;padding:12px;border-radius:10px;background:#101511;color:#fff;font-size:15px;font-weight:700;line-height:1.5;text-align:center}
+.asr-caption .on{color:#ffe066}.asr-caption small{font-size:10px;font-weight:400;color:#c9d3cc}
+.asr-list{display:flex;flex-direction:column;gap:8px;margin-top:12px;max-height:340px;overflow:auto}
+.asr-seg{display:flex;flex-direction:column;gap:5px;padding:9px;border:1px solid var(--line);border-radius:9px;font-size:9px;color:#849087;font-family:ui-monospace,Menlo,monospace}
+.asr-seg.active{border-color:#719981;background:#f6faf6}
+.asr-seg textarea{width:100%;border:1px solid #dbe4dc;border-radius:7px;padding:8px;font:12px/1.5 'DM Sans',sans-serif;color:var(--ink);resize:vertical}
+.asr-hint{display:block;margin-top:8px;font-size:9px;color:#929c95;line-height:1.6}
