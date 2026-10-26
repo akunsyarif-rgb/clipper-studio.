@@ -24,6 +24,18 @@ import "./motion.css";
 
 const SAMPLE = "Jangan tunggu semangat datang.\nMulailah, meski langkahmu kecil.\nDisiplin membuatmu tetap bergerak.\nSatu langkah hari ini lebih baik dari rencana sempurna.\nMulai sekarang.";
 
+const NARRATIVE_ROLE_LABELS: Record<string, string> = {
+  hook: "Pembuka", tension: "Konflik", explanation: "Penjelasan", reveal: "Insight",
+  application: "Penerapan", resolution: "Kesimpulan", continuation: "Lanjutan",
+};
+const VISUAL_STRATEGY_LABELS: Record<string, string> = {
+  typography: "Tipografi", comparison: "Perbandingan", diagram: "Diagram",
+  metaphor: "Metafora", footage: "Footage", minimal: "Minimal",
+};
+const MOTION_INTENSITY_LABELS: Record<string, string> = {
+  quiet: "Tenang", emphasis: "Penekanan", impact: "Dampak kuat",
+};
+
 type Track = { file: File; url: string; seconds: number };
 type Generated = Track & { mood: Mood; seed: number };
 type MusicMode = "none" | "auto" | "upload";
@@ -567,7 +579,7 @@ export default function MotionStudio() {
             <div className="scene-item" key={i} data-testid="scene-item">
               <button className="scene-row" onClick={() => player.current?.seekTo(from)}>
                 <span className="scene-index">{String(i + 1).padStart(2, "0")}</span>
-                <div className="scene-info"><b>{stripMarks(s.text)}</b><small className="narrative-hint">{narrativePlan[i]?.role} · {narrativePlan[i]?.strategy} · {narrativePlan[i]?.intensity}</small><small className="narrative-reason">{narrativePlan[i]?.reason}</small></div>
+                <div className="scene-info"><b>{stripMarks(s.text)}</b><small className="narrative-hint">{NARRATIVE_ROLE_LABELS[narrativePlan[i]?.role ?? ""] ?? "Lanjutan"} · {VISUAL_STRATEGY_LABELS[narrativePlan[i]?.strategy ?? ""] ?? "Minimal"} · {MOTION_INTENSITY_LABELS[narrativePlan[i]?.intensity ?? ""] ?? "Tenang"}</small><small className="narrative-reason">{narrativePlan[i]?.reason}</small><small className="narrative-continuity"><b>Penghubung:</b> {narrativePlan[i]?.continuityCue}</small></div>
                 <div className="scene-meta"><b>{(from / FPS).toFixed(1)}–{(t / FPS).toFixed(1)}s</b><small>{(s.durationInFrames / FPS).toFixed(1)} dtk</small></div>
               </button>
               <SceneVisualControls text={s.text} override={overrides[s.text]} disabled={rendering} cut={videoEdit ? { value: cutOverrides[s.text], auto: planned[i] } : undefined}
