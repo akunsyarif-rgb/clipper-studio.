@@ -212,6 +212,9 @@ export function totalFrames(scenes: Scene[]): number {
   return Math.max(1, scenes.reduce((a, s) => a + s.durationInFrames, 0));
 }
 
+/** Estimated-timing highlight runs this many frames ahead of the even spread (100 ms) to cancel the observed lag. */
+export const HIGHLIGHT_LEAD_FRAMES = Math.round(FPS * 0.1);
+
 /**
  * Caption timing inside one scene: the words are spread over the scene (leaving a short tail),
  * so with narration the highlighted word follows the voice at the scene's average pace.
@@ -226,7 +229,6 @@ export function activeWordIndex(text: string, frameInScene: number, sceneFrames:
     return active;
   }
   // Estimated timing only: advance the marker by 3 frames (100 ms at 30 fps) to correct the observed fixed lag.
-  const HIGHLIGHT_LEAD_FRAMES = Math.round(FPS * 0.1);
   const speaking = Math.max(1, sceneFrames * 0.9);
   return Math.min(n - 1, Math.floor(((Math.max(0, frameInScene) + HIGHLIGHT_LEAD_FRAMES) / speaking) * n));
 }

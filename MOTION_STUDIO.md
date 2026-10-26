@@ -148,3 +148,7 @@ Each scene is drawn by one of five composition families, picked by `chooseFamily
 - **Quiet editorial style + Ivory / Forest palette**: calm springs, no blur, particles or rotating ring. Preset *Quiet Editorial*.
 - A manually chosen icon (`iconPinned`) is shown in every family. Automatic icons appear only in the explainer, to keep a single focus.
 - All motion is computed from the frame; there are no timers and no randomness.
+
+## Subtitle export (.srt)
+
+After a render with captions on (script videos), *Unduh subtitle (.srt)* saves the captions as an SRT file next to the MP4. `lib/srt.ts` uses the same phrase chunks and word timing as the burned-in captions, so the file matches the video, and the last cue never runs past the video. Idea taken from MoneyPrinterTurbo (MIT) after reviewing its subtitle pipeline; no code was copied.

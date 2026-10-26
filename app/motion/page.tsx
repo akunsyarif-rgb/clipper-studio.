@@ -18,6 +18,7 @@ import { allWords, shiftWords, HANDOFF_KEY, parseHandoff, sceneTimings, transcri
 import { autoCuts, ICONS, resolveVisual, type Cut, stripMarks, TEMPLATES, type Template, type VisualOverride } from "@/lib/visuals";
 import { chooseFamily, FAMILY_LABELS } from "@/lib/composition";
 import { planNarrative } from "@/lib/narrative";
+import { scenesToSrt } from "@/lib/srt";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
 import TranscriptPanel from "../TranscriptPanel";
 import { validateFile } from "@/lib/clip";
@@ -180,6 +181,10 @@ export default function MotionStudio() {
     ?? (voiceMode === "ai" && !aiFresh ? (aiNarration ? "Naskah, bahasa, suara, atau kecepatan berubah. Ketuk “Buat suara otomatis” lagi." : "Ketuk “Buat suara otomatis” untuk membuat voice over dari naskah.") : null);
 
   // Inputs changed after a render: the downloaded file no longer matches the preview.
+  // Subtitle file for the current script, offered once an MP4 exists; revoked when the script changes.
+  const srtText = result && timeline.ok && captions && !videoEdit ? scenesToSrt(sceneList) : null;
+  const srtUrl = useMemo(() => srtText ? URL.createObjectURL(new Blob([srtText], { type: "text/plain;charset=utf-8" })) : null, [srtText]);
+  useEffect(() => () => { if (srtUrl) URL.revokeObjectURL(srtUrl); }, [srtUrl]);
   useEffect(() => { setResult(null); }, [script, title, style, palette, target, captions, narration, musicMode, musicTrack, musicVolume, duck]);
 
   const generate = useCallback(async (seconds: number, m: Mood, s: number): Promise<Generated | null> => {
@@ -564,7 +569,7 @@ export default function MotionStudio() {
           {rendering && <div className="render-progress" data-testid="progress"><div><span>Merender di browser…</span><b>{progress}%</b></div><i><em style={{ width: progress + "%" }} /></i></div>}
           {renderError && <p className="field-error" role="alert" data-testid="render-error">{renderError}</p>}
           {errorDetail && <details className="error-details" open><summary>Detail teknis (kirimkan saat melapor)</summary><code data-testid="error-detail">{errorDetail}</code><button className="text-link" onClick={() => navigator.clipboard?.writeText(errorDetail).then(() => setStatus("Detail teknis disalin."), () => setStatus("Salin manual teks di atas."))}>Salin detail teknis</button></details>}
-          {result && <div className="render-result" data-testid="result"><b>✓ MP4 siap</b><small>{WIDTH}×{HEIGHT} · {videoSeconds.toFixed(1)} dtk · {(result.size / 1024 ** 2).toFixed(1)} MB</small><a className="motion-primary" href={result.url} download={result.name} data-testid="download">Simpan MP4 ↓</a></div>}
+          {result && <div className="render-result" data-testid="result"><b>✓ MP4 siap</b><small>{WIDTH}×{HEIGHT} · {videoSeconds.toFixed(1)} dtk · {(result.size / 1024 ** 2).toFixed(1)} MB</small><a className="motion-primary" href={result.url} download={result.name} data-testid="download">Simpan MP4 ↓</a>{srtUrl && <a className="text-link" href={srtUrl} download={result.name.replace(/\.mp4$/i, "") + ".srt"} data-testid="download-srt">Unduh subtitle (.srt)</a>}</div>}
           {status && <p className="motion-status" role="status" data-testid="status">{status}</p>}
         </section>
 
