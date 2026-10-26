@@ -39,8 +39,8 @@ describe("matchConcept (Indonesian + English keywords)", () => {
 describe("semantic visual mapping", () => {
   it.each([
     ["Al-Qur'an mengajarkan kita untuk bersabar.", "book"],
-    ["Awali harimu dengan doa dan dzikir.", "moon"],
-    ["Kunjungi masjid untuk shalat berjamaah.", "building"],
+    ["Awali harimu dengan doa dan dzikir.", "calm"],
+    ["Kunjungi masjid untuk shalat berjamaah.", "home"],
     ["Iman, takwa, dan syukur perlu dijaga.", "heart"],
     ["Gunakan teknologi AI untuk membantu pekerjaan.", "ai"],
     ["Pelajari data sebelum mengambil keputusan.", "data"],
