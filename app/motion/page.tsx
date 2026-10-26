@@ -567,7 +567,7 @@ export default function MotionStudio() {
             <div className="scene-item" key={i} data-testid="scene-item">
               <button className="scene-row" onClick={() => player.current?.seekTo(from)}>
                 <span className="scene-index">{String(i + 1).padStart(2, "0")}</span>
-                <div className="scene-info"><b>{stripMarks(s.text)}</b></div>
+                <div className="scene-info"><b>{stripMarks(s.text)}</b><small className="narrative-hint">{narrativePlan[i]?.role} · {narrativePlan[i]?.strategy} · {narrativePlan[i]?.intensity}</small><small className="narrative-reason">{narrativePlan[i]?.reason}</small></div>
                 <div className="scene-meta"><b>{(from / FPS).toFixed(1)}–{(t / FPS).toFixed(1)}s</b><small>{(s.durationInFrames / FPS).toFixed(1)} dtk</small></div>
               </button>
               <SceneVisualControls text={s.text} override={overrides[s.text]} disabled={rendering} cut={videoEdit ? { value: cutOverrides[s.text], auto: planned[i] } : undefined}
