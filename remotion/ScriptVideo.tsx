@@ -98,14 +98,16 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
   const baseSize = all.length <= 6 ? 108 : all.length <= 12 ? 86 : all.length <= 20 ? 68 : 54;
   const big = Math.round(baseSize * (hasTop ? 0.82 : 1) * (visual.template === "compare" ? 0.85 : 1) * (role === "hook" ? 1.16 : role === "resolution" ? 0.92 : 1));
   const line = captionLine(stripMarks(scene.text), active);
-  const centered = role === "hook" || role === "reveal" || role === "resolution";
+  const centered = role === "hook" || role === "reveal" || role === "resolution" || style === "cinematic" || style === "popup";
   const textAlign = centered ? "center" as const : "left" as const;
   const alignItems = centered ? "center" as const : "flex-start" as const;
   const roleLabel: Record<string, string> = { hook: "PEMBUKA", tension: "KONFLIK", explanation: "PENJELASAN", reveal: "INTI TEMUAN", application: "LANGKAH NYATA", resolution: "KESIMPULAN", continuation: "LANJUTAN" };
 
   return (
     <AbsoluteFill style={{ opacity: Math.min(fadeIn, fadeOut) }}>
-      <AbsoluteFill style={{ justifyContent: "center", padding: role === "hook" ? "0 70px" : role === "resolution" ? "0 112px" : "0 92px", color: colors.text, transform: `translateY(${drift}px)`, filter: blur ? `blur(${blur}px)` : undefined, alignItems }}>
+      <AbsoluteFill style={{ justifyContent: style === "cinematic" ? "center" : role === "application" ? "flex-end" : "center", padding: style === "popup" ? "0 64px" : role === "hook" ? "0 70px" : role === "resolution" ? "0 112px" : "0 92px", color: colors.text, transform: `translateY(${drift}px)`, filter: blur ? `blur(${blur}px)` : undefined, alignItems }}>
+        {style === "popup" ? <div style={{ position: "absolute", inset: "22% 42px", border: `2px solid ${colors.accent}88`, borderRadius: 28, opacity: 0.65, transform: `scale(${interpolate(enter, [0, 1], [0.94, 1])})` }} /> : null}
+        {style === "cinematic" && role !== "hook" ? <div style={{ position: "absolute", left: 90, right: 90, height: 1, top: "27%", background: `${colors.accent}55` }} /> : null}
         {role === "hook" ? <div style={{ position: "absolute", top: 250, left: 80, right: 80, height: 3, background: colors.accent, transform: `scaleX(${interpolate(enter, [0, 1], [0, 1])})`, transformOrigin: "left" }} /> : null}
         <div style={{ width: "100%", fontFamily: "Arial, sans-serif", fontSize: 22, letterSpacing: 5, fontWeight: 700, color: colors.accent, marginBottom: role === "hook" ? 26 : 32, textTransform: "uppercase", textAlign }}>
           {role === "hook" && title ? title : roleLabel[role] ?? `${String(index + 1).padStart(2, "0")} / ${String(count).padStart(2, "0")}`}
