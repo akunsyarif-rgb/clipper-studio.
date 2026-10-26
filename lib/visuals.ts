@@ -262,10 +262,10 @@ export function detectNumber(text: string): NumberInfo | null {
 export function detectSemanticConcept(text: string): string | null {
   const t = stripMarks(text).toLocaleLowerCase("id");
   const rules: [string, RegExp][] = [
-    ["quran", /\\b(al[- ]?qur.?an|qur.?an|quran|ayat|surah|surat)\\b/i],
-    ["prayer", /\\b(doa|berdoa|pray|prayer|dzikir|zikir|dhikr|shalat|salat|ibadah|worship)\\b/i],
-    ["mosque", /\\b(masjid|mushola|musala|mosque)\\b/i],
-    ["faith", /\\b(iman|takwa|taqwa|ikhlas|sabar|syukur|tawakal|tawakkul|faith|gratitude|sincerity)\\b/i],
+    ["book", /\\b(al[- ]?qur.?an|qur.?an|quran|ayat|surah|surat)\\b/i],
+    ["moon", /\\b(doa|berdoa|pray|prayer|dzikir|zikir|dhikr|shalat|salat|ibadah|worship)\\b/i],
+    ["building", /\\b(masjid|mushola|musala|mosque)\\b/i],
+    ["heart", /\\b(iman|takwa|taqwa|ikhlas|sabar|syukur|tawakal|tawakkul|faith|gratitude|sincerity)\\b/i],
     ["ai", /\\b(ai|kecerdasan buatan|artificial intelligence|machine learning|otomatisasi|automation|teknologi|technology|software|coding|programming|aplikasi|app|digital)\\b/i],
     ["data", /\\b(data|statistik|analitik|analytics|dashboard|riset|research|laporan|report)\\b/i],
     ["work", /\\b(bisnis|usaha|penghasilan|pendapatan|profit|revenue|business|entrepreneur|wirausaha|pelanggan|customer)\\b/i],
