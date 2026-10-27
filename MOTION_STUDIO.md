@@ -234,3 +234,11 @@ The visual detector (`lib/visuals.ts`, `lib/sense.ts`) reads each sentence in it
 - **A content word beats a generic verb**: "Do you like coffee?" shows coffee.
 - **The whole script as context** (`sceneTopics`): generic words ("move", "see", "day", "work", …) trigger an icon only when a neighbouring scene (two either side) is about the same thing; otherwise the scene gets no icon rather than a wrong one.
 - On-screen keywords show the whole emphasised phrase (up to three words), not only its first word.
+
+## Why the model is downloaded again (and how to avoid it)
+
+Browser storage belongs to **one web address**. The speech model (in Cache Storage) and the saved session (IndexedDB) are therefore kept per address, and every Vercel *preview deployment* has its own address (`…-4f684f9yx-team.vercel.app`): to the browser, a new version is a new website with empty storage.
+
+- **Use an address that stays the same**: the branch address (`clipper-studio-git-<branch>-<team>.vercel.app`, always the newest version of the branch) or the main domain. Open the app there, transcribe once, and the model stays on the device for every later version.
+- The transcript panel shows whether the chosen model is already stored for the current address, and warns when the address is one that belongs to a single deployment (known exactly from the deployment's own host name, `VERCEL_URL`, set at build time in `next.config.mjs`).
+- The studio asks the browser to keep its storage (`navigator.storage.persist()`) when a transcription starts. Safari may still clear data of a site that is not visited for a week, or when space is low; adding the page to the Home Screen avoids the weekly clearing.

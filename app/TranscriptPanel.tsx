@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { formatBytes, formatTime } from "@/lib/clip";
+import { isOneOffPreview, keepStorage, modelIsCached } from "@/lib/asr/storage";
 import { ASR_RUN_KEY, defaultModelFor, isTouchDevice, lighterModel, parseRunMark } from "@/lib/asr/device";
 import { extractAudio, loadEngine, terminateEngine } from "@/lib/engine";
 import { loadCachedTranscript, saveCachedTranscript } from "@/lib/session-store";
@@ -33,6 +34,9 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
   const [touch, setTouch] = useState(false);
   const [crashed, setCrashed] = useState<string | null>(null);
   const modelTouched = useRef(false);
+  // Whether this address already holds the chosen model, and whether the address is one that will not last.
+  const [cached, setCached] = useState<boolean | null>(null);
+  const [oneOff, setOneOff] = useState(false);
   const [language, setLanguage] = useState<LanguageId>("indonesian");
   const [phase, setPhase] = useState<Phase>("idle");
   const [download, setDownload] = useState({ loaded: 0, total: 0 });
@@ -57,6 +61,14 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
     if (mark) { setCrashed(mark.model); setModel(lighterModel(mark.model)); }
     else if (!modelTouched.current) setModel(defaultModelFor(navigator.userAgent, navigator.maxTouchPoints));
   }, []);
+
+  useEffect(() => { setOneOff(isOneOffPreview(location.hostname, process.env.NEXT_PUBLIC_DEPLOYMENT_HOST ?? "")); }, []);
+  useEffect(() => {
+    let alive = true;
+    setCached(null);
+    void modelIsCached(model).then(c => { if (alive) setCached(c); });
+    return () => { alive = false; };
+  }, [model, phase === "idle"]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Leaving the page frees the model's memory; a cancelled run already did.
   useEffect(() => () => { handle.current?.cancel(); releaseAsr(); }, []);
@@ -94,6 +106,7 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
     const limit = range ? validateTranscribeRange(range.duration) : "Pilih bagian video yang valid terlebih dahulu.";
     if (!range || limit) { setError(limit ?? ""); return; }
     cancelled.current = false;
+    void keepStorage();
     setError(""); setDetail(""); setInfo(""); setTranscript(null); setPhase("audio"); onWorking(true);
     try {
       const cached = await loadCachedTranscript(file, range, model, language);
@@ -156,6 +169,8 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
       <label>Model<select value={model} disabled={working || locked} onChange={e => { modelTouched.current = true; setCrashed(null); setModel(e.target.value as ModelId); }} data-testid="asr-model">{MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}</select></label>
       <label>Bahasa<select value={language} disabled={working || locked} onChange={e => setLanguage(e.target.value as LanguageId)} data-testid="asr-language">{LANGUAGES.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
     </div>
+    {!working && cached !== null && <div className="field-hint" data-testid="asr-model-status" style={{ margin: "6px 0" }}>{cached ? "Model ini sudah tersimpan di perangkat untuk alamat situs ini; tidak perlu mengunduh lagi." : `Model ini belum tersimpan untuk alamat situs ini; ${MODELS.find(m => m.id === model)?.label.match(/±[\d.]+ MB/)?.[0] ?? "beberapa puluh MB"} diunduh sekali, lalu tersimpan.`}</div>}
+    {oneOff && !working && <div className="notice" data-testid="asr-preview-hint">Alamat ini khusus satu versi (preview). Setiap versi baru punya penyimpanan sendiri, sehingga model diunduh lagi dan sesi tidak ikut. Gunakan alamat tetap (yang memuat &quot;-git-&quot;, atau domain utama) agar model tersimpan.</div>}
     {crashed && <div className="notice notice-error" role="status" data-testid="asr-crashed">Transkripsi sebelumnya terhenti di tengah jalan (biasanya karena memori perangkat habis). Model otomatis diganti ke yang lebih ringan; bagian video yang lebih pendek juga membantu.</div>}
     {touch && /small/.test(model) && !working && <div className="notice" data-testid="asr-heavy-hint">Model ini berat; di iPad atau ponsel Safari bisa menutup aplikasi karena memori. Disarankan &quot;Akurat (base)&quot;.</div>}
     <button className="secondary-button" disabled={working || locked || !range} onClick={run} data-testid="asr-run"><span>✎</span> {working ? "Sedang membuat transkrip…" : transcript ? "Buat ulang transkrip bagian terpilih" : "Buat transkrip bagian terpilih"}<small>maks. 3 menit</small></button>

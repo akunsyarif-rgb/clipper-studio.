@@ -46,6 +46,10 @@ try {
     assert(!(await page.getByTestId("asr-panel").isVisible()), "panel hidden before upload");
     await page.getByTestId("file-input").setInputFiles(withAudio);
     await page.getByTestId("asr-panel").waitFor({ timeout: 10000 });
+    // The panel says whether this address already holds the model; a stable address gets no preview warning.
+    await page.getByTestId("asr-model-status").waitFor({ timeout: 5000 });
+    assert(/belum tersimpan/.test(await page.getByTestId("asr-model-status").innerText()), "model not stored yet on a fresh address");
+    assert((await page.getByTestId("asr-preview-hint").count()) === 0, "no preview hint on localhost");
   });
 
   await step("audio is extracted locally, then transcript or a clear model error is shown", async () => {
