@@ -10,6 +10,7 @@ import {
   ShieldCheck, ShoppingCart, Smartphone, Sparkles, Sprout, Star, Stethoscope, Sun, Tag, Target, TrendingDown, TrendingUp, TriangleAlert,
   ThumbsUp, Trophy, Truck, Umbrella, Users, Utensils, Video, Wallet, Wrench, Zap, type IconNode,
 } from "lucide";
+import { BRANDS, matchBrands, type BrandMention } from "./brands";
 import { ambiguousMask, isCallToAction, WEAK_WORDS } from "./sense";
 
 export type Template = "statement" | "list" | "question" | "number" | "compare" | "cta" | "quote";
@@ -130,6 +131,7 @@ export const CONCEPTS: Concept[] = [
 
 export const ICONS: Record<string, { label: string; icon: IconNode }> = Object.fromEntries([
   ...CONCEPTS.map(c => [c.id, { label: c.label, icon: c.icon }] as const),
+  ...BRANDS.map(b => [b.id, { label: b.label, icon: b.icon }] as const),
   ["question", { label: "Tanda tanya", icon: CircleQuestionMark }],
   ["cta", { label: "Kursor klik", icon: MousePointerClick }],
   ["quote", { label: "Tanda kutip", icon: Quote }],
@@ -150,19 +152,16 @@ export type SceneVisual = {
   number?: NumberInfo;
   compare?: CompareInfo;
   cta?: string;
+  /** Popular names found in the sentence (YouTube, TikTok, …) in the order they are said; they come before generic icons. */
+  brands?: BrandMention[];
   /** The creator picked the icon by hand; quiet layouts that normally omit icons still show it. */
   iconPinned?: boolean;
 };
 
 export type VisualOverride = { template?: Template; icon?: string | "none" };
 
-/** Removes the *emphasis* markers for display and speech. */
-export function stripMarks(text: string): string {
-  return text.replace(/\*([^*]+)\*/g, "$1").replace(/\*/g, "");
-}
-
-/** Lower-cased word without accents or surrounding punctuation, for keyword and emphasis matching. */
-export const wordKey = (w: string) => w.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/^[^\p{L}\p{N}']+|[^\p{L}\p{N}']+$/gu, "");
+export { stripMarks, wordKey } from "./text";
+import { stripMarks, wordKey } from "./text";
 
 /** Endings allowed after a 4-letter keyword ("main" → "mainkan", "play" → "playing", but not "idea" → "ideal"). */
 const SUFFIX = /^(|s|es|ed|d|ing|er|ers|ly|kan|an|i|nya|lah|kah|mu|ku)$/;
@@ -308,30 +307,33 @@ export function detectSemanticConcept(text: string): string | null {
 export function detectVisual(text: string, topics?: ReadonlySet<string>): SceneVisual {
   const plain = stripMarks(text).trim();
   const manual = [...text.matchAll(/\*([^*]+)\*/g)].flatMap(m => m[1].split(/\s+/).map(wordKey)).filter(Boolean);
+  // A popular name ("YouTube") is the most specific thing a sentence can say, so it comes before everything else.
+  const brands = matchBrands(text);
   const semanticId = detectSemanticConcept(text);
   const concept = matchConcept(text, topics);
-  const icon = semanticId && ICONS[semanticId] ? semanticId : concept?.id ?? null;
-  const emphasis = new Set<string>([...manual, ...(manual.length ? [] : concept?.words ?? [])]);
+  const icon = brands.length ? brands[0].id : semanticId && ICONS[semanticId] ? semanticId : concept?.id ?? null;
+  const emphasis = new Set<string>([...manual, ...(manual.length ? [] : brands.length ? brands.map(b => b.word) : concept?.words ?? [])]);
+  const withBrands = <T extends object>(v: T): T & { brands?: BrandMention[] } => (brands.length ? { ...v, brands } : v);
 
   for (const [re, index] of ORDINALS) {
     const m = re.exec(plain);
-    if (m) return { template: "list", icon, emphasis: [...emphasis], listIndex: index, listLabel: m[1] };
+    if (m) return withBrands({ template: "list", icon, emphasis: [...emphasis], listIndex: index, listLabel: m[1] });
   }
   const step = /^(?:langkah|step|tip|tips|cara|no\.?)\s*(\d+)\b|^(\d+)[.)]\s/i.exec(plain);
-  if (step) return { template: "list", icon, emphasis: [...emphasis], listIndex: Number(step[1] ?? step[2]), listLabel: "" };
+  if (step) return withBrands({ template: "list", icon, emphasis: [...emphasis], listIndex: Number(step[1] ?? step[2]), listLabel: "" });
 
   const compare = detectCompare(plain);
-  if (compare) return { template: "compare", icon, emphasis: [...emphasis], compare };
-  if (/\?\s*$/.test(plain)) return { template: "question", icon: icon === "problem" ? null : icon, emphasis: [...emphasis] };
+  if (compare) return withBrands({ template: "compare", icon, emphasis: [...emphasis], compare });
+  if (/\?\s*$/.test(plain)) return withBrands({ template: "question", icon: icon === "problem" ? null : icon, emphasis: [...emphasis] });
   const number = detectNumber(plain);
   if (number) {
     emphasis.add(wordKey(number.raw));
-    return { template: "number", icon, emphasis: [...emphasis], number };
+    return withBrands({ template: "number", icon, emphasis: [...emphasis], number });
   }
   const cta = findCta(plain);
-  if (cta) return { template: "cta", icon, emphasis: [...emphasis], cta };
-  if (/^["“].+["”][.!]?$/.test(plain)) return { template: "quote", icon, emphasis: [...emphasis] };
-  return { template: "statement", icon, emphasis: [...emphasis] };
+  if (cta) return withBrands({ template: "cta", icon, emphasis: [...emphasis], cta });
+  if (/^["“].+["”][.!]?$/.test(plain)) return withBrands({ template: "quote", icon, emphasis: [...emphasis] });
+  return withBrands({ template: "statement", icon, emphasis: [...emphasis] });
 }
 
 /**
@@ -356,6 +358,7 @@ export function resolveVisual(text: string, override?: VisualOverride, topics?: 
     if (v.template === "list" && v.listIndex === undefined) v.listIndex = null;
   }
   if (override.icon) v.icon = override.icon === "none" ? null : override.icon in ICONS ? override.icon : v.icon;
+  if (override.icon) delete v.brands; // an icon chosen by hand replaces the detected names
   if (override.icon && v.icon) v.iconPinned = true;
   return v;
 }

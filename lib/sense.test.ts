@@ -62,6 +62,10 @@ describe("saving, trying and following", () => {
     expect(look("Follow me for more.").cta).toBe("FOLLOW");
     expect(look("Follow untuk tips berikutnya!").cta).toBe("FOLLOW");
   });
+  it("'dan' works like 'and' after a call to action", () => {
+    expect(look("Jangan lupa follow dan simpan ya.").cta).toBe("FOLLOW");
+    expect(look("Share dan komentar di bawah.").cta).toBe("SHARE");
+  });
   it("Indonesian forms keep working and 'coba' alone is not a button", () => {
     expect(look("Coba bayangkan hasilnya.").cta).toBeUndefined();
     expect(look("Coba sekarang, gratis.").cta).toBe("COBA");

@@ -57,13 +57,13 @@ export function isCallToAction(word: string, before: string, after: string): boo
       return /^\s+(sekarang|gratis|hari ini|dulu)\b/.test(a);
     case "follow":
     case "ikuti":
-      return /^\s*(me|us|for|and|on|@|our|my|kami|aku|saya|akun|channel|saluran|untuk|buat|ya|dong|di)\b/.test(a) || /^\s+the\s+(channel|page|account)/.test(a) || end.test(a);
+      return /^\s*(me|us|for|and|dan|on|@|our|my|kami|aku|saya|akun|channel|saluran|untuk|buat|ya|dong|di)\b/.test(a) || /^\s+the\s+(channel|page|account)/.test(a) || end.test(a);
     case "comment":
-      return /(leave|drop|write|post|add)\s+(a\s+)?$/.test(b) || /^\s*(below|down|your|and|with|on)\b/.test(a) || end.test(a);
+      return /(leave|drop|write|post|add)\s+(a\s+)?$/.test(b) || /^\s*(below|down|your|and|dan|with|on)\b/.test(a) || end.test(a);
     case "komentar":
       return /(tulis|tinggalkan|beri|kasih|di|isi)\s+$/.test(b) || /^\s+(di bawah|ya|dong)\b/.test(a);
     case "share":
-      return /^\s*(this|it|with|to|and|your)\b/.test(a) || /^\s+the\s+(video|post|reel)/.test(a) || end.test(a) || /(please|do|and)\s+$/.test(b);
+      return /^\s*(this|it|with|to|and|dan|ke|ini|your)\b/.test(a) || /^\s+the\s+(video|post|reel)/.test(a) || end.test(a) || /(please|do|and)\s+$/.test(b);
     case "order":
       return /^\s+(now|today|yours|here)\b/.test(a) || /(please|and)\s+$/.test(b);
     case "visit":

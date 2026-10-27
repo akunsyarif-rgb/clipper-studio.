@@ -155,7 +155,13 @@ try {
     assert(options.some(o => /Grafis penuh/.test(o)) && options.some(o => /Potongan lain/.test(o)), "full graphic and clip stay available: " + options.join("|"));
     const player = p.locator(".player-wrap");
     await p.getByTestId("scene-item").first().locator(".scene-row").click();
-    await player.locator('[data-overlay="top"]').first().waitFor({ state: "attached", timeout: 10000 });
+    // The animation waits for the word it is about ("semangat", said 1 s in): at the start of the scene there is none.
+    await p.waitForTimeout(600);
+    assert((await player.locator("[data-overlay]").count()) === 0, "no animation before its word is spoken");
+    await player.hover();
+    await player.locator("button").first().click(); // play
+    await player.locator('[data-overlay="top"]').first().waitFor({ state: "attached", timeout: 15000 });
+    await player.locator("button").first().click(); // pause inside the animation
     await p.getByTestId("overlay-position").selectOption("lower");
     await player.locator('[data-overlay="lower"]').first().waitFor({ state: "attached", timeout: 10000 });
     assert((await player.locator('[data-overlay="top"]').count()) === 0, "the top overlay is replaced by the lower one");

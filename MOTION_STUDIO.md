@@ -207,6 +207,7 @@ Each scene of a source-video edit has a *Layar* choice:
 - **Default**: a scene in which the studio finds something (a number, step, question, comparison, call to action, a concept icon or a *emphasised* word) gets *Video + animasi*; plain statements stay *Video + subtitle*. Full-screen graphics and clips are never chosen automatically.
 - **Position** (*Posisi animasi di atas video*): *Atas* uses the empty space above the head (inside the safe area, below the app's status bar); *Bawah* sits just above the captions. Neither touches the caption band. An animation lasts at most 4 s of the scene and fades in and out.
 - A dark veil behind the animation and white text keep it readable on any footage; the accent colour is the palette's own when it is readable on the veil, otherwise the palette's light tone (light palettes such as Pearl and Ivory).
+- **Timing**: an animation does not start with its scene. It appears about 0.13 s before the word it is about is spoken (the number, the name, the call to action, the emphasised word, the "bukan"/"tapi" of a comparison) using the transcript's word timing, stays for at most 4 s, and never runs past the next animation or over a scene that takes over the whole picture (`overlayWindows`). A long scene therefore no longer shows its animation seconds before the speaker says it. In a comparison the rejected option arrives with "bukan" and the better one with "tapi"; names pop in one by one as each is said.
 - Preview and render use the same composition, so what the player shows is what the MP4 contains. Verified with CLI renders of a synthetic source (all animation kinds, both positions, light and dark palettes) and a browser test that checks the animation element in the live preview; not yet seen on a real iPad.
 
 ## Memory on tablets (transcription)
@@ -242,3 +243,12 @@ Browser storage belongs to **one web address**. The speech model (in Cache Stora
 - **Use an address that stays the same**: the branch address (`clipper-studio-git-<branch>-<team>.vercel.app`, always the newest version of the branch) or the main domain. Open the app there, transcribe once, and the model stays on the device for every later version.
 - The transcript panel shows whether the chosen model is already stored for the current address, and warns when the address is one that belongs to a single deployment (known exactly from the deployment's own host name, `VERCEL_URL`, set at build time in `next.config.mjs`).
 - The studio asks the browser to keep its storage (`navigator.storage.persist()`) when a transcription starts. Safari may still clear data of a site that is not visited for a week, or when space is low; adding the page to the Home Screen avoids the weekly clearing.
+
+## Popular names (YouTube, TikTok, …)
+
+When a sentence names a popular service it gets that service's icon, ahead of every generic icon (`lib/brands.ts`): YouTube (also *YT*, *Shorts*), TikTok (*FYP*), Instagram (*IG*, *reels*), Facebook (*FB*), WhatsApp (*WA*), X/Twitter, Telegram, LinkedIn, Spotify, Google, Netflix, Twitch, podcasts, online shops (Shopee, Tokopedia, Lazada, Bukalapak, Amazon, …), ride apps (Gojek, Grab as "naik Grab", Uber) and AI assistants (ChatGPT, Gemini, Copilot, …).
+
+- Up to three names in a sentence are shown side by side, each popping in **when it is said**, with the name under it.
+- The glyphs are simple line drawings made for this studio (a play badge, a note, a camera, …): they hint at the service and are not its official logo.
+- Short names match whole words only, and "grab" only in phrases such as "naik Grab", so "grab attention" stays a verb.
+- A call to action ("subscribe ke YouTube") keeps its button and shows the name above it. Choosing an icon by hand replaces the detected names.

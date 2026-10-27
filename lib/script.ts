@@ -314,6 +314,17 @@ export function spokenFrames(scene: Pick<Scene, "durationInFrames" | "pauseFrame
   return Math.max(1, scene.durationInFrames - (scene.pauseFrames ?? 0));
 }
 
+/**
+ * Frame inside the scene at which word `i` (of `n`) starts being spoken: the transcript's timing when there is one,
+ * otherwise the even spread the captions use (the inverse of activeWordIndex).
+ */
+export function wordStartFrame(scene: Pick<Scene, "wordStarts" | "durationInFrames" | "pauseFrames">, i: number, n: number): number {
+  const starts = scene.wordStarts;
+  if (starts && starts.length === n) return starts[Math.min(Math.max(0, i), n - 1)];
+  const speaking = Math.max(1, spokenFrames(scene) * 0.9);
+  return Math.max(0, Math.ceil((Math.max(0, i) * speaking) / Math.max(1, n)) - HIGHLIGHT_LEAD_FRAMES);
+}
+
 export function activeWordIndex(text: string, frameInScene: number, sceneFrames: number, wordStarts?: number[]): number {
   const n = words(text).length;
   if (n === 0) return -1;

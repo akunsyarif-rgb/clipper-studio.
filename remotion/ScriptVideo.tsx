@@ -6,7 +6,7 @@ import { activeWordIndex, clipPlan, phraseLine, spokenFrames, PALETTES, totalFra
 import { chooseFamily } from "../lib/composition";
 import { contentBox, MOTION, SAFE } from "../lib/layout";
 import { detectVisual, stripMarks } from "../lib/visuals";
-import { MAX_OVERLAY_FRAMES } from "../lib/overlay";
+import { overlayWindows } from "../lib/overlay";
 import { FamilyView } from "./Families";
 import { VideoOverlay } from "./Overlays";
 import { BottomVisual, TopVisual } from "./SceneVisuals";
@@ -161,6 +161,13 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
           volume={f => musicGain(f, durationInFrames, fps, music, speech ?? (audioSrc ? [1] : null))}
         />
       ) : null}
+      {/* Animations over the speaker start when the word they are about is spoken, so they sit on the timeline of the whole
+          video (not inside one scene); scenes that take over the picture are drawn above them. */}
+      {video ? overlayWindows(scenes, scenes.map(sc => sc.visual ?? detectVisual(sc.text)), durationInFrames).map(w => (
+        <Sequence key={`overlay-${w.scene}`} from={w.from} durationInFrames={w.length} name={`Animasi ${w.scene + 1}`}>
+          <VideoOverlay scene={scenes[w.scene]} visual={scenes[w.scene].visual ?? detectVisual(scenes[w.scene].text)} colors={colors} position={overlay ?? "top"} length={w.length} offset={w.offset} />
+        </Sequence>
+      )) : null}
       {scenes.map((scene, i) => {
         const start = from;
         from += scene.durationInFrames;
@@ -170,7 +177,6 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
             {video
               ? <>
                 {clip && video ? <Sequence from={0} durationInFrames={clip.lengthFrames}><ClipCutaway src={video.src} startFrame={clip.startFrame} length={clip.lengthFrames} /></Sequence> : null}
-                {scene.cut === "overlay" ? <Sequence from={0} durationInFrames={Math.min(scene.durationInFrames, MAX_OVERLAY_FRAMES)}><VideoOverlay scene={scene} visual={scene.visual ?? detectVisual(scene.text)} colors={colors} position={overlay ?? "top"} length={Math.min(scene.durationInFrames, MAX_OVERLAY_FRAMES)} /></Sequence> : null}
                 {captions ? <VideoCaption scene={scene} /> : null}
                 {/* Cutaway: an opaque graphic over the speaker (at most 4 s); the video underneath keeps playing, so audio never breaks. */}
                 {scene.cut === "graphic" ? <Sequence from={0} durationInFrames={Math.min(scene.durationInFrames, 120)}><Cutaway scene={scene} colors={colors} length={Math.min(scene.durationInFrames, 120)} /></Sequence> : null}

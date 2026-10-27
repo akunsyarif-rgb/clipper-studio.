@@ -3,15 +3,33 @@
 import React from "react";
 import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { CONTENT_WIDTH, fitText, MOTION, SAFE, TYPE } from "../lib/layout";
-import { overlayBand, overlayColors, overlayKeyword, type OverlayPosition } from "../lib/overlay";
+import { BRANDS } from "../lib/brands";
+import { beatFrame, overlayAnchors, overlayBand, overlayColors, overlayKeyword, type OverlayPosition } from "../lib/overlay";
 import type { Scene } from "../lib/script";
-import { ICONS, stripMarks, type SceneVisual } from "../lib/visuals";
+import { ICONS, type SceneVisual } from "../lib/visuals";
 import { CompareCard, Headline, measureFor, formatNumber, type Colors } from "./Families";
 import { LineIcon } from "./SceneVisuals";
 
 const TILE = 140;
 
-export function VideoOverlay({ scene, visual, colors, position, length }: { scene: Scene; visual: SceneVisual; colors: Colors; position: OverlayPosition; length: number }) {
+/** A popular name: its icon pops in when the name is spoken, with the name under it. */
+function BrandTile({ id, label, delay, width, color, text, scene }: { id: string; label: string; delay: number; width: number; color: string; text: string; scene: Scene }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const p = Math.min(1, spring({ frame: frame - delay, fps, config: MOTION.springFirm }));
+  const brand = BRANDS.find(b => b.id === id);
+  if (!brand) return null;
+  return (
+    <div data-brand={id} style={{ width, display: "flex", flexDirection: "column", alignItems: "center", gap: 10, opacity: p, transform: `translateY(${(1 - p) * 18}px) scale(${0.85 + 0.15 * p})` }}>
+      <div style={{ width: TILE, height: TILE, borderRadius: 34, border: `3px solid ${color}`, background: "#00000066", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <LineIcon node={brand.icon} size={88} color={color} delay={delay + 2} strokeWidth={1.9} />
+      </div>
+      <Headline text={label} width={width} height={50} maxSize={36} minSize={20} lineHeight={1.05} align="center" colors={{ accent: color, text, bg1: "#101010", bg2: "#101010" }} focus={new Set()} font={TYPE.sans} weight={800} letterSpacing={0.04} reveal="none" scene={scene} />
+    </div>
+  );
+}
+
+export function VideoOverlay({ scene, visual, colors, position, length, offset }: { scene: Scene; visual: SceneVisual; colors: Colors; position: OverlayPosition; length: number; offset: number }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const oc = overlayColors(colors);
@@ -19,10 +37,18 @@ export function VideoOverlay({ scene, visual, colors, position, length }: { scen
   const fade = Math.min(interpolate(frame, [0, 6], [0, 1], { extrapolateRight: "clamp" }), interpolate(frame, [length - 8, length], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }));
   const pop = Math.min(1, spring({ frame, fps, config: MOTION.springCalm }));
   const slide = (1 - pop) * MOTION.rise * (position === "top" ? -1 : 1);
-  const text = stripMarks(scene.text);
   const keyword = overlayKeyword(scene.text, visual);
   const icon = visual.icon ? ICONS[visual.icon] : null;
   const down = position === "top";
+  const brands = visual.brands ?? [];
+  const anchors = overlayAnchors(scene.text, visual);
+  // Names show up in a row, each when it is said (the first one as the animation starts).
+  const itemWidth = brands.length ? Math.min(260, (CONTENT_WIDTH - 36 * (brands.length - 1)) / brands.length) : 0;
+  const brandRow = brands.length ? (
+    <div data-visual={"brand-" + brands.map(b => b.id).join("-")} style={{ display: "flex", gap: 36, alignItems: "flex-start" }}>
+      {brands.map(b => <BrandTile key={b.id} id={b.id} label={b.word.toUpperCase()} delay={Math.max(0, beatFrame(scene, b.index, offset) - 0)} width={itemWidth} color={oc.accent} text={oc.text} scene={scene} />)}
+    </div>
+  ) : null;
 
   const tile = icon ? (
     <div data-visual={"icon-" + visual.icon} style={{ width: TILE, height: TILE, flexShrink: 0, borderRadius: 34, border: `3px solid ${oc.accent}`, background: "#00000055", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -34,7 +60,9 @@ export function VideoOverlay({ scene, visual, colors, position, length }: { scen
   ) : null;
 
   let content: React.ReactNode = null;
-  if (visual.template === "number" && visual.number) {
+  if (brandRow && ["statement", "question", "quote"].includes(visual.template)) {
+    content = brandRow;
+  } else if (visual.template === "number" && visual.number) {
     const { value, decimals, prefix, suffix, label } = visual.number;
     const count = interpolate(frame, [4, Math.min(length * 0.6, fps * 1.4)], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
     const eased = 1 - Math.pow(1 - count, 3);
@@ -67,21 +95,25 @@ export function VideoOverlay({ scene, visual, colors, position, length }: { scen
     );
   } else if (visual.template === "compare" && visual.compare) {
     const cmp = visual.compare;
-    const words = text.split(/\s+/).filter(Boolean);
-    const goodAt = Math.min(Math.round(scene.durationInFrames * 0.45), Math.max(12, Math.round(words.length > 0 ? scene.durationInFrames * 0.3 : 12)));
+    // The rejected option arrives with "bukan", the better one with "tapi".
+    const badAt = beatFrame(scene, anchors.start, offset);
+    const goodAt = Math.max(badAt + 6, beatFrame(scene, anchors.second ?? anchors.start, offset));
     const common = { scene, colors: oc, neutral: cmp.neutral, width: CONTENT_WIDTH, textHeight: 70 };
     content = (
       <div data-visual="compare" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <CompareCard {...common} text={cmp.bad} good={false} delay={4} />
+        <CompareCard {...common} text={cmp.bad} good={false} delay={badAt} />
         <CompareCard {...common} text={cmp.good} good delay={goodAt} />
       </div>
     );
   } else if (visual.template === "cta") {
     const p = Math.min(1, spring({ frame: frame - 8, fps, config: MOTION.springFirm }));
     content = (
-      <div data-visual="cta" style={{ display: "flex", alignItems: "center", gap: 18, alignSelf: "flex-start", height: 110, padding: "0 46px", borderRadius: 999, background: oc.accent, color: "#101010", fontFamily: TYPE.display, fontSize: 42, letterSpacing: 2, opacity: p, transform: `scale(${0.9 + 0.1 * p})`, whiteSpace: "nowrap", maxWidth: CONTENT_WIDTH, boxShadow: "0 10px 40px #0008" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 24, alignItems: "flex-start" }}>
+        {brandRow}
+        <div data-visual="cta" style={{ display: "flex", alignItems: "center", gap: 18, alignSelf: "flex-start", height: 110, padding: "0 46px", borderRadius: 999, background: oc.accent, color: "#101010", fontFamily: TYPE.display, fontSize: 42, letterSpacing: 2, opacity: p, transform: `scale(${0.9 + 0.1 * p})`, whiteSpace: "nowrap", maxWidth: CONTENT_WIDTH, boxShadow: "0 10px 40px #0008" }}>
         {visual.cta ?? "MULAI"}
         <svg width={44} height={44} viewBox="0 0 24 24" fill="none" stroke="#101010" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+        </div>
       </div>
     );
   } else if (visual.template === "quote") {

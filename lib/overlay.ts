@@ -1,8 +1,9 @@
 // Motion graphics that sit ON TOP of the speaker (instead of replacing the picture): where they go, which colours
 // stay readable over footage, and which word to feature. Pure and deterministic.
 import { contrast, SAFE } from "./layout";
-import { HEIGHT } from "./script";
-import { stripMarks, wordKey, type SceneVisual } from "./visuals";
+import { HEIGHT, wordStartFrame, type Scene } from "./script";
+import { stripMarks, wordKey } from "./text";
+import type { SceneVisual } from "./visuals";
 
 export type OverlayPosition = "top" | "lower";
 
@@ -56,8 +57,96 @@ export function overlayKeyword(text: string, visual: Pick<SceneVisual, "emphasis
 }
 
 /** Whether a scene has something worth drawing over the speaker. */
-export function hasOverlay(visual: Pick<SceneVisual, "template" | "icon" | "emphasis" | "number" | "compare">): boolean {
+export function hasOverlay(visual: Pick<SceneVisual, "template" | "icon" | "emphasis" | "number" | "compare"> & { brands?: unknown[] }): boolean {
+  if (visual.brands?.length) return true;
   if (visual.template === "number") return !!visual.number;
   if (visual.template === "compare") return !!visual.compare;
   return visual.template !== "statement" || !!visual.icon || visual.emphasis.length > 0;
 }
+
+/** An animation appears this many frames before its word, so it has settled when the word is heard (0.13 s). */
+export const OVERLAY_LEAD_FRAMES = 4;
+/** An animation shorter than this (a neighbour takes over almost at once) is not worth showing. */
+export const MIN_OVERLAY_FRAMES = 15;
+
+/**
+ * The words of a scene an animation is about, as positions among the scene's words: `start` is the word it should
+ * appear on (the number, the name, the call to action, the emphasised word), and `second` the word of its second beat
+ * (the "tapi" of "bukan X, tapi Y", when the better option arrives).
+ */
+export function overlayAnchors(text: string, visual: SceneVisual): { start: number; second?: number } {
+  const keys = stripMarks(text).split(/\s+/).filter(Boolean).map(wordKey);
+  const find = (test: (k: string) => boolean) => keys.findIndex(test);
+  // Only a plain statement, question or quote is about the names themselves; a number, comparison, list or call to action
+  // keeps its own word (a call to action shows the names too, each on its own beat).
+  if (visual.brands?.length && ["statement", "question", "quote"].includes(visual.template)) return { start: Math.min(Math.max(0, visual.brands[0].index), Math.max(0, keys.length - 1)) };
+  switch (visual.template) {
+    case "number": {
+      const raw = visual.number ? wordKey(visual.number.raw) : "";
+      const i = raw ? find(k => k === raw || k.startsWith(raw)) : -1;
+      return { start: i >= 0 ? i : Math.max(0, find(k => /\d/.test(k))) };
+    }
+    case "compare": {
+      const bad = find(k => /^(bukan|not)$/.test(k));
+      const good = find(k => /^(tapi|tetapi|melainkan|but|instead|vs|versus|daripada)$/.test(k));
+      return { start: Math.max(0, bad), second: good >= 0 ? good : Math.floor(keys.length / 2) };
+    }
+    case "cta": {
+      const word = (visual.cta ?? "").toLowerCase().split(" ")[0];
+      const i = word ? find(k => k === word || (word.length >= 4 && k.includes(word))) : -1;
+      return { start: Math.max(0, i) };
+    }
+    case "list": case "question": case "quote":
+      return { start: 0 };
+    default: {
+      const emphasised = new Set(visual.emphasis);
+      return { start: Math.max(0, find(k => emphasised.has(k))) };
+    }
+  }
+}
+
+/** Where one animation sits on the video's timeline. */
+export type OverlayWindow = {
+  /** Index of the scene whose animation this is. */
+  scene: number;
+  /** Absolute frame at which it appears, and how long it stays. */
+  from: number;
+  length: number;
+  /** Frames from the start of its scene to `from`. */
+  offset: number;
+};
+
+/**
+ * When each "Video + animasi" scene shows its animation: from just before the word it is about is spoken, for at most
+ * four seconds. It may run on into the next scene, but never past the next animation, never over a scene that
+ * takes over the whole picture (a full graphic or a clip), and never past the end of the video.
+ */
+export function overlayWindows(scenes: Scene[], visuals: SceneVisual[], totalFrames: number): OverlayWindow[] {
+  const starts: number[] = [];
+  let at = 0;
+  for (const s of scenes) { starts.push(at); at += s.durationInFrames; }
+  const out: OverlayWindow[] = [];
+  scenes.forEach((scene, i) => {
+    if (scene.cut !== "overlay") return;
+    const n = stripMarks(scene.text).split(/\s+/).filter(Boolean).length;
+    const anchor = overlayAnchors(scene.text, visuals[i]);
+    const offset = Math.max(0, Math.min(wordStartFrame(scene, anchor.start, n) - OVERLAY_LEAD_FRAMES, scene.durationInFrames - 1));
+    out.push({ scene: i, from: starts[i] + offset, length: MAX_OVERLAY_FRAMES, offset });
+  });
+  out.forEach((w, k) => {
+    let end = Math.min(totalFrames, w.from + MAX_OVERLAY_FRAMES);
+    if (out[k + 1]) end = Math.min(end, out[k + 1].from);
+    for (let j = w.scene + 1; j < scenes.length && starts[j] < end; j++) {
+      if (scenes[j].cut === "graphic" || scenes[j].cut === "clip") { end = starts[j]; break; }
+    }
+    w.length = end - w.from;
+  });
+  return out.filter(w => w.length >= MIN_OVERLAY_FRAMES);
+}
+
+/** Frame (within its animation) at which word `index` of the scene is spoken: the beat an animation reacts to. */
+export function beatFrame(scene: Pick<Scene, "wordStarts" | "durationInFrames" | "pauseFrames" | "text">, index: number, offset: number): number {
+  const n = stripMarks(scene.text).split(/\s+/).filter(Boolean).length;
+  return Math.max(0, wordStartFrame(scene, index, n) - offset);
+}
+
