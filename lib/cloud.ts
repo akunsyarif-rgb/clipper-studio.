@@ -12,7 +12,7 @@ const STORAGE_KEY = "clipper:cloud:v1";
 const SESSION_ID = "current";
 const TIMEOUT_MS = 20_000;
 
-export type CloudErrorKind = "credentials" | "closed" | "exists" | "unconfirmed" | "weak" | "network" | "expired" | "server";
+export type CloudErrorKind = "disabled" | "credentials" | "closed" | "exists" | "unconfirmed" | "weak" | "network" | "expired" | "server";
 export class CloudError extends Error {
   constructor(readonly kind: CloudErrorKind, message: string) { super(message); }
 }
@@ -29,7 +29,8 @@ export function explainAuth(status: number, body: unknown): CloudError {
   const b = (body ?? {}) as { error_code?: string; code?: string | number; msg?: string; message?: string; error_description?: string };
   const code = String(b.error_code ?? b.code ?? "");
   const text = `${code} ${b.msg ?? b.message ?? b.error_description ?? ""}`;
-  if (/Database error saving new user|signup_disabled|signups? (are )?disabled/i.test(text)) return new CloudError("closed", "Pendaftaran ditutup: aplikasi ini masih pribadi dan akun pemiliknya sudah ada. Masuk dengan akun itu.");
+  if (/email_provider_disabled|Email logins are disabled/i.test(text)) return new CloudError("disabled", "Login email dimatikan di Supabase. Nyalakan \"Enable Email provider\" di Authentication → Sign In / Providers → Email, lalu coba lagi.");
+  if (/Database error saving new user|signup_disabled|signups? (are )?disabled/i.test(text)) return new CloudError("closed", "Pendaftaran ditolak: aplikasi ini masih pribadi dan biasanya akun pemiliknya sudah ada. Coba Masuk. Jika memang belum punya akun, buat dari dashboard Supabase.");
   if (/user_already_exists|already (been )?registered/i.test(text)) return new CloudError("exists", "Email ini sudah terdaftar. Pilih Masuk.");
   if (/email_not_confirmed|not confirmed/i.test(text)) return new CloudError("unconfirmed", "Email belum dikonfirmasi. Buka tautan di email dari Supabase (atau matikan \"Confirm email\" di pengaturan Auth).");
   if (/weak_password|at least \d+ characters|Password should/i.test(text)) return new CloudError("weak", "Kata sandi terlalu lemah. Pakai minimal 8 karakter.");

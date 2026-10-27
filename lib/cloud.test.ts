@@ -42,6 +42,7 @@ describe("signing in", () => {
     expect(wrong).toMatchObject({ kind: "credentials" });
     const closed = await setup(json(500, { code: 500, error_code: "unexpected_failure", msg: "Database error saving new user" })).c.signUp("a@b.c", "password1").catch(e => e);
     expect(closed).toMatchObject({ kind: "closed", message: expect.stringContaining("masih pribadi") });
+    expect(explainAuth(422, { error_code: "email_provider_disabled", msg: "Email logins are disabled" })).toMatchObject({ kind: "disabled", message: expect.stringContaining("Enable Email provider") });
     expect(explainAuth(400, { error_code: "email_not_confirmed" })).toMatchObject({ kind: "unconfirmed" });
     expect(explainAuth(422, { error_code: "weak_password", msg: "Password should be at least 6 characters" })).toMatchObject({ kind: "weak" });
     expect(explainAuth(422, { error_code: "user_already_exists" })).toMatchObject({ kind: "exists" });
