@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { handle } from "../supabase/functions/gemini/handler";
+import { cleanBaseUrl, handle } from "../supabase/functions/gemini/handler";
 
 const ENV = { url: "https://p.supabase.co", serviceKey: "service-role-secret" };
 const KEY = "AIzaSyFAKE_KEY_FOR_TESTS_0123456789abcd";
 type Call = { url: string; init: RequestInit };
 
 /** A fake Supabase (auth + one secrets row) and a fake Google. */
-function world(opts: { user?: string | null; row?: { gemini_key: string | null; gemini_model: string | null } | null; google?: Response; authDown?: boolean; googleDown?: boolean } = {}) {
+function world(opts: { user?: string | null; row?: { gemini_key: string | null; gemini_model: string | null; provider?: string; base_url?: string | null } | null; google?: Response; authDown?: boolean; googleDown?: boolean } = {}) {
   const calls: Call[] = [];
   const state = { row: opts.row === undefined ? { gemini_key: null, gemini_model: null } : opts.row, deleted: false, saved: null as unknown };
   const fetchImpl = (async (url: string, init: RequestInit = {}) => {
@@ -20,7 +20,7 @@ function world(opts: { user?: string | null; row?: { gemini_key: string | null; 
       if (init.method === "DELETE") { state.deleted = true; return new Response(null, { status: 204 }); }
       return new Response(JSON.stringify(state.row ? [state.row] : []), { status: state.row === null ? 500 : 200 });
     }
-    if (url.includes("generativelanguage.googleapis.com")) {
+    if (url.includes("generativelanguage.googleapis.com") || url.includes("router.example.com")) {
       if (opts.googleDown) throw new TypeError("down");
       return opts.google ?? new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "{\"lines\":[\"x\"]}" }] } }] }), { status: 200 });
     }
@@ -78,15 +78,15 @@ describe("who may call", () => {
 
 describe("the key", () => {
   it("says whether a key is saved, never returning the key", async () => {
-    expect((await run(world(), { action: "status" })).json).toEqual({ hasKey: false, model: "gemini-2.5-flash" });
+    expect((await run(world(), { action: "status" })).json).toMatchObject({ hasKey: false, provider: "google", model: "gemini-flash-latest" });
     const r = await run(world({ row: { gemini_key: KEY, gemini_model: "gemini-x" } }), { action: "status" });
-    expect(r.json).toEqual({ hasKey: true, model: "gemini-x" });
+    expect(r.json).toMatchObject({ hasKey: true, provider: "google", model: "gemini-x" });
     expect(JSON.stringify(r.json)).not.toContain(KEY);
   });
   it("saves a key, trimmed, with the service role, and never echoes it", async () => {
     const w = world();
     const r = await run(w, { action: "save-key", apiKey: `  ${KEY}\n`, model: "gemini-y" });
-    expect(r.json).toEqual({ ok: true, model: "gemini-y" });
+    expect(r.json).toMatchObject({ ok: true, provider: "google", model: "gemini-y" });
     expect(w.state.saved).toMatchObject({ gemini_key: KEY, gemini_model: "gemini-y" });
     expect(JSON.stringify(r.json)).not.toContain(KEY);
     expect((w.calls.find(c => c.url.includes("user_secrets"))!.init.headers as Record<string, string>).authorization).toBe(`Bearer ${ENV.serviceKey}`);
@@ -95,7 +95,7 @@ describe("the key", () => {
     expect((await run(world(), { action: "save-key", apiKey: "short" })).json.error.status).toBe("BAD_KEY");
     expect((await run(world(), { action: "save-key", apiKey: `${KEY} ${KEY}` })).json.error.status).toBe("BAD_KEY");
     const w = world();
-    expect((await run(w, { action: "save-key", apiKey: KEY, model: "../../etc?x=1" })).json.model).toBe("gemini-2.5-flash");
+    expect((await run(w, { action: "save-key", apiKey: KEY, model: "../../etc?x=1" })).json.model).toBe("gemini-flash-latest");
   });
   it("forgets the key", async () => {
     const w = world();
@@ -173,5 +173,53 @@ describe("choosing a model", () => {
     expect(patch.url).toContain("user_id=eq.u1");
     expect(JSON.parse(patch.init.body as string)).toEqual({ gemini_model: "gemini-3.5-flash" });
     expect((await run(world(), { action: "set-model", model: "a/b?c" })).json.error.status).toBe("BAD_MODEL");
+  });
+});
+
+describe("an OpenAI-format router", () => {
+  const BASE = "https://router.example.com/v1";
+  const row = { gemini_key: "sk-router-key-0123456789abcdef", gemini_model: "google/gemini-x", provider: "openai", base_url: BASE };
+  const answer = { choices: [{ message: { content: "{\"lines\":[\"x\"]}" } }] };
+  it("saves the provider and address with the key, and reports them", async () => {
+    const w = world();
+    const r = await run(w, { action: "save-key", apiKey: "sk-router-key-0123456789abcdef", provider: "openai", baseUrl: `${BASE}/`, model: "google/gemini-x" });
+    expect(r.json).toEqual({ ok: true, provider: "openai", baseUrl: BASE, model: "google/gemini-x" });
+    expect(w.state.saved).toMatchObject({ provider: "openai", base_url: BASE, gemini_model: "google/gemini-x" });
+    const s = await run(world({ row }), { action: "status" });
+    expect(s.json).toEqual({ hasKey: true, provider: "openai", baseUrl: BASE, model: "google/gemini-x" });
+  });
+  it("needs a public https address", async () => {
+    for (const baseUrl of ["http://router.example.com/v1", "https://localhost/v1", "https://10.0.0.5/v1", "https://user:pw@router.example.com/v1", "https://router.example.com:8443/v1", "https://[::1]/v1", "https://intranet/v1", "not a url", undefined]) {
+      expect((await run(world(), { action: "save-key", apiKey: "sk-router-key-0123456789abcdef", provider: "openai", baseUrl })).json.error.status).toBe("BAD_BASE_URL");
+    }
+    expect(cleanBaseUrl("https://router.flatkey.ai/v1/")).toBe("https://router.flatkey.ai/v1");
+    expect(cleanBaseUrl("https://api.example.com")).toBe("https://api.example.com");
+  });
+  it("posts to chat/completions with the key as a bearer token and the model added", async () => {
+    const w = world({ row, google: new Response(JSON.stringify(answer), { status: 200 }) });
+    const r = await run(w, { action: "generate", body: { messages: [{ role: "user", content: "hai" }] } });
+    expect(r.json).toEqual(answer);
+    const g = w.calls.find(c => c.url.includes("router.example.com"))!;
+    expect(g.url).toBe(`${BASE}/chat/completions`);
+    expect((g.init.headers as Record<string, string>).authorization).toBe(`Bearer ${row.gemini_key}`);
+    expect(JSON.parse(g.init.body as string)).toEqual({ messages: [{ role: "user", content: "hai" }], model: "google/gemini-x" });
+    expect(w.calls.some(c => c.url.includes("googleapis"))).toBe(false);
+  });
+  it("needs a model before generating, and lists the router's models", async () => {
+    expect((await run(world({ row: { ...row, gemini_model: null } }), { action: "generate", body: {} })).json.error.status).toBe("NO_MODEL");
+    const w = world({ row, google: new Response(JSON.stringify({ data: [{ id: "google/gemini-x" }] }), { status: 200 }) });
+    expect((await run(w, { action: "list-models" })).json).toEqual({ data: [{ id: "google/gemini-x" }] });
+    expect(w.calls.find(c => c.url.includes("router.example.com"))!.url).toBe(`${BASE}/models`);
+  });
+  it("can try a typed key against a typed address without saving", async () => {
+    const w = world({ google: new Response(JSON.stringify({ data: [] }), { status: 200 }) });
+    expect((await run(w, { action: "list-models", apiKey: "sk-router-key-0123456789abcdef", provider: "openai", baseUrl: BASE })).status).toBe(200);
+    expect(w.state.saved).toBeNull();
+    expect((await run(world(), { action: "list-models", apiKey: "sk-router-key-0123456789abcdef", provider: "openai", baseUrl: "http://x" })).json.error.status).toBe("BAD_BASE_URL");
+  });
+  it("never leaks the router key in an error", async () => {
+    const w = world({ row, googleDown: true });
+    const res = await handle(post({ action: "generate", body: {} }), ENV, w.fetchImpl);
+    expect(await res.text()).not.toContain(row.gemini_key);
   });
 });

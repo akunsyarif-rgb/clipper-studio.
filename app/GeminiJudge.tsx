@@ -35,7 +35,7 @@ export default function GeminiJudge({ scenes, language, active, onScores, onClea
     setBusy(true); setError("");
     const ctl = new AbortController(); abort.current = ctl;
     try {
-      const scores = await judgeScenesWithGemini(scenes, { apiKey: settings.apiKey, model: settings.model, language, signal: ctl.signal, transport: settings.transport });
+      const scores = await judgeScenesWithGemini(scenes, { apiKey: settings.apiKey, model: settings.model, language, signal: ctl.signal, transport: settings.transport, format: settings.format });
       const byText: Record<string, SceneScore> = {};
       scores.forEach((s, i) => { if (s) byText[scenes[i].text] = s; });
       onScores(byText);

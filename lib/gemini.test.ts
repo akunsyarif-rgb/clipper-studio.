@@ -367,3 +367,60 @@ describe("a busy service", () => {
     await expect(p).rejects.toMatchObject({ kind: "timeout", message: "Dibatalkan." });
   });
 });
+
+import { parseOpenAiModels } from "./gemini";
+
+describe("an OpenAI-format service (a router such as Flatkey)", () => {
+  const oa = (content: unknown, extra: object = {}) => ({ choices: [{ message: { content }, ...extra }] });
+  const via = async (lines: string[], extra: object = {}) => {
+    let seen: Record<string, unknown> = {};
+    const transport = async (payload: object) => { seen = payload as Record<string, unknown>; return ok(oa(JSON.stringify({ lines }), extra)); };
+    return { seen: () => seen, run: (o: object = {}) => cleanupLines(["a"], { ...opts(fakeFetch().fn), apiKey: "", transport, format: "openai", ...o }) };
+  };
+  it("sends plain text as one string, with JSON mode, and reads choices[0].message.content", async () => {
+    const t = await via(["B"]);
+    expect(await t.run()).toEqual(["B"]);
+    const p = t.seen() as { messages: { role: string; content: string }[]; response_format: { type: string } };
+    expect(p.response_format).toEqual({ type: "json_object" });
+    expect(typeof p.messages[0].content).toBe("string");
+    expect(p.messages[0].content).toContain("Masukan (JSON)");
+    expect("contents" in p).toBe(false);
+  });
+  it("sends audio as an input_audio part before the text", async () => {
+    const t = await via(["B"]);
+    await t.run({ audio: wavPart(new Float32Array(160)), starts: [0] });
+    const content = (t.seen() as { messages: { content: { type: string; input_audio?: { format: string; data: string } }[] }[] }).messages[0].content;
+    expect(content.map(c => c.type)).toEqual(["input_audio", "text"]);
+    expect(content[0].input_audio!.format).toBe("wav");
+    expect(content[0].input_audio!.data.startsWith("UklGR")).toBe(true);
+  });
+  it("reads a fenced answer, parts-style content, and refuses an empty or filtered one", async () => {
+    const fenced = { choices: [{ message: { content: "```json\n{\"lines\":[\"x\"]}\n```" } }] };
+    expect(parseLines(fenced, 1)).toEqual(["x"]);
+    expect(parseLines(oa([{ type: "text", text: "{\"lines\":[\"y\"]}" }]), 1)).toEqual(["y"]);
+    expect(() => parseLines(oa(""), 1)).toThrow(/tidak memberi jawaban/);
+    expect(() => parseLines(oa("x", { finish_reason: "content_filter" }), 1)).toThrow(expect.objectContaining({ kind: "blocked" }));
+  });
+  it("judges sentences through the same format", async () => {
+    const transport = async () => ok(oa(JSON.stringify({ scenes: [{ index: 0, score: 0.7, reason: "uang" }] })));
+    expect(await judgeScenesWithGemini([{ text: "Gaji 100 juta", seconds: 3 }], { ...opts(fakeFetch().fn), apiKey: "", transport, format: "openai" })).toEqual([{ score: 0.7, reason: "uang" }]);
+  });
+  it("is not used straight from the browser (no transport)", async () => {
+    await expect(cleanupLines(["a"], { ...opts(fakeFetch().fn), format: "openai" })).rejects.toMatchObject({ kind: "key", message: expect.stringContaining("masuk ke akun") });
+  });
+  it("explains the router's own errors", async () => {
+    const e = (status: number, error: object) => cleanupLines(["a"], { ...opts(fakeFetch().fn), apiKey: "", format: "openai", transport: async () => fail(status, error) }).catch((x: GeminiError) => x);
+    expect(await e(401, { message: "Invalid API key", type: "invalid_request_error" })).toMatchObject({ kind: "key" });
+    expect(await e(404, { message: "The model `x` does not exist", code: "model_not_found" })).toMatchObject({ kind: "model" });
+    expect(await e(402, { message: "Insufficient balance" })).toMatchObject({ kind: "quota", message: expect.stringContaining("Saldo") });
+    expect(await e(429, { message: "Rate limit reached", type: "rate_limit_error" })).toMatchObject({ kind: "quota" });
+    expect(await e(400, { status: "NO_MODEL", message: "Pilih model dulu." })).toMatchObject({ kind: "model" });
+    expect(await e(400, { status: "BAD_BASE_URL", message: "x" })).toMatchObject({ kind: "key", message: expect.stringContaining("Alamat dasar") });
+  });
+  it("lists a router's models: Gemini ones first when there are any, never image/audio/embedding", () => {
+    const list = { data: [{ id: "gpt-x" }, { id: "google/gemini-3.5-flash" }, { id: "google/gemini-3.5-flash-image" }, { id: "google/gemini-3.5-flash-lite" }, { id: "text-embedding-3" }, { id: "google/gemini-3.5-flash" }] };
+    expect(parseOpenAiModels(list)).toEqual(["google/gemini-3.5-flash", "google/gemini-3.5-flash-lite"]);
+    expect(parseOpenAiModels({ data: [{ id: "b" }, { id: "a" }] })).toEqual(["a", "b"]);
+    expect(() => parseOpenAiModels({})).toThrow(GeminiError);
+  });
+});

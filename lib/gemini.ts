@@ -65,19 +65,22 @@ export function cleanupPrompt(lines: string[], language: string): string {
 type Fetch = typeof fetch;
 /** Sends the request body somewhere other than straight to Google (the owner's server, which holds the key). Null when signed out. */
 export type Transport = (payload: object, opts: { signal: AbortSignal; timeoutMs: number }) => Promise<Response | null>;
-export type CleanupOptions = { apiKey: string; model: string; language: string; fetchImpl?: Fetch; signal?: AbortSignal; timeoutMs?: number; transport?: Transport; /** Waits (ms) before each retry of a busy or failing service; empty = no retries. */ retryDelaysMs?: number[] };
+export type CleanupOptions = { apiKey: string; model: string; language: string; fetchImpl?: Fetch; signal?: AbortSignal; timeoutMs?: number; transport?: Transport; /** Waits (ms) before each retry of a busy or failing service; empty = no retries. */ retryDelaysMs?: number[]; /** The request/answer format of the service: Google's own (default) or OpenAI's, used by routers such as Flatkey. */ format?: "gemini" | "openai" };
 
 function explain(status: number, body: unknown): GeminiError {
-  const err = (body as { error?: { status?: string; message?: string } } | null)?.error;
-  const text = `${err?.status ?? ""} ${err?.message ?? ""}`;
+  const err = (body as { error?: { status?: string; message?: string; code?: string | number; type?: string } } | null)?.error;
+  const text = `${err?.status ?? ""} ${err?.message ?? ""} ${err?.code ?? ""} ${err?.type ?? ""}`;
   // Answers of the owner's own server, before Google's are considered.
   if (/NO_KEY/.test(text)) return new GeminiError("key", "Belum ada kunci Gemini di akun Anda. Simpan kunci di pengaturan Gemini.");
+  if (/NO_MODEL/.test(text)) return new GeminiError("model", "Belum ada model yang dipilih. Pilih model di pengaturan.");
+  if (/BAD_BASE_URL/.test(text)) return new GeminiError("key", "Alamat dasar layanan tidak valid. Simpan ulang kuncinya dengan alamat yang benar.");
   if (/NOT_SIGNED_IN/.test(text)) return new GeminiError("key", "Sesi masuk berakhir. Masuk lagi.");
   if (/TOO_LARGE/.test(text) || status === 413) return new GeminiError("format", "Permintaan terlalu besar. Pilih bagian video yang lebih pendek.");
   if (/UPSTREAM_UNREACHABLE|AUTH_UNREACHABLE|DB_ERROR|SERVER_ERROR/.test(text)) return new GeminiError("server", "Server sinkron sedang bermasalah. Coba lagi sebentar lagi.");
-  if (status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(text)) return new GeminiError("quota", "Batas pemakaian Gemini habis (kuota atau laju). Tunggu sebentar atau periksa kuota key Anda.");
-  if (status === 404 || /NOT_FOUND|not found for API/i.test(text)) return new GeminiError("model", "Model tidak ditemukan. Periksa nama model di pengaturan Gemini.");
-  if (status === 401 || status === 403 || /API_KEY_INVALID|API key not valid|PERMISSION_DENIED|UNAUTHENTICATED|referer/i.test(text)) return new GeminiError("key", "Key ditolak Google. Periksa key, izin API, atau batasan alamat situs pada key itu.");
+  if (status === 402 || /insufficient[_ ](quota|balance|funds)|out of credit|payment required/i.test(text)) return new GeminiError("quota", "Saldo atau kuota habis. Isi saldo di layanan AI Anda, lalu coba lagi.");
+  if (status === 429 || /RESOURCE_EXHAUSTED|quota|rate[_ ]limit/i.test(text)) return new GeminiError("quota", "Batas pemakaian habis (kuota atau laju). Tunggu sebentar atau periksa kuota kunci Anda.");
+  if (status === 404 || /NOT_FOUND|not found for API|model_not_found|does not exist|invalid model/i.test(text)) return new GeminiError("model", "Model tidak ditemukan. Pilih model lain di \"Model yang tersedia\".");
+  if (status === 401 || status === 403 || /API_KEY_INVALID|API key not valid|PERMISSION_DENIED|UNAUTHENTICATED|referer/i.test(text)) return new GeminiError("key", "Kunci ditolak oleh layanan. Periksa kunci, izin API, atau batasan alamat situs pada kunci itu.");
   if (status === 503 || /UNAVAILABLE|overloaded|high demand/i.test(text)) return new GeminiError("server", "Model sedang penuh permintaan di Google. Sudah dicoba ulang otomatis; coba lagi sebentar lagi atau pilih model lain di \"Model yang tersedia\".");
   if (status >= 500) return new GeminiError("server", "Layanan Gemini sedang bermasalah. Coba lagi sebentar lagi.");
   return new GeminiError("format", "Permintaan ditolak oleh Gemini. Coba lagi, atau periksa nama model.");
@@ -85,6 +88,16 @@ function explain(status: number, body: unknown): GeminiError {
 
 /** The JSON the model answered with (it may sit inside a code fence), after the safety checks. */
 function answerJson(response: unknown): unknown {
+  // An OpenAI-format answer (choices[0].message.content) is read like a Gemini one.
+  const oa = (response as { choices?: { finish_reason?: string; message?: { content?: unknown } }[] } | null)?.choices;
+  if (Array.isArray(oa)) {
+    if (oa[0]?.finish_reason === "content_filter") throw new GeminiError("blocked", "Layanan menghentikan jawabannya karena filter keamanan.");
+    const c = oa[0]?.message?.content;
+    const text = (typeof c === "string" ? c : Array.isArray(c) ? c.map((p: { text?: string }) => p?.text ?? "").join("") : "").trim();
+    if (!text) throw new GeminiError("format", "Layanan tidak memberi jawaban. Coba lagi.");
+    try { return JSON.parse(text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")); }
+    catch { throw new GeminiError("format", "Jawaban tidak berbentuk JSON yang bisa dibaca. Coba lagi."); }
+  }
   const r = response as { promptFeedback?: { blockReason?: string }; candidates?: { finishReason?: string; content?: { parts?: { text?: string }[] } }[] } | null;
   if (r?.promptFeedback?.blockReason) throw new GeminiError("blocked", "Gemini menolak memproses teks ini (diblokir oleh filter keamanannya).");
   const cand = r?.candidates?.[0];
@@ -107,7 +120,8 @@ export function parseLines(response: unknown, expected: number): string[] {
 /** One call to the model. The key travels in a header, never in the address. One automatic retry if the answer is malformed. */
 async function ask<T>(o: CleanupOptions, parts: unknown[], schema: object, parse: (json: unknown) => T): Promise<T> {
   const fetchImpl = o.fetchImpl ?? fetch;
-  const payload = { contents: [{ role: "user", parts }], generationConfig: { temperature: 0.2, responseMimeType: "application/json", responseSchema: schema } };
+  if (o.format === "openai" && !o.transport) throw new GeminiError("key", "Layanan berformat OpenAI hanya bisa dipakai setelah masuk ke akun (kunci disimpan di server).");
+  const payload = o.format === "openai" ? openAiPayload(parts) : { contents: [{ role: "user", parts }], generationConfig: { temperature: 0.2, responseMimeType: "application/json", responseSchema: schema } };
   const body = JSON.stringify(payload);
   const url = `${GEMINI_ENDPOINT}/${encodeURIComponent(o.model)}:generateContent`;
   const once = async () => {
@@ -149,6 +163,14 @@ async function ask<T>(o: CleanupOptions, parts: unknown[], schema: object, parse
   }
 }
 
+/** The same request in OpenAI's format: audio as an input_audio part, plain text as a string, JSON mode on. The server adds the model. */
+function openAiPayload(parts: unknown[]): object {
+  const content = (parts as { text?: string; inlineData?: { data: string; mimeType: string } }[]).map(p =>
+    p.inlineData ? { type: "input_audio", input_audio: { data: p.inlineData.data, format: /mp3|mpeg/.test(p.inlineData.mimeType) ? "mp3" : "wav" } } : { type: "text", text: p.text ?? "" });
+  const plain = content.length === 1 && content[0].type === "text";
+  return { messages: [{ role: "user", content: plain ? (content[0] as { text: string }).text : content }], temperature: 0.2, response_format: { type: "json_object" } };
+}
+
 const LINES_SCHEMA = { type: "OBJECT", properties: { lines: { type: "ARRAY", items: { type: "STRING" } } }, required: ["lines"] };
 
 /** Sends the lines to Gemini and returns the corrected lines (same count). With `audio`, the model also listens to the speech. */
@@ -174,6 +196,15 @@ export function parseModelList(json: unknown): string[] {
   const version = (n: string) => Number(/gemini-(\d+(?:\.\d+)?)/.exec(n)?.[1] ?? 0);
   const rank = (n: string) => (/preview|exp/i.test(n) ? 100 : 0) + (/lite/i.test(n) ? 20 : /pro/i.test(n) ? 10 : /flash/i.test(n) ? 0 : 30);
   return [...new Set(names)].sort((a, b) => rank(a) - rank(b) || version(b) - version(a) || a.localeCompare(b));
+}
+
+/** The model ids in an OpenAI-style list ({data:[{id}]}): Gemini ones first if there are any (a router lists hundreds), minus image/audio/embedding models. */
+export function parseOpenAiModels(json: unknown): string[] {
+  const list = (json as { data?: { id?: string }[] } | null)?.data;
+  if (!Array.isArray(list)) throw new GeminiError("format", "Daftar model dari layanan tidak terbaca. Coba lagi.");
+  const ids = [...new Set(list.map(m => m?.id).filter((id): id is string => typeof id === "string" && id.length > 0 && !NOT_TEXT.test(id)))];
+  const gemini = ids.filter(id => /gemini/i.test(id));
+  return (gemini.length ? gemini : ids).sort((a, b) => Number(/preview|exp/i.test(a)) - Number(/preview|exp/i.test(b)) || a.localeCompare(b)).slice(0, 200);
 }
 
 /** Asks Google which models a key can use (straight from the browser). */

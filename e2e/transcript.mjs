@@ -218,7 +218,7 @@ try {
 
     // Signed in, the key lives on the owner's server: saved there, used through it, never kept in this browser.
     const SB2 = "https://smwealrfgnzxquqqscxs.supabase.co";
-    const srv = { key: null, model: null, generated: 0, authed: true };
+    const srv = { key: null, model: null, generated: 0, authed: true, provider: "google", baseUrl: null, lastBody: null };
     await p.context().route(SB2 + "/**", async route => {
       const req = route.request(), u = new URL(req.url());
       const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "POST, GET, OPTIONS" };
@@ -228,13 +228,17 @@ try {
       if (u.pathname !== "/functions/v1/gemini") return send(404, {});
       if (req.headers().authorization !== "Bearer AT") { srv.authed = false; return send(401, { error: { status: "NOT_SIGNED_IN", message: "Masuk dulu." } }); }
       const m = JSON.parse(req.postData());
-      if (m.action === "status") return send(200, { hasKey: !!srv.key, model: srv.model || "gemini-2.5-flash" });
-      if (m.action === "save-key") { srv.key = m.apiKey; srv.model = m.model; return send(200, { ok: true, model: m.model }); }
+      if (m.action === "status") return send(200, { hasKey: !!srv.key, provider: srv.provider, baseUrl: srv.baseUrl, model: srv.model || "gemini-flash-latest" });
+      if (m.action === "save-key") { srv.key = m.apiKey; srv.model = m.model; srv.provider = m.provider || "google"; srv.baseUrl = m.baseUrl || null; return send(200, { ok: true, model: m.model }); }
       if (m.action === "forget") { srv.key = null; return send(200, { ok: true }); }
       if (m.action === "set-model") { srv.model = m.model; return send(200, { ok: true, model: m.model }); }
       if (m.action === "list-models") return send(200, { models: [{ name: "models/gemini-3.5-flash", supportedGenerationMethods: ["generateContent"] }, { name: "models/gemini-3.5-flash-tts", supportedGenerationMethods: ["generateContent"] }, { name: "models/gemini-embedding-001", supportedGenerationMethods: ["embedContent"] }] });
       if (m.action === "generate") {
-        srv.generated++;
+        srv.generated++; srv.lastBody = m.body;
+        if (srv.provider === "openai") {
+          const lines = JSON.parse(m.body.messages[0].content.split("\n").at(-1));
+          return send(200, { choices: [{ message: { content: JSON.stringify({ lines: lines.map((t, i) => i === 0 ? t + "?" : t) }) } }] });
+        }
         const lines = JSON.parse(m.body.contents.at(-1).parts.at(-1).text.split("\n").at(-1));
         return send(200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ lines: lines.map((t, i) => i === 0 ? t + "?" : t) }) }] } }] });
       }
@@ -269,6 +273,28 @@ try {
     await p.getByTestId("gemini-forget").click();
     await p.getByTestId("gemini-key").waitFor({ timeout: 5000 });
     assert(srv.key === null, "forgetting removes the key from the server");
+
+    // A router with OpenAI-format answers (such as Flatkey): its own address and model, same screens.
+    await p.getByTestId("gemini-provider").selectOption("openai");
+    assert((await p.getByTestId("gemini-baseurl").inputValue()) === "https://router.flatkey.ai/v1", "the router address is suggested");
+    await p.getByTestId("gemini-key").fill("sk-router-key-0123456789abcdef");
+    await p.getByTestId("gemini-save").click();
+    await p.getByTestId("gemini-error").waitFor({ timeout: 3000 }); // a model name is needed for a router
+    await p.getByTestId("gemini-model").fill("google/gemini-x");
+    await p.getByTestId("gemini-save").click();
+    await p.getByTestId("gemini-run").waitFor({ timeout: 5000 });
+    assert(srv.provider === "openai" && srv.baseUrl === "https://router.flatkey.ai/v1" && srv.model === "google/gemini-x", "provider, address and model reached the server");
+    assert(/router\.flatkey\.ai/.test(await p.getByTestId("gemini-where").innerText()), "panel shows the router");
+    await p.getByTestId("gemini-run").click();
+    await p.getByTestId("gemini-change").first().waitFor({ timeout: 10000 });
+    assert(srv.lastBody?.messages?.[0]?.role === "user" && srv.lastBody.response_format?.type === "json_object", "the request used the OpenAI format");
+    await p.getByTestId("gemini-model-manual").fill("google/gemini-y");
+    await p.getByTestId("gemini-model-use").click();
+    await p.getByTestId("gemini-note").waitFor({ timeout: 5000 });
+    assert(srv.model === "google/gemini-y", "a model typed by hand is saved: " + srv.model);
+    await p.getByTestId("gemini-forget").click();
+    await p.getByTestId("gemini-key").waitFor({ timeout: 5000 });
+    assert(srv.key === null, "the router key is forgotten too");
     const autoLabel = await p.getByTestId("scene-cut").first().locator("option").first().innerText();
     assert(/Video \+ animasi/.test(autoLabel), "first scene defaults to an animation over the video: " + autoLabel);
     const options = await p.getByTestId("scene-cut").first().locator("option").allInnerTexts();
