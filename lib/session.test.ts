@@ -21,6 +21,13 @@ describe("isSession", () => {
     expect(isSession(stored({ ...base, overlay: "middle" }))).toBe(false);
   });
 
+  it("accepts the animation settings, and refuses unknown ones", () => {
+    expect(isSession(stored({ ...base, density: "sparse", brandMotion: "full" }))).toBe(true);
+    expect(isSession(stored({ ...base, density: "rich" }))).toBe(true);
+    expect(isSession(stored({ ...base, density: "all" }))).toBe(false);
+    expect(isSession(stored({ ...base, brandMotion: "wild" }))).toBe(false);
+  });
+
   it("rejects other versions, missing fields and wrong types instead of half-applying them", () => {
     expect(isSession(null)).toBe(false);
     expect(isSession([])).toBe(false);

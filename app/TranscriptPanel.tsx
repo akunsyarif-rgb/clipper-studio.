@@ -9,7 +9,7 @@ import { extractAudio, loadEngine, terminateEngine } from "@/lib/engine";
 import { loadCachedTranscript, saveCachedTranscript } from "@/lib/session-store";
 import { MODELS, releaseAsr, transcribe, TranscribeCancelled, type AsrHandle, type ModelId } from "@/lib/asr/client";
 import {
-  activeAt, asrEta, asrSlowHint, asrTimingSummary, editSegment, explainTranscribeError, HANDOFF_KEY, LANGUAGES, serializeHandoff, toSrt, transcriptText, validateTranscribeRange,
+  activeAt, asrEta, cleanupRequest, asrSlowHint, asrTimingSummary, editSegment, explainTranscribeError, HANDOFF_KEY, LANGUAGES, serializeHandoff, toSrt, transcriptText, validateTranscribeRange,
   type LanguageId, type Transcript,
 } from "@/lib/transcript";
 
@@ -201,7 +201,8 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
       <small className="asr-hint">Koreksi teks lalu ketuk di luar kolom. Waktu kata dipertahankan; jika jumlah kata berubah, waktu dibagi rata dalam segmen. Kosongkan kolom untuk menghapus segmen.</small>
       <div className="range-tools">
         <button onClick={() => { onCopy(transcriptText(transcript.value)); setInfo("Transkrip disalin ke kolom Subtitle di bawah."); }}>Salin ke kolom subtitle</button>
-        <button onClick={() => save(`${base}.srt`, toSrt(transcript.value), "application/x-subrip")} data-testid="asr-srt">Unduh .srt</button>
+        <button onClick={() => void navigator.clipboard.writeText(cleanupRequest(transcript.value)).then(() => setInfo("Permintaan rapikan + transkrip disalin. Tempel ke obrolan Claude, lalu tempel hasilnya ke kolom Naskah: waktu kata tetap mengikuti ucapan."), () => setError("Browser menolak menyalin. Salin teks transkrip secara manual."))} data-testid="asr-claude">Salin untuk dirapikan Claude</button>
+      <button onClick={() => save(`${base}.srt`, toSrt(transcript.value), "application/x-subrip")} data-testid="asr-srt">Unduh .srt</button>
         <button onClick={() => save(`${base}.txt`, transcriptText(transcript.value), "text/plain")}>Unduh .txt</button>
       </div>
       {onUse

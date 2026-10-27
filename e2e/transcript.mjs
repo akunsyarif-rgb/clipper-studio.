@@ -149,6 +149,12 @@ try {
     // Use the saved transcript: editing over the video, with an animation drawn over the speaker by default.
     await p.getByTestId("asr-use").click();
     await p.getByTestId("scene-cut").first().waitFor({ timeout: 10000 });
+    // Not every sentence is animated: each scene says whether it is and why, and the amount can be changed.
+    const note = await p.getByTestId("scene-importance").first().innerText();
+    assert(/^(Animasi|Tanpa animasi): /.test(note), "each scene explains its choice: " + note);
+    assert((await p.getByTestId("animation-density").inputValue()) === "balanced", "balanced by default");
+    assert((await p.getByTestId("brand-motion").inputValue()) === "simple", "calm brand animation by default");
+    await p.getByTestId("animation-density").selectOption("rich");
     const autoLabel = await p.getByTestId("scene-cut").first().locator("option").first().innerText();
     assert(/Video \+ animasi/.test(autoLabel), "first scene defaults to an animation over the video: " + autoLabel);
     const options = await p.getByTestId("scene-cut").first().locator("option").allInnerTexts();

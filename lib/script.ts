@@ -1,6 +1,6 @@
 // Pure script → timeline logic shared by the UI, the Remotion composition and unit tests.
 import type { Music } from "./audio";
-import type { OverlayPosition } from "./overlay";
+import type { BrandMotion, OverlayPosition } from "./overlay";
 import type { Cut, SceneVisual } from "./visuals";
 import type { NarrativePlan } from "./narrative";
 
@@ -83,6 +83,8 @@ export type VideoProps = {
   video?: { src: string; seconds?: number } | null;
   /** Where animations over the speaker sit: in the space above the head (default) or just above the captions. */
   overlay?: OverlayPosition;
+  /** Popular names: "simple" (default) is calm, "full" adds a small animated scene of each service. */
+  brandMotion?: BrandMotion;
 };
 
 const words = (s: string) => s.split(/\s+/).filter(Boolean);

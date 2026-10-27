@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { audioArgs } from "./clip";
-import { autoCuts, detectVisual } from "./visuals";
 import { activeWordIndex, buildTimeline, FPS, phraseChunks, phraseLine, splitScript } from "./script";
 import {
-  activeAt, alignWords, allWords, asrEta, collapseRepeats, looksLooping, asrSlowHint, asrTimingSummary, editSegment, explainTranscribeError, formatSrtTime, groupSegments, mergeSubwords, parseHandoff, parseWords, shiftWords,
+  activeAt, alignWords, allWords, asrEta, cleanupRequest, collapseRepeats, looksLooping, asrSlowHint, asrTimingSummary, editSegment, explainTranscribeError, formatSrtTime, groupSegments, mergeSubwords, parseHandoff, parseWords, shiftWords,
   sceneTimings, serializeHandoff, spreadWords, toSrt, transcriptFromSegments, transcriptFromWords, transcriptText, validateTranscribeRange,
   type RawChunk,
 } from "./transcript";
@@ -194,24 +193,6 @@ describe("audioArgs", () => {
   });
 });
 
-describe("autoCuts (source-video edit plan)", () => {
-  const v = (t: string) => detectVisual(t);
-  it("draws an animation over the speaker for scenes with a number, step, question, concept or call to action", () => {
-    const cuts = autoCuts([v("Ada 100 ribu orang yang ikut."), v("Uang itu penting sekali."), v("Pertama, tentukan targetmu."), v("Siapa yang mau mulai?"), v("Ikuti untuk tips berikutnya.")]);
-    expect(cuts).toEqual(["overlay", "overlay", "overlay", "overlay", "overlay"]);
-  });
-  it("stays on the speaker for plain statements", () => {
-    expect(autoCuts([v("Ya begitulah."), v("Sudah lama sekali.")])).toEqual(["video", "video"]);
-  });
-  it("never chooses a full-screen graphic or a clip by itself", () => {
-    const cuts = autoCuts([v("Ada 100 ribu orang yang ikut."), v("Ya begitulah."), v("Uang itu penting."), v("Bukan motivasi, tapi sistem.")]);
-    expect(cuts.includes("graphic") || cuts.includes("clip")).toBe(false);
-  });
-  it("features a hand-emphasised word even without an icon", () => {
-    expect(autoCuts([{ template: "statement", icon: null, emphasis: ["sederhana"] }])).toEqual(["overlay"]);
-  });
-});
-
 describe("phrase captions", () => {
   it("chunks by words, characters and punctuation without losing or reordering words", () => {
     const text = "Belum satu bulan di jalan ini, gerakan pertunukan untuk kutan Perhari sudah menembus angkat 172 orang.";
@@ -366,5 +347,24 @@ describe("repetition loops (a model stuck repeating itself)", () => {
   it("also folds loops in a segment-only transcript", () => {
     const t = transcriptFromSegments([{ text: " Halo " + "yang mana? ".repeat(8), timestamp: [0, 10] }], 10, "id");
     expect(t.segments[0].text).toBe("Halo yang mana?");
+  });
+});
+
+describe("cleanupRequest (hand the transcript to Claude)", () => {
+  const t = transcriptFromSegments([{ text: " Halo semuanya", timestamp: [0, 2] }, { text: " apa kabar hari ini", timestamp: [2, 5] }], 5, "id");
+  it("asks for a careful clean-up and keeps one line per segment", () => {
+    const r = cleanupRequest(t);
+    expect(r).toContain("bahasa Indonesia");
+    expect(r).toMatch(/jumlah baris harus sama/);
+    expect(r.endsWith("Halo semuanya\napa kabar hari ini")).toBe(true);
+  });
+  it("names English when the transcript is English", () => {
+    expect(cleanupRequest({ ...t, language: "en" })).toContain("bahasa Inggris");
+  });
+  it("round-trips: corrected lines pasted back keep the timing of the speech", () => {
+    const words = allWords(transcriptFromWords([{ text: " Halo", timestamp: [0.2, 0.6] }, { text: " semuanya", timestamp: [0.6, 1.2] }, { text: " apa", timestamp: [2, 2.3] }, { text: " kabar", timestamp: [2.3, 2.7] }], 4, "id"));
+    const fixed = sceneTimings(splitScript("Halo semuanya,\napa kabar?"), words, FPS, 4);
+    expect(fixed).not.toBeNull();
+    expect(fixed!.wordStarts[0][0]).toBe(6);
   });
 });

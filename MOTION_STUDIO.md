@@ -274,3 +274,37 @@ When a sentence names a popular service it gets that service's icon, **and its o
 - The glyphs are simple line drawings made for this studio (a play badge, a note, a camera, …): they hint at the service and are not its official logo.
 - A call to action ("subscribe ke YouTube") keeps its button and shows the name above it. Choosing an icon by hand replaces the detected names.
 - Everything is a function of the frame number, so preview and render match. Adding a name is one entry in `BRANDS` plus one in `BRAND_STYLE`; tests check that every name has an icon, a colour readable on the veil and a kind of scene.
+
+## Which sentences get an animation
+
+Animating every sentence is noise, so the studio judges each one (`lib/importance.ts`) and animates only the strongest. The score comes from what the sentence says, and the reasons are written in the scene list ("Animasi: angka uang, pembuka (skor 1.00)" or "Tanpa animasi: kurang penting (skor 0.20, konsep inti naskah)"):
+
+| What it says | Score |
+|---|---|
+| a popular name (YouTube, TikTok, …), or a word you marked with `*stars*` | 0.9 / 0.85, never penalised |
+| an amount of money, or a new amount next to one ("5 juta … itu tiga bulan hidup") | 0.9 (+0.1 for several amounts) |
+| another quantity, a percentage | 0.8 |
+| a sentence that names three or more concepts ("uang, energi dan waktu") | 0.75 |
+| a comparison ("bukan X, tapi Y") | 0.75 |
+| a call to action | 0.7 |
+| the first mention of an idea the whole script keeps returning to | 0.65 |
+| steps ("pertama", "langkah 2") | 0.6 |
+| a question, a single concept icon, a keyword | 0.35 / 0.3 / 0.15 |
+
+A little is added for the opening scene. The score is lowered for a very short sentence, one that is mostly filler ("gue", "lu", "ya", "kok", "sih", …), one shorter than 1.5 s, the same icon as a scene a moment ago, and an amount that was already shown. Then the strongest are chosen with a minimum distance and a limit on how much of the video animations may cover:
+
+| *Berapa banyak animasi* | bar | apart | covers at most |
+|---|---|---|---|
+| Sedikit | 0.8 | 8 s | 18 % |
+| **Seimbang** (default) | 0.6 | 5 s | 30 % |
+| Banyak | 0.3 | 3 s | 45 % |
+
+On a real 16-sentence transcript about money, the old rule animated 14 sentences; *Seimbang* animates 5 or 6 (the amounts and the sentence that lists money, energy and time) and leaves the filler alone. Whatever the plan says, each scene's *Layar* choice overrides it ("Diatur manual").
+
+**Popular names** have two styles (*Gaya animasi istilah populer*): *Sederhana (elegan)* is the default, an icon and its name with one soft ring; *Lengkap (meriah)* adds the small scene of each service, now more compact (TikTok: five slim bars and two notes).
+
+Words are read with care: a keyword counts at the start of a word or after an Indonesian prefix ("memulai" is *mulai*), not in the middle ("ceritanya" is not *tanya*, "sebenarnya" is not *benar*), and "5 jutaan", "miliar" and "triliun" are read as amounts.
+
+## Cleaning up a transcript with Claude
+
+A recogniser's slips ("Aplun", "mikro" for "mikir") are best fixed with the whole text in view. In the transcript list, *Salin untuk dirapikan Claude* copies a ready request plus the transcript, one line per segment. Paste it into a chat with Claude, then paste the corrected lines into the *Naskah* field: the words are aligned to the speech again, so captions and animations keep following what is said.

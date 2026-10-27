@@ -23,9 +23,16 @@ const COMPARING = new Set(["looks", "look", "looked", "looking", "feels", "feel"
  * "like" counts only as the verb ("I like it", "you'll like this", "would like to", "don't like"); after "looks",
  * "feels", "just" or "such", before "a/the", or on its own as a filler ("so, like,") it is a comparison.
  */
+/**
+ * Common words that merely contain a concept's keyword and have nothing to do with it ("sebenarnya" is "actually",
+ * not "benar" = correct). Long keywords match inside words (so "memulai" finds "mulai"), which needs this short list.
+ */
+export const LOOKALIKES = new Set(["sebenarnya", "sebetulnya", "kebetulan", "sebenar", "ketepatan", "pertepatan", "terbilang"]);
+
 export function ambiguousMask(tokens: string[]): Set<number> {
   const masked = new Set<number>();
   tokens.forEach((t, i) => {
+    if (LOOKALIKES.has(t)) { masked.add(i); return; }
     // "save money / time / energy" is about thrift or effort, not about bookmarking something.
     if ((t === "save" || t === "saves" || t === "saved") && SAVED_THINGS.has(tokens[i + 1] ?? "")) { masked.add(i); return; }
     if (t !== "like" && t !== "likes" && t !== "liked") return;

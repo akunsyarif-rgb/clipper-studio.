@@ -52,16 +52,18 @@ function Player({ f, c, c2 }: P) {
   );
 }
 
-/** TikTok / Spotify: an equalizer; TikTok adds floating notes, Spotify a progress bar. */
+/** TikTok / Spotify: a small equalizer; TikTok adds two notes drifting up, Spotify a progress bar. Kept compact and calm. */
 function Equalizer({ f, c, c2, id }: P & { id: string }) {
-  const bars = barHeights(f, 9);
   const spot = id === "spotify";
+  const count = spot ? 7 : 5;
+  const bars = barHeights(f, count);
+  const top = 40, base = 150;
   return (
     <g>
-      {bars.map((h, i) => <rect key={i} x={i * 38} y={(spot ? 150 : 180) - 150 * h * (spot ? 0.95 : 1)} width={26} height={150 * h * (spot ? 0.95 : 1)} rx={8} fill={i % 2 ? c2 : c} opacity={0.95} />)}
+      {bars.map((h, i) => <rect key={i} x={i * 30} y={base - (base - top) * h} width={16} height={(base - top) * h} rx={8} fill={i % 2 && !spot ? c2 : c} opacity={0.9} />)}
       {spot ? (
-        <g><rect x={0} y={170} width={342} height={8} rx={4} fill={SOFT} /><rect x={0} y={170} width={342 * progress(f, 4, 120)} height={8} rx={4} fill={c} /></g>
-      ) : [0, 1, 2, 3].map(i => { const q = floater(f, i, 4); return <Glyph key={i} node={Music2} x={400 + q.x * 200} y={STAGE_H - 10 - q.y * (STAGE_H - 30)} size={46} color={i % 2 ? c2 : c} opacity={q.opacity} scale={q.scale} rotate={Math.sin((f + i * 9) / 9) * 14} sw={2} />; })}
+        <g><rect x={0} y={166} width={count * 30 - 14} height={6} rx={3} fill={SOFT} /><rect x={0} y={166} width={(count * 30 - 14) * progress(f, 4, 120)} height={6} rx={3} fill={c} /></g>
+      ) : [0, 1].map(i => { const q = floater(f, i, 2, 96); return <Glyph key={i} node={Music2} x={230 + q.x * 80} y={base - q.y * (base - 30)} size={34} color={i % 2 ? c2 : c} opacity={q.opacity * 0.85} scale={0.8 + 0.2 * q.scale} rotate={Math.sin((f + i * 9) / 12) * 10} sw={2} />; })}
     </g>
   );
 }

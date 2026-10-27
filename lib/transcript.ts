@@ -411,3 +411,21 @@ export function asrSlowHint(model: string, t: AsrTimings): string {
   if (!/small/i.test(model) || t.audioSeconds <= 0) return "";
   return t.inferSeconds / t.audioSeconds > 1 ? "Terasa lambat? Model \"Akurat (base)\" biasanya beberapa kali lebih cepat di perangkat ini, dengan hasil yang masih baik untuk bahasa Indonesia." : "";
 }
+
+/**
+ * Text to paste into a chat with Claude to clean up a transcript: it names the usual slips of a speech recogniser and
+ * keeps the lines, so the corrected text can be pasted back into the script field and still follows the speech's timing.
+ */
+export function cleanupRequest(t: Transcript): string {
+  const lines = t.segments.map(s => s.text).join("\n");
+  return [
+    `Berikut transkrip otomatis (${t.language === "en" ? "bahasa Inggris" : "bahasa Indonesia"}) dari sebuah video. Tolong rapikan:`,
+    "- perbaiki salah dengar (kata yang tidak masuk akal, nama merek dan istilah) berdasarkan konteks seluruh teks;",
+    "- perbaiki ejaan dan tanda baca, tetapi pertahankan gaya bicara dan kata-kata aslinya;",
+    "- jangan menambah, membuang, atau menggabungkan kalimat; jumlah baris harus sama dengan aslinya;",
+    "- kalau ragu pada satu kata, biarkan apa adanya dan beri tanda [?] setelahnya.",
+    "Kembalikan hanya teks yang sudah diperbaiki, satu baris per baris asli.",
+    "",
+    lines,
+  ].join("\n");
+}

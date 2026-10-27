@@ -165,29 +165,43 @@ import { stripMarks, wordKey } from "./text";
 
 /** Endings allowed after a 4-letter keyword ("main" → "mainkan", "play" → "playing", but not "idea" → "ideal"). */
 const SUFFIX = /^(|s|es|ed|d|ing|er|ers|ly|kan|an|i|nya|lah|kah|mu|ku)$/;
-const ID_PREFIX = /^(meng|meny|mem|men|me|ber|be|di|ter|per|peng|pem|pen|pe|ke|se)/;
+const ID_PREFIXES = ["meng", "meny", "mem", "men", "me", "ber", "be", "di", "ter", "per", "peng", "peny", "pem", "pen", "pe", "ke", "se"];
+
+/**
+ * The word as it may have looked without an Indonesian prefix: every prefix that fits is tried, and the first letter
+ * that the prefix swallowed ("menulis" → "tulis", "membaca" → "baca", "memulai" → "mulai") is put back.
+ */
+function stems(token: string): string[] {
+  const out = [token];
+  for (const p of ID_PREFIXES) {
+    if (!token.startsWith(p) || token.length - p.length < 3) continue;
+    const rest = token.slice(p.length);
+    out.push(rest);
+    if (/^(meng|meny|mem|men|peng|peny|pem|pen)$/.test(p)) for (const c of "kstp") out.push(c + rest);
+  }
+  return out;
+}
 
 function wordMatches(token: string, keyword: string): boolean {
   if (keyword.includes(" ")) return false;
   if (token === keyword) return true;
   // Up to 3 letters: whole words only ("ai", "ide", "jam"). 4 letters: start of the word or after an
-  // Indonesian prefix ("main" → "bermain", not "remain"). 5+: anywhere ("mulai" → "memulai", "dimulai").
+  // Indonesian prefix ("main" → "bermain", not "remain"). 5+: also at the start or after a prefix, with anything
+  // after it ("mulai" → "memulai", "dimulai", "mulailah"), but not in the middle ("tanya" is not in "ceritanya").
   if (keyword.length <= 3) return false;
-  if (keyword.length === 4) return [token, token.replace(ID_PREFIX, "")].some(t => t.startsWith(keyword) && SUFFIX.test(t.slice(keyword.length)));
-  return token.includes(keyword);
+  if (keyword.length === 4) return token.split("-").some(part => stems(part).some(t => t.startsWith(keyword) && SUFFIX.test(t.slice(keyword.length))));
+  // Parts of a hyphenated word count on their own ("uang-uang").
+  return token.split("-").some(part => stems(part).some(t => t.startsWith(keyword)));
 }
 
-/**
- * Best matching concept for the text, with the words that triggered it.
- * `topics` are the concepts the neighbouring scenes are about: a generic word ("move", "see", "day") counts only when
- * its concept is one of them, and a word used in another sense ("looks like", "so, like,") never counts.
- */
-export function matchConcept(text: string, topics?: ReadonlySet<string>): { id: string; words: string[] } | null {
+type ConceptHit = { id: string; words: string[]; score: number; pos: number };
+
+function scoreConcepts(text: string, topics?: ReadonlySet<string>): ConceptHit[] {
   const plain = stripMarks(text);
   const tokens = plain.split(/\s+/).map(wordKey).filter(Boolean);
   const masked = ambiguousMask(tokens);
   const lower = " " + tokens.join(" ") + " ";
-  let best: { id: string; words: string[]; score: number; pos: number } | null = null;
+  const hits: ConceptHit[] = [];
   for (const c of CONCEPTS) {
     let score = 0, pos = Infinity, weakScore = 0, weakPos = Infinity;
     const words: string[] = [], weakWords: string[] = [];
@@ -206,9 +220,24 @@ export function matchConcept(text: string, topics?: ReadonlySet<string>): { id: 
     // Generic words stand on their own only when the surrounding script is about the same thing.
     if (weakScore > 0 && topics?.has(c.id)) { score += weakScore; pos = Math.min(pos, weakPos); words.push(...weakWords); }
     score *= c.weight ?? 1;
-    if (score > 0 && (!best || score > best.score || (score === best.score && pos < best.pos))) best = { id: c.id, words, score, pos };
+    if (score > 0) hits.push({ id: c.id, words: [...new Set(words)], score, pos });
   }
-  return best ? { id: best.id, words: [...new Set(best.words)] } : null;
+  return hits.sort((a, b) => b.score - a.score || a.pos - b.pos);
+}
+
+/**
+ * Best matching concept for the text, with the words that triggered it.
+ * `topics` are the concepts the neighbouring scenes are about: a generic word ("move", "see", "day") counts only when
+ * its concept is one of them, and a word used in another sense ("looks like", "so, like,") never counts.
+ */
+export function matchConcept(text: string, topics?: ReadonlySet<string>): { id: string; words: string[] } | null {
+  const best = scoreConcepts(text, topics)[0];
+  return best ? { id: best.id, words: best.words } : null;
+}
+
+/** Every concept the text is about, strongest first (a sentence that lists "uang, energi dan waktu" names three). */
+export function matchConcepts(text: string, topics?: ReadonlySet<string>): string[] {
+  return scoreConcepts(text, topics).map(h => h.id);
 }
 
 const ORDINALS: [RegExp, number | null, string][] = [
@@ -254,13 +283,14 @@ export function detectCompare(text: string): CompareInfo | null {
 
 export function detectNumber(text: string): NumberInfo | null {
   const t = stripMarks(text);
-  const m = /(rp\.?\s?|\$)?(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)(?:\s*(%|persen\b|percent\b|x\b|kali\b|times\b|jt\b|juta\b|million\b|rb\b|ribu\b|k\b|thousand\b))?(?:\s+([\p{L}]+))?/iu.exec(t);
+  const m = /(rp\.?\s?|\$)?(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)(?:\s*(%|persen\b|percent\b|x\b|kali\b|times\b|jt\b|jutaan\b|juta\b|million\b|miliar\b|milyar\b|triliun\b|billion\b|rb\b|ribuan\b|ribu\b|k\b|thousand\b))?(?:\s+([\p{L}]+))?/iu.exec(t);
   if (m) {
     const raw = m[2];
     const grouped = /^\d{1,3}([.,]\d{3})+$/.test(raw);
     const value = grouped ? Number(raw.replace(/[.,]/g, "")) : Number(raw.replace(",", "."));
     const decimals = grouped || !/[.,]/.test(raw) ? 0 : raw.split(/[.,]/)[1].length;
-    const unit = (m[3] ?? "").toLowerCase();
+    // "5 jutaan" is about five million: the "-an" only says "roughly", so it is shown as the base unit.
+    const unit = (m[3] ?? "").toLowerCase().replace(/^(juta|ribu)an$/, "$1");
     const suffix = unit === "%" || unit === "persen" || unit === "percent" ? "%" : unit === "x" || unit === "kali" || unit === "times" ? "×" : unit ? " " + unit : "";
     const prefix = !m[1] ? "" : m[1].trim().startsWith("$") ? "$" : "Rp";
     const next = (m[4] ?? "").toLowerCase();
@@ -373,16 +403,3 @@ export function templateLabel(t: Template): string {
  */
 export type Cut = "video" | "overlay" | "graphic" | "clip";
 
-/**
- * Edit plan for a source-video edit: a scene with a recognised concept, emphasised word, number, list, question,
- * comparison or call-to-action gets an animation drawn over the speaker, so the picture stays on the person; plain
- * statements stay as they are. Full-screen graphics and clips are chosen by hand.
- */
-export function autoCuts(visuals: SceneVisual[]): Cut[] {
-  const out: Cut[] = [];
-  visuals.forEach(v => {
-    const meaningful = v.template !== "statement" || !!v.icon || v.emphasis.length > 0;
-    out.push(meaningful ? "overlay" : "video");
-  });
-  return out;
-}

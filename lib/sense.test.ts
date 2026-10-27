@@ -110,3 +110,18 @@ describe("overlayKeyword features the whole phrase", () => {
     expect(overlayKeyword("a b c d", { emphasis: ["a", "b", "c", "d"] })).toBe("A B C");
   });
 });
+
+describe("words that only look like a keyword", () => {
+  it("a keyword counts at the start of a word or after a prefix, not in the middle", () => {
+    expect(look("Ceritanya panjang sekali.").icon).toBeNull(); // not "tanya"
+    expect(look("Dia memulai harinya dengan tenang.").icon).toBe("start");
+    expect(look("Mulailah dari yang kecil.").icon).toBe("start");
+    expect(look("Uang-uang itu habis.").icon).toBe("money");
+    expect(look("Dia menulis setiap pagi.").icon).toBe("write"); // menulis = men + tulis
+  });
+  it("'sebenarnya' is 'actually', not 'benar' (correct)", () => {
+    expect(look("Sebenarnya aku sudah tahu.").icon).toBeNull();
+    expect(look("Kebetulan kita bertemu di sana.").icon).toBeNull();
+    expect(look("Itu benar sekali.").icon).toBe("right");
+  });
+});

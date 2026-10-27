@@ -6,6 +6,8 @@ import { stripMarks, wordKey } from "./text";
 import type { SceneVisual } from "./visuals";
 
 export type OverlayPosition = "top" | "lower";
+/** How much a popular name is animated: "simple" is its icon and name with one soft pulse, "full" adds a small scene of its own. */
+export type BrandMotion = "simple" | "full";
 
 /** An overlay is shown for at most this many frames (same pace limit as graphic cutaways and clips). */
 export const MAX_OVERLAY_FRAMES = 120;
