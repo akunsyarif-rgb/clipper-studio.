@@ -1,6 +1,6 @@
 // Browser-only FFmpeg (WebAssembly) wrapper. The core is self-hosted under /ffmpeg (copied at build time).
 import type { FFmpeg } from "@ffmpeg/ffmpeg";
-import { AUDIO_OUTPUT_NAME, audioArgs, ffmpegArgs, logTime, OUTPUT_NAME, type Aspect, type Fit, type Quality } from "./clip";
+import { AUDIO_OUTPUT_NAME, audioArgs, ffmpegArgs, logTime, MP3_OUTPUT_NAME, mp3Args, OUTPUT_NAME, type Aspect, type Fit, type Quality } from "./clip";
 
 export const CORE_BASE = "/ffmpeg";
 
@@ -88,6 +88,47 @@ export async function exportClip(job: ExportJob): Promise<Blob> {
     onLine = null;
     if (engine === ff) {
       await ff.deleteFile(OUTPUT_NAME).catch(() => undefined);
+      if (mounted) await ff.unmount(mountPoint).catch(() => undefined);
+      else if (input) await ff.deleteFile(input).catch(() => undefined);
+    }
+  }
+}
+
+/**
+ * Cuts the audio of several ranges into small MP3 files, one after the other, handing each to `onChunk` as it is ready
+ * (so a long video never sits in memory as audio). The video file is mounted once and never copied. Read-only.
+ */
+export async function extractMp3Chunks(file: File, ranges: { start: number; duration: number }[], onChunk: (index: number, data: Uint8Array) => Promise<void>): Promise<void> {
+  const ff = await loadEngine();
+  const mountPoint = "/asr-mp3-input";
+  let input = "";
+  let mounted = false;
+  try {
+    try {
+      const { FFFSType } = await import("@ffmpeg/ffmpeg");
+      await ff.createDir(mountPoint).catch(() => undefined);
+      await ff.mount(FFFSType.WORKERFS, { files: [file] }, mountPoint);
+      mounted = true;
+      input = `${mountPoint}/${file.name}`;
+    } catch {
+      const { fetchFile } = await import("@ffmpeg/util");
+      input = "asr-mp3-source-video";
+      await ff.writeFile(input, await fetchFile(file));
+    }
+    for (let i = 0; i < ranges.length; i++) {
+      lastLogs = [];
+      const code = await ff.exec(mp3Args(input, ranges[i]));
+      const logs = lastLogs.slice(-6).join(" | ");
+      if (code !== 0 && /matches no streams|does not contain any stream/i.test(logs)) throw new Error("no audio: video tidak punya audio");
+      if (code !== 0) throw new Error(`FFmpeg keluar dengan kode ${code}: ${logs}`);
+      const data = await ff.readFile(MP3_OUTPUT_NAME);
+      await ff.deleteFile(MP3_OUTPUT_NAME).catch(() => undefined);
+      if (typeof data === "string") throw new Error("no audio: video tidak punya audio");
+      await onChunk(i, data);
+    }
+  } finally {
+    if (engine === ff) {
+      await ff.deleteFile(MP3_OUTPUT_NAME).catch(() => undefined);
       if (mounted) await ff.unmount(mountPoint).catch(() => undefined);
       else if (input) await ff.deleteFile(input).catch(() => undefined);
     }

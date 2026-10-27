@@ -53,6 +53,7 @@ export async function kvSet(key: string, value: unknown): Promise<boolean> {
 export const kvDel = (key: string) => run<undefined>("readwrite", s => s.delete(key) as IDBRequest<undefined>);
 
 const SESSION = "session";
+const CLIP_HANDOFF = "handoff-clip";
 const SOURCE = "source";
 const ASR_INDEX = "asr-index";
 
@@ -64,6 +65,21 @@ export const saveSession = (s: SessionData) => kvSet(SESSION, s);
 export const loadSource = async () => (await kvGet<SourceRecord>(SOURCE)) ?? null;
 export const saveSource = (s: SourceRecord) => kvSet(SOURCE, s);
 export const deleteSource = () => kvDel(SOURCE);
+
+/** A clip cut in the clipper, waiting for the motion studio to take it over (the video itself, so nothing is uploaded or re-chosen). */
+export type ClipHandoff = { blob: Blob; name: string; type: string; seconds: number; title: string; transcript: Transcript | null; at: number };
+const HANDOFF_MAX_AGE_MS = 60 * 60 * 1000;
+
+export const saveClipHandoff = (h: ClipHandoff) => kvSet(CLIP_HANDOFF, h);
+
+/** Takes the waiting clip (once): it is removed as it is read, and one older than an hour is ignored. */
+export async function takeClipHandoff(): Promise<ClipHandoff | null> {
+  const h = await kvGet<ClipHandoff>(CLIP_HANDOFF);
+  if (h === undefined) return null;
+  await kvDel(CLIP_HANDOFF);
+  const valid = h && h.blob instanceof Blob && h.blob.size > 0 && typeof h.name === "string" && Number.isFinite(h.seconds) && h.seconds > 0 && Date.now() - h.at < HANDOFF_MAX_AGE_MS;
+  return valid ? h : null;
+}
 
 /** Forgets the saved session and its video (the transcript cache stays: it only speeds up repeating the same video). */
 export async function clearSession() { await kvDel(SESSION); await kvDel(SOURCE); }

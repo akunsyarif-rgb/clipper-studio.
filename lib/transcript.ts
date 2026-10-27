@@ -429,3 +429,20 @@ export function cleanupRequest(t: Transcript): string {
     lines,
   ].join("\n");
 }
+
+/**
+ * The part of a transcript between two moments, as its own transcript starting at 0: segments that fall (even partly)
+ * inside are kept and cut to the window, words included. Used to give a cut clip its own subtitles.
+ */
+export function sliceTranscript(t: Transcript, start: number, end: number): Transcript {
+  const duration = Math.max(0, end - start);
+  const shift = (v: number) => round3(Math.min(Math.max(v - start, 0), duration));
+  const segments: Segment[] = [];
+  for (const seg of t.segments) {
+    if (seg.end <= start || seg.start >= end) continue;
+    const words = seg.words.filter(w => w.end > start && w.start < end).map(w => ({ ...w, start: shift(w.start), end: shift(w.end) }));
+    if (words.length === 0) continue;
+    segments.push({ start: shift(seg.start), end: shift(seg.end), text: words.map(w => w.text).join(" "), words });
+  }
+  return { language: t.language, granularity: t.granularity, duration, segments };
+}

@@ -365,3 +365,16 @@ Memakai kunci AI yang sama (Google atau router seperti OpenRouter). Semuanya **s
 - **Judul, deskripsi, dan tagar:** untuk seluruh transkrip atau satu momen. Judul ≤ 60 karakter (dibatasi 100), deskripsi 1–2 kalimat, 5–10 tagar yang dibersihkan (diawali `#`, tanpa spasi/tanda baca, tanpa duplikat). Ada tombol salin per bagian dan "Salin semuanya".
 - **Rapikan otomatis setelah transkripsi:** kotak centang di panel Gemini (disimpan di perangkat ini). Begitu transkripsi baru selesai, daftar perbaikan (hanya teks, tanpa audio) muncul untuk ditinjau; tidak diterapkan sendiri. Tidak berjalan untuk transkrip yang dimuat dari penyimpanan.
 - **Pengujian:** logika di `lib/clip-assist.test.ts`; e2e memverifikasi judul/tagar dan kasus "tidak ada momen yang layak" dengan AI palsu. Alur "momen valid → Pakai rentang ini" dan rapikan otomatis belum punya e2e (transkrip uji terlalu pendek, dan model suara tidak bisa diunduh di sandbox).
+
+## Clipper: dari video panjang ke klip pilihan (alur AI)
+
+Alur utama halaman Clipper sekarang: **pilih video → "Analisis video & sarankan klip" → periksa dan setujui → daftar klip → ekspor atau "Kirim ke Motion".**
+
+- **AI mendengarkan seluruh video** (`lib/ai-transcribe.ts`, `app/ClipFlow.tsx`): audio dipotong FFmpeg di perangkat menjadi bagian ±4 menit berupa MP3 mono 32 kbps (±1 MB per bagian), dikirim ke layanan AI (2 permintaan paralel), dan baris-barisnya diletakkan di garis waktu video. Video 19 menit ≈ 5 bagian, biaya beberapa sen. Hanya audio yang dikirim, dan hanya setelah Anda mencentang persetujuan. Transkrip disimpan (dan ikut tersinkron saat masuk) sehingga analisis ulang tidak mendengarkan lagi.
+  - Waktu per baris berasal dari AI: cukup untuk memilih dan memotong momen, tetapi tidak seteliti waktu kata Whisper. Karena itu klip bisa disesuaikan ±2 detik di pratinjau.
+- **Saran klip** (`lib/clip-assist.ts`): 3–10 klip (menurut panjang video), tiap klip **20–180 detik (maks. 3 menit, batas Motion Graphics)**, tidak tumpang tindih, dengan judul dan alasan. Setiap saran bisa **diputar** langsung di pemutar video, disesuaikan, dicentang, lalu ditambahkan ke daftar klip. Tidak ada yang dipotong sebelum Anda menyetujui.
+- **Daftar klip** maksimal 10. Tiap klip menyimpan judul dan **subtitlenya sendiri** (potongan transkrip, waktu dimulai dari 0).
+- **Kirim ke Motion:** memotong klip (selalu 9:16), menyimpannya di penyimpanan perangkat bersama subtitlenya, lalu membuka Motion Graphics yang langsung memuat video, judul, dan naskah/subtitle dalam mode edit video. Dipakai sekali (kedaluwarsa 1 jam), dan didahulukan atas sesi lama. Bila waktu per kalimat dari AI kurang pas, buat ulang transkrip lokal di panel Transkrip Motion.
+- **Cara manual** (Whisper di perangkat + saran AI untuk bagian terpilih) tetap ada: terbuka bila belum ada kunci AI, terlipat bila sudah ada.
+- **Belum dikerjakan (tahap 2):** link YouTube. Rencananya link + teks otomatis (caption) YouTube diambil lewat server untuk saran momen, lalu Anda memilih file videonya dan app memotong di waktu itu. App tidak mengunduh video YouTube.
+- **Pengujian:** `e2e/clipflow.mjs` (FFmpeg asli memotong MP3, AI palsu, pratinjau, penyesuaian, persetujuan, ekspor 9:16, serah-terima ke Motion).

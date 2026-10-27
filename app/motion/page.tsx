@@ -22,7 +22,7 @@ import { releaseAsr } from "@/lib/asr/client";
 import { DENSITIES, explainScene, planAnimations, type Density } from "@/lib/importance";
 import type { BrandMotion, OverlayPosition } from "@/lib/overlay";
 import { isPristine, SESSION_VERSION, type SessionData } from "@/lib/session";
-import { clearSession, deleteSource, loadSession, loadSource, saveSession, saveSource } from "@/lib/session-store";
+import { clearSession, deleteSource, loadSession, loadSource, saveSession, saveSource, takeClipHandoff, type ClipHandoff } from "@/lib/session-store";
 import { scenesToSrt } from "@/lib/srt";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
 import TranscriptPanel from "../TranscriptPanel";
@@ -142,6 +142,10 @@ export default function MotionStudio() {
   useEffect(() => {
     let alive = true;
     void (async () => {
+      // A clip sent from the clipper comes first: it is the work in hand, so no older session is offered over it.
+      const handed = await takeClipHandoff();
+      if (!alive) return;
+      if (handed) { applyClipHandoff(handed); setAutosave(true); return; }
       const [s, src] = await Promise.all([loadSession(), loadSource()]);
       if (!alive) return;
       if (s && !isPristine(s, SAMPLE, !!src)) { setSaved(s); setSavedSource(src ? { name: src.name, seconds: src.seconds } : null); }
@@ -150,6 +154,20 @@ export default function MotionStudio() {
     return () => { alive = false; };
   }, []);
   useEffect(() => { if (!source) return; const url = source.url; return () => URL.revokeObjectURL(url); }, [source]);
+  /** The clip arrives as the base video with its subtitles, ready to edit (same state as "use the transcript" after uploading here). */
+  const [handoffNote, setHandoffNote] = useState("");
+  function applyClipHandoff(h: ClipHandoff) {
+    const file = new File([h.blob], h.name, { type: h.type || "video/mp4" });
+    setSource({ file, url: URL.createObjectURL(file), seconds: h.seconds });
+    if (h.title) setTitle(h.title.slice(0, 48).trim());
+    if (h.transcript && h.transcript.segments.length > 0) {
+      setScript(transcriptText(h.transcript)); setImported(h.transcript);
+      setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptionOffset(0); setPalette("pearl"); setContentPreset("custom"); setOffer(null);
+      setHandoffNote(h.transcript.granularity === "word"
+        ? "Klip dari Clipper dimuat dengan subtitlenya."
+        : "Klip dari Clipper dimuat. Subtitle berasal dari AI dengan waktu per kalimat; untuk waktu kata yang lebih pas, buat ulang transkrip di panel Transkrip (di perangkat) lalu pilih Pakai transkrip.");
+    } else setHandoffNote("Klip dari Clipper dimuat. Belum ada subtitle: buat transkrip di panel Transkrip, atau tulis naskah.");
+  }
   function onSourceVideo(e: ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     e.target.value = "";
@@ -505,6 +523,7 @@ export default function MotionStudio() {
         <section className="studio-panel">
           <div className="panel-heading"><div><small>01 / NASKAH & AUDIO</small><h2>Atur video</h2></div><span className="local-tag">{cloudUser ? "Tersinkron · tanpa media" : "Lokal · tanpa server"}</span></div>
           <CloudAccount onUser={setCloudUser} />
+          {handoffNote && <div className="notice" role="status" data-testid="handoff-note">{handoffNote}</div>}
           {saved && <div className="notice" data-testid="restore-offer">
             Sesi terakhir ditemukan: <strong>{saved.title || "tanpa judul"}</strong> · {splitScript(saved.script).length} scene{savedSource ? ` · video ${savedSource.name}` : ""}. {savedCloud ? "Dari akun Anda (perangkat lain); pilih lagi videonya setelah Lanjutkan." : "Disimpan di perangkat ini saja."}{" "}
             <button className="text-button" data-testid="restore-session" onClick={() => void restoreSession()}>Lanjutkan</button>{" "}

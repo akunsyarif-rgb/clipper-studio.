@@ -8,19 +8,27 @@ export const MOMENT_MIN_SECONDS = 8;
 export const MOMENT_MAX_SECONDS = Math.min(90, MAX_CLIP_SECONDS);
 export const MAX_MOMENTS = 6;
 
+/** How long a suggested moment may be and how many to ask for. The defaults suit a short transcript; a long video asks for more and longer ones. */
+export type MomentLimits = { min: number; max: number; count: number };
+export const DEFAULT_LIMITS: MomentLimits = { min: MOMENT_MIN_SECONDS, max: MOMENT_MAX_SECONDS, count: MAX_MOMENTS };
+/** Limits for picking clips out of a whole long video: at most 3 minutes each (what the motion studio accepts). */
+export function limitsForVideo(durationSeconds: number): MomentLimits {
+  return { min: 20, max: 180, count: Math.min(10, Math.max(3, Math.round(durationSeconds / 120))) };
+}
+
 export type Line = { start: number; end: number; text: string };
 export type Moment = { startIndex: number; endIndex: number; /** Seconds in the transcript's own time. */ start: number; end: number; title: string; reason: string };
 
 const langName = (language: string) => (language === "en" ? "bahasa Inggris" : "bahasa Indonesia");
 const tidy = (v: unknown, max: number) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
 
-export function momentsPrompt(lines: Line[], language: string): string {
+export function momentsPrompt(lines: Line[], language: string, limits: MomentLimits = DEFAULT_LIMITS): string {
   return [
     `Kamu editor video pendek (TikTok, Reels, Shorts). Berikut transkrip sebuah video (${langName(language)}), tiap baris bernomor dan punya detik mulai dan selesai.`,
-    `Pilih 3 sampai ${MAX_MOMENTS} potongan terbaik untuk dijadikan klip pendek.`,
+    `Pilih 3 sampai ${limits.count} potongan terbaik untuk dijadikan klip pendek.`,
     "Aturan:",
     `- tiap potongan berdiri sendiri: ada pembuka dan penutup yang utuh, tidak dimulai atau diakhiri di tengah gagasan;`,
-    `- panjang ${MOMENT_MIN_SECONDS} sampai ${MOMENT_MAX_SECONDS} detik (lebih pendek lebih baik bila pesannya sudah utuh);`,
+    `- panjang ${limits.min} sampai ${limits.max} detik (lebih pendek lebih baik bila pesannya sudah utuh);`,
     "- pilih yang paling menarik: pernyataan yang mengejutkan, cerita, angka atau fakta kuat, tips yang bisa langsung dipakai, atau ajakan yang jelas;",
     "- potongan tidak boleh tumpang tindih; jangan memilih basa-basi atau pengulangan;",
     "- bila transkrip terlalu pendek atau tidak ada yang menarik, kembalikan lebih sedikit potongan (boleh kosong).",
@@ -32,7 +40,7 @@ export function momentsPrompt(lines: Line[], language: string): string {
 }
 
 /** Reads the suggestions: valid line numbers only, trimmed to the length limit, no overlaps, in time order. */
-export function parseMoments(response: unknown, lines: Line[]): Moment[] {
+export function parseMoments(response: unknown, lines: Line[], limits: MomentLimits = DEFAULT_LIMITS): Moment[] {
   const parsed = answerJson(response);
   const list = Array.isArray(parsed) ? parsed : (parsed as { moments?: unknown } | null)?.moments;
   if (!Array.isArray(list)) throw new GeminiError("format", "Jawaban tidak berisi daftar momen. Coba lagi.");
@@ -42,23 +50,23 @@ export function parseMoments(response: unknown, lines: Line[]): Moment[] {
     const s = m.start as number;
     let e = m.end as number;
     if (s < 0 || e >= lines.length || s > e) continue;
-    while (e > s && lines[e].end - lines[s].start > MOMENT_MAX_SECONDS) e--;
+    while (e > s && lines[e].end - lines[s].start > limits.max) e--;
     const start = lines[s].start, end = lines[e].end;
-    if (end - start < MOMENT_MIN_SECONDS || end - start > MOMENT_MAX_SECONDS) continue;
+    if (end - start < limits.min || end - start > limits.max) continue;
     out.push({ startIndex: s, endIndex: e, start, end, title: tidy(m.title, 80) || `Momen ${out.length + 1}`, reason: tidy(m.reason, 140) });
   }
   out.sort((a, b) => a.start - b.start);
   const kept: Moment[] = [];
   for (const m of out) if (!kept.length || m.start >= kept[kept.length - 1].end) kept.push(m);
-  return kept.slice(0, MAX_MOMENTS);
+  return kept.slice(0, limits.count);
 }
 
 const MOMENTS_SCHEMA = { type: "OBJECT", properties: { moments: { type: "ARRAY", items: { type: "OBJECT", properties: { start: { type: "INTEGER" }, end: { type: "INTEGER" }, title: { type: "STRING" }, reason: { type: "STRING" } }, required: ["start", "end", "title", "reason"] } } }, required: ["moments"] };
 
 /** Asks for the best moments of a transcript. An empty list means the model found none worth cutting. */
-export async function suggestMoments(lines: Line[], o: CleanupOptions): Promise<Moment[]> {
+export async function suggestMoments(lines: Line[], o: CleanupOptions, limits: MomentLimits = DEFAULT_LIMITS): Promise<Moment[]> {
   if (lines.length === 0) return [];
-  return ask(o, [{ text: momentsPrompt(lines, o.language) }], MOMENTS_SCHEMA, json => parseMoments(json, lines));
+  return ask(o, [{ text: momentsPrompt(lines, o.language, limits) }], MOMENTS_SCHEMA, json => parseMoments(json, lines, limits));
 }
 
 // ---- title, description, hashtags -----------------------------------------------------------------------------------

@@ -137,6 +137,21 @@ export function audioArgs(input: string, range: { start: number; duration: numbe
   ];
 }
 
+export const MP3_OUTPUT_NAME = "clipper-audio.mp3";
+
+/** A range of the audio as a small mono MP3 (32 kbps, about 1 MB for four minutes) to send to an AI service that listens. */
+export function mp3Args(input: string, range: { start: number; duration: number }): string[] {
+  return [
+    "-ss", range.start.toFixed(3),
+    "-i", input,
+    "-t", range.duration.toFixed(3),
+    "-vn", "-map", "0:a:0",
+    "-ac", "1", "-ar", "16000",
+    "-c:a", "libmp3lame", "-b:a", "32k", "-f", "mp3",
+    "-y", MP3_OUTPUT_NAME,
+  ];
+}
+
 /** Reads "time=00:00:05.12" from an FFmpeg log line; returns seconds or NaN. */
 export function logTime(message: string): number {
   const m = /time=\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)/.exec(message);
