@@ -215,6 +215,52 @@ try {
     assert(!(await p.getByTestId("scene-importance").allInnerTexts()).some(t => /Gemini/.test(t)), "rules only again after clearing");
     await p.getByTestId("gemini-forget").click();
     assert((await p.evaluate(() => localStorage.getItem("clipper:gemini:v1"))) === null, "key forgotten");
+
+    // Signed in, the key lives on the owner's server: saved there, used through it, never kept in this browser.
+    const SB2 = "https://smwealrfgnzxquqqscxs.supabase.co";
+    const srv = { key: null, model: null, generated: 0, authed: true };
+    await p.context().route(SB2 + "/**", async route => {
+      const req = route.request(), u = new URL(req.url());
+      const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "POST, GET, OPTIONS" };
+      if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+      const send = (status, body) => route.fulfill({ status, headers: cors, contentType: "application/json", body: JSON.stringify(body) });
+      if (u.pathname === "/auth/v1/token") return send(200, { access_token: "AT", refresh_token: "RT", expires_in: 3600, user: { email: "saya@contoh.id" } });
+      if (u.pathname !== "/functions/v1/gemini") return send(404, {});
+      if (req.headers().authorization !== "Bearer AT") { srv.authed = false; return send(401, { error: { status: "NOT_SIGNED_IN", message: "Masuk dulu." } }); }
+      const m = JSON.parse(req.postData());
+      if (m.action === "status") return send(200, { hasKey: !!srv.key, model: srv.model || "gemini-2.5-flash" });
+      if (m.action === "save-key") { srv.key = m.apiKey; srv.model = m.model; return send(200, { ok: true, model: m.model }); }
+      if (m.action === "forget") { srv.key = null; return send(200, { ok: true }); }
+      if (m.action === "generate") {
+        srv.generated++;
+        const lines = JSON.parse(m.body.contents.at(-1).parts.at(-1).text.split("\n").at(-1));
+        return send(200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ lines: lines.map((t, i) => i === 0 ? t + "?" : t) }) }] } }] });
+      }
+      return send(400, {});
+    });
+    const directBefore = sent.length;
+    await p.getByTestId("cloud-open").click();
+    await p.getByTestId("cloud-email").fill("saya@contoh.id");
+    await p.getByTestId("cloud-password").fill("benar-sekali");
+    await p.getByTestId("cloud-signin").click();
+    await p.getByTestId("cloud-signed-in").waitFor({ timeout: 5000 });
+    await p.getByTestId("gemini-key").waitFor({ timeout: 5000 });
+    assert(/server akun/.test(await p.locator(".gemini-setup").innerText()), "setup says the key goes to the server");
+    await p.getByTestId("gemini-key").fill(KEY);
+    await p.getByTestId("gemini-consent").check();
+    await p.getByTestId("gemini-save").click();
+    await p.getByTestId("gemini-run").waitFor({ timeout: 5000 });
+    assert(srv.key === KEY, "the key reached the server");
+    assert((await p.evaluate(() => localStorage.getItem("clipper:gemini:v1"))) === null, "the key is not kept in this browser");
+    assert(/server/.test(await p.getByTestId("gemini-where").innerText()), "panel says the key is on the server");
+    assert(!(await p.content()).includes(KEY), "the key is not on the page");
+    await p.getByTestId("gemini-run").click();
+    await p.getByTestId("gemini-change").first().waitFor({ timeout: 10000 });
+    assert(srv.generated === 1 && sent.length === directBefore, "the call went through the server, not straight to Google");
+    assert(srv.authed, "the server was called with the signed-in token");
+    await p.getByTestId("gemini-forget").click();
+    await p.getByTestId("gemini-key").waitFor({ timeout: 5000 });
+    assert(srv.key === null, "forgetting removes the key from the server");
     const autoLabel = await p.getByTestId("scene-cut").first().locator("option").first().innerText();
     assert(/Video \+ animasi/.test(autoLabel), "first scene defaults to an animation over the video: " + autoLabel);
     const options = await p.getByTestId("scene-cut").first().locator("option").allInnerTexts();

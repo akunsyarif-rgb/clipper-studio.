@@ -20,6 +20,7 @@ export class CloudError extends Error {
 type Stored = { accessToken: string; refreshToken: string; expiresAt: number; email: string };
 type Store = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 type Fetch = typeof fetch;
+export type CallOptions = { signal?: AbortSignal; timeoutMs?: number };
 export type CloudOptions = { url?: string; key?: string; fetchImpl?: Fetch; store?: Store; now?: () => number };
 
 const defaultStore = (): Store | undefined => { try { return typeof localStorage === "undefined" ? undefined : localStorage; } catch { return undefined; } };
@@ -59,13 +60,15 @@ export function createCloud(o: CloudOptions = {}) {
     listeners.forEach(l => l());
   };
 
-  async function call(path: string, init: RequestInit = {}, token?: string): Promise<Response> {
+  async function call(path: string, init: RequestInit = {}, token?: string, opts: CallOptions = {}): Promise<Response> {
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+    const timer = setTimeout(() => ctl.abort(), opts.timeoutMs ?? TIMEOUT_MS);
+    const onAbort = () => ctl.abort();
+    if (opts.signal?.aborted) ctl.abort(); else opts.signal?.addEventListener("abort", onAbort);
     try {
       return await doFetch(`${url}${path}`, { ...init, headers: { apikey: key, "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}), ...(init.headers as Record<string, string> | undefined) }, signal: ctl.signal });
     } catch { throw new CloudError("network", "Tidak bisa terhubung ke layanan sinkron. Periksa koneksi internet."); }
-    finally { clearTimeout(timer); }
+    finally { clearTimeout(timer); opts.signal?.removeEventListener("abort", onAbort); }
   }
   const json = async (res: Response): Promise<unknown> => { try { return await res.json(); } catch { return null; } };
 
@@ -127,6 +130,21 @@ export function createCloud(o: CloudOptions = {}) {
     }
     return res;
   }
+  /** Calls one of the project's server functions as the signed-in user (one refresh and retry on 401). Null when signed out. */
+  async function fn(name: string, body: unknown, opts: CallOptions = {}): Promise<Response | null> {
+    const t = await token();
+    if (!t) return null;
+    const init = { method: "POST", body: JSON.stringify(body) };
+    const o = { timeoutMs: 120_000, ...opts };
+    let res = await call(`/functions/v1/${name}`, init, t, o);
+    if (res.status === 401) {
+      const s = read();
+      const fresh = s ? await refresh(s) : null;
+      if (!fresh) return null;
+      res = await call(`/functions/v1/${name}`, init, fresh.accessToken, o);
+    }
+    return res;
+  }
   const upsert = (table: string, conflict: string, row: object) =>
     rest(`${table}?on_conflict=${conflict}`, { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(row) });
 
@@ -158,7 +176,7 @@ export function createCloud(o: CloudOptions = {}) {
 
   return {
     user: () => read()?.email ?? null,
-    signIn, signUp, signOut, pushSession, pullSession, putTranscript, getTranscript,
+    signIn, signUp, signOut, fn, pushSession, pullSession, putTranscript, getTranscript,
     subscribe: (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; },
   };
 }

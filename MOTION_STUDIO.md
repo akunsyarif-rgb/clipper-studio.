@@ -344,4 +344,12 @@ Backend hanya menyimpan **data teks kecil**: sesi kerja (naskah, gaya, pilihan a
 - **Konflik:** yang terbaru menang (`savedAt`); tidak ada penggabungan. Satu pengguna, satu perangkat aktif pada satu waktu sudah cukup untuk pemakaian pribadi.
 - **Kode:** `lib/cloud.ts` (klien `fetch` tanpa SDK, penyegaran token otomatis, gagal dengan tenang), `app/CloudAccount.tsx`, pengait di `lib/session-store.ts` dan `app/motion/page.tsx`. URL proyek dan kunci *publishable* bersifat publik; `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_KEY` bisa menimpa bawaannya.
 - **Pengaturan di dashboard Supabase (tidak bisa lewat kode):** pada Authentication → Providers → Email, matikan **Confirm email** supaya pendaftaran pertama langsung masuk tanpa email konfirmasi.
-- **Belum dikerjakan:** kunci Gemini di server (perantara lewat Edge Function), sehingga kunci tidak lagi disimpan di browser.
+
+### Kunci Gemini di server
+
+- Setelah masuk, kunci Gemini disimpan di **server** (tabel `public.user_secrets`) dan semua panggilan Gemini lewat Edge Function `gemini`; perangkat tidak lagi memegang kunci. Tanpa login, kunci tetap disimpan di browser seperti sebelumnya.
+- **Tabel tertutup:** RLS aktif tanpa kebijakan dan peran `anon`/`authenticated` tidak punya hak apa pun; hanya fungsi (service role) yang membaca/menulis. Pemeriksa keamanan Supabase menandainya INFO ("RLS tanpa kebijakan"): itu disengaja.
+- **Fungsi `gemini`** (`supabase/functions/gemini/`, JWT wajib): `status` (ada kunci atau tidak, tidak pernah mengembalikan kunci), `save-key`, `forget`, `generate` (meneruskan isi permintaan ke Google dengan kunci tersimpan di header, dan mengembalikan jawaban serta status Google apa adanya). Hanya untuk pengguna yang masuk dan hanya untuk kuncinya sendiri. Logika ada di `handler.ts` (murni, diuji di `lib/gemini-function.test.ts`); `index.ts` hanya menjalankannya di Deno.
+- **Di app:** panel Gemini menawarkan "Simpan di akun (server)" bila sudah masuk, "Pindahkan kunci ke akun (server)" bila kunci lama masih di browser, dan "Hapus kunci" (menghapus di server). `lib/gemini-access.ts` memilih sumber kunci; `lib/gemini.ts` memakai `transport` bila kunci ada di server.
+- **Deploy ulang fungsi:** ubah `handler.ts`/`index.ts`, lalu deploy lewat dashboard atau `supabase functions deploy gemini`.
+- **Belum ada:** batas pemakaian per akun (cukup untuk satu pemilik; perlu ditambah sebelum dipasarkan), dan "Leaked password protection" Supabase (fitur berbayar).

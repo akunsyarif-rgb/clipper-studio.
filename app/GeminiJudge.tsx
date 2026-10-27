@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { GeminiError, judgeScenesWithGemini, loadGeminiSettings, type SceneScore } from "@/lib/gemini";
+import { GeminiError, judgeScenesWithGemini, type SceneScore } from "@/lib/gemini";
+import { getAccess } from "@/lib/gemini-access";
+import { cloud } from "@/lib/cloud";
 
 /**
  * Optional second opinion from Gemini on which sentences deserve an animation. Only the sentences' text is sent; the
@@ -19,15 +21,21 @@ export default function GeminiJudge({ scenes, language, active, onScores, onClea
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const abort = useRef<AbortController | null>(null);
-  useEffect(() => { setReady(!!loadGeminiSettings()); return () => abort.current?.abort(); }, []);
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => { void getAccess().then(a => { if (alive) setReady(!!a); }); };
+    refresh();
+    const off = cloud.subscribe(refresh);
+    return () => { alive = false; off(); abort.current?.abort(); };
+  }, []);
 
   async function run() {
-    const settings = loadGeminiSettings();
+    const settings = await getAccess();
     if (!settings) { setReady(false); return; }
     setBusy(true); setError("");
     const ctl = new AbortController(); abort.current = ctl;
     try {
-      const scores = await judgeScenesWithGemini(scenes, { apiKey: settings.apiKey, model: settings.model, language, signal: ctl.signal });
+      const scores = await judgeScenesWithGemini(scenes, { apiKey: settings.apiKey, model: settings.model, language, signal: ctl.signal, transport: settings.transport });
       const byText: Record<string, SceneScore> = {};
       scores.forEach((s, i) => { if (s) byText[scenes[i].text] = s; });
       onScores(byText);

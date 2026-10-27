@@ -63,11 +63,18 @@ export function cleanupPrompt(lines: string[], language: string): string {
 }
 
 type Fetch = typeof fetch;
-export type CleanupOptions = { apiKey: string; model: string; language: string; fetchImpl?: Fetch; signal?: AbortSignal; timeoutMs?: number };
+/** Sends the request body somewhere other than straight to Google (the owner's server, which holds the key). Null when signed out. */
+export type Transport = (payload: object, opts: { signal: AbortSignal; timeoutMs: number }) => Promise<Response | null>;
+export type CleanupOptions = { apiKey: string; model: string; language: string; fetchImpl?: Fetch; signal?: AbortSignal; timeoutMs?: number; transport?: Transport };
 
 function explain(status: number, body: unknown): GeminiError {
   const err = (body as { error?: { status?: string; message?: string } } | null)?.error;
   const text = `${err?.status ?? ""} ${err?.message ?? ""}`;
+  // Answers of the owner's own server, before Google's are considered.
+  if (/NO_KEY/.test(text)) return new GeminiError("key", "Belum ada kunci Gemini di akun Anda. Simpan kunci di pengaturan Gemini.");
+  if (/NOT_SIGNED_IN/.test(text)) return new GeminiError("key", "Sesi masuk berakhir. Masuk lagi.");
+  if (/TOO_LARGE/.test(text) || status === 413) return new GeminiError("format", "Permintaan terlalu besar. Pilih bagian video yang lebih pendek.");
+  if (/UPSTREAM_UNREACHABLE|AUTH_UNREACHABLE|DB_ERROR|SERVER_ERROR/.test(text)) return new GeminiError("server", "Server sinkron sedang bermasalah. Coba lagi sebentar lagi.");
   if (status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(text)) return new GeminiError("quota", "Batas pemakaian Gemini habis (kuota atau laju). Tunggu sebentar atau periksa kuota key Anda.");
   if (status === 404 || /NOT_FOUND|not found for API/i.test(text)) return new GeminiError("model", "Model tidak ditemukan. Periksa nama model di pengaturan Gemini.");
   if (status === 401 || status === 403 || /API_KEY_INVALID|API key not valid|PERMISSION_DENIED|UNAUTHENTICATED|referer/i.test(text)) return new GeminiError("key", "Key ditolak Google. Periksa key, izin API, atau batasan alamat situs pada key itu.");
@@ -99,7 +106,8 @@ export function parseLines(response: unknown, expected: number): string[] {
 /** One call to the model. The key travels in a header, never in the address. One automatic retry if the answer is malformed. */
 async function ask<T>(o: CleanupOptions, parts: unknown[], schema: object, parse: (json: unknown) => T): Promise<T> {
   const fetchImpl = o.fetchImpl ?? fetch;
-  const body = JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: { temperature: 0.2, responseMimeType: "application/json", responseSchema: schema } });
+  const payload = { contents: [{ role: "user", parts }], generationConfig: { temperature: 0.2, responseMimeType: "application/json", responseSchema: schema } };
+  const body = JSON.stringify(payload);
   const url = `${GEMINI_ENDPOINT}/${encodeURIComponent(o.model)}:generateContent`;
   const once = async () => {
     const ctl = new AbortController();
@@ -107,7 +115,10 @@ async function ask<T>(o: CleanupOptions, parts: unknown[], schema: object, parse
     const onAbort = () => ctl.abort();
     o.signal?.addEventListener("abort", onAbort);
     try {
-      const res = await fetchImpl(url, { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": o.apiKey }, body, signal: ctl.signal });
+      const res = o.transport
+        ? await o.transport(payload, { signal: ctl.signal, timeoutMs: o.timeoutMs ?? TIMEOUT_MS })
+        : await fetchImpl(url, { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": o.apiKey }, body, signal: ctl.signal });
+      if (!res) throw new GeminiError("key", "Sesi masuk berakhir. Masuk lagi.");
       let json: unknown = null;
       try { json = await res.json(); } catch { /* an error page without JSON */ }
       if (!res.ok) throw explain(res.status, json);

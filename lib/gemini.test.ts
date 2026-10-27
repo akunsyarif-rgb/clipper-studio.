@@ -291,3 +291,25 @@ describe("mixing Gemini into the rule scores", () => {
     expect(blendAi(rules, [undefined, undefined, undefined, undefined])).toEqual(rules);
   });
 });
+
+describe("through the owner's server", () => {
+  it("sends the request to the transport, not to Google, and uses what it answers", async () => {
+    const { fn, calls } = fakeFetch();
+    let seen: object | null = null;
+    const transport = async (payload: object) => { seen = payload; return ok(reply(["B"])); };
+    expect(await cleanupLines(["a"], { ...opts(fn), apiKey: "", transport })).toEqual(["B"]);
+    expect(calls).toHaveLength(0);
+    expect(JSON.stringify(seen)).toContain("Masukan (JSON)");
+  });
+  it("explains the server's own answers", async () => {
+    const via = (status: number, code: string) => cleanupLines(["a"], { ...opts(fakeFetch().fn), apiKey: "", transport: async () => fail(status, { status: code, message: code }) }).catch((e: GeminiError) => e);
+    expect(await via(400, "NO_KEY")).toMatchObject({ kind: "key", message: expect.stringContaining("Belum ada kunci") });
+    expect(await via(401, "NOT_SIGNED_IN")).toMatchObject({ kind: "key", message: expect.stringContaining("Masuk lagi") });
+    expect(await via(413, "TOO_LARGE")).toMatchObject({ kind: "format" });
+    expect(await via(504, "UPSTREAM_UNREACHABLE")).toMatchObject({ kind: "server" });
+    expect(await via(429, "RESOURCE_EXHAUSTED")).toMatchObject({ kind: "quota" });
+  });
+  it("asks to sign in again when the session is gone", async () => {
+    await expect(cleanupLines(["a"], { ...opts(fakeFetch().fn), apiKey: "", transport: async () => null })).rejects.toMatchObject({ kind: "key", message: expect.stringContaining("Masuk lagi") });
+  });
+});
