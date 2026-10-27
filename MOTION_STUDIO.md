@@ -308,3 +308,15 @@ Words are read with care: a keyword counts at the start of a word or after an In
 ## Cleaning up a transcript with Claude
 
 A recogniser's slips ("Aplun", "mikro" for "mikir") are best fixed with the whole text in view. In the transcript list, *Salin untuk dirapikan Claude* copies a ready request plus the transcript, one line per segment. Paste it into a chat with Claude, then paste the corrected lines into the *Naskah* field: the words are aligned to the speech again, so captions and animations keep following what is said.
+
+## Rapikan transkrip dengan Gemini (opsional)
+
+Langkah 1 dari bantuan Gemini. Whisper tetap mendengar suara dan memberi waktu kata; Gemini hanya memperbaiki **teks** (salah dengar, nama merek, ejaan, tanda baca).
+
+- **Kunci milik pengguna (BYOK).** Dimasukkan di panel transkrip (bagian "Rapikan transkrip dengan Gemini"), disimpan hanya di `localStorage` browser perangkat ini (`clipper:gemini:v1`), dikirim lewat header `x-goog-api-key` (tidak pernah di alamat URL, tidak pernah ditampilkan ulang selain sebagian). Jangan menempelkan kunci di obrolan. Pakai kunci yang dibatasi dan berkuota rendah.
+- **Yang dikirim.** Hanya teks segmen transkrip ke `generativelanguage.googleapis.com`; audio dan video tidak. Perlu persetujuan eksplisit sebelum kunci tersimpan.
+- **Aman dari perubahan diam-diam.** Hasil ditampilkan sebelum/sesudah per segmen; perubahan besar (kemiripan kata < 50%) tidak dicentang secara bawaan. Tidak ada yang berubah sampai "Terapkan" ditekan.
+- **Waktu dipertahankan.** Jumlah kata sama → tiap kata memakai waktu kata lamanya; jumlah beda → disejajarkan (`alignWords`), dan sebagai cadangan dibagi rata dalam segmen.
+- **Galat dijelaskan** (kunci salah, model tidak ada, kuota, diblokir, jaringan, waktu habis, format) tanpa memuat kunci. Jumlah baris salah dicoba ulang sekali.
+- **Kode:** `lib/gemini.ts` (klien, pengaturan, diff, penerapan), `app/GeminiCleanup.tsx`. Diuji dengan fetch palsu (`lib/gemini.test.ts`) dan e2e dengan endpoint Gemini dipalsukan; panggilan nyata ke Google tidak bisa diuji dari sandbox.
+- **Belum dikerjakan:** transkripsi audio oleh Gemini digabung dengan waktu Whisper, dan penilaian animasi dibantu Gemini.

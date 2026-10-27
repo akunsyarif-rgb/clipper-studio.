@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import GeminiCleanup from "./GeminiCleanup";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { formatBytes, formatTime } from "@/lib/clip";
 import { isOneOffPreview, keepStorage, modelIsCached } from "@/lib/asr/storage";
@@ -199,6 +200,8 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
         </label>)}
       </div>
       <small className="asr-hint">Koreksi teks lalu ketuk di luar kolom. Waktu kata dipertahankan; jika jumlah kata berubah, waktu dibagi rata dalam segmen. Kosongkan kolom untuk menghapus segmen.</small>
+      <GeminiCleanup transcript={transcript.value} language={language === "english" ? "en" : "id"} disabled={working || locked}
+        onApply={(v, n) => { setTranscript(old => old && { ...old, value: v }); void saveCachedTranscript(file, transcript.range, model, language, v); setInfo(`${n} perbaikan Gemini diterapkan; waktu kata dipertahankan.`); }} />
       <div className="range-tools">
         <button onClick={() => { onCopy(transcriptText(transcript.value)); setInfo("Transkrip disalin ke kolom Subtitle di bawah."); }}>Salin ke kolom subtitle</button>
         <button onClick={() => void navigator.clipboard.writeText(cleanupRequest(transcript.value)).then(() => setInfo("Permintaan rapikan + transkrip disalin. Tempel ke obrolan Claude, lalu tempel hasilnya ke kolom Naskah: waktu kata tetap mengikuti ucapan."), () => setError("Browser menolak menyalin. Salin teks transkrip secara manual."))} data-testid="asr-claude">Salin untuk dirapikan Claude</button>

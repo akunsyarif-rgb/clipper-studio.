@@ -146,6 +146,40 @@ try {
     assert((await p.getByTestId("asr-seg").count()) === 2, "saved transcript shown again");
     assert(/tanpa memproses ulang/.test(await p.getByTestId("asr-info").innerText()), "says it came from storage");
 
+    // Gemini clean-up, with the endpoint faked: the key goes in a header, only text is sent, nothing is applied unasked.
+    const KEY = "AIzaSyFAKE_E2E_KEY_0123456789abcdefgh";
+    const sent = [];
+    await p.route("https://generativelanguage.googleapis.com/**", async route => {
+      const req = route.request();
+      const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "POST, OPTIONS" };
+      if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+      const body = JSON.parse(req.postData());
+      sent.push({ url: req.url(), key: req.headers()["x-goog-api-key"], body: JSON.stringify(body) });
+      const lines = JSON.parse(body.contents[0].parts[0].text.split("\n").at(-1));
+      const fixed = lines.map((t, i) => i === 0 ? t.replace(/\.?$/, "!") : t);
+      await route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ lines: fixed }) }] } }] }) });
+    });
+    await p.getByText("Rapikan transkrip dengan Gemini").click();
+    await p.getByTestId("gemini-key").fill(KEY);
+    await p.getByTestId("gemini-save").click();
+    await p.getByTestId("gemini-error").waitFor({ timeout: 3000 }); // consent is required first
+    await p.getByTestId("gemini-consent").check();
+    await p.getByTestId("gemini-save").click();
+    await p.getByTestId("gemini-run").waitFor({ timeout: 3000 });
+    assert(!(await p.content()).includes(KEY), "the key is never shown on the page");
+    const before0 = await p.getByTestId("asr-seg").first().inputValue();
+    await p.getByTestId("gemini-run").click();
+    await p.getByTestId("gemini-change").first().waitFor({ timeout: 10000 });
+    assert(sent.length === 1 && sent[0].key === KEY && !sent[0].url.includes(KEY), "key sent as a header only");
+    assert(!sent[0].body.includes(KEY) && !/blob:|data:/.test(sent[0].body), "only the transcript text is sent");
+    assert((await p.getByTestId("asr-seg").first().inputValue()) === before0, "nothing applied before the creator agrees");
+    await p.getByTestId("gemini-apply").click();
+    assert((await p.getByTestId("asr-seg").first().inputValue()).endsWith("!"), "accepted change applied");
+    assert(/waktu kata dipertahankan/.test(await p.getByTestId("asr-info").innerText()), "says timing is kept");
+    assert((await p.evaluate(() => localStorage.getItem("clipper:gemini:v1")) ?? "").includes(KEY), "key kept on this device");
+    await p.getByTestId("gemini-forget").click();
+    assert((await p.evaluate(() => localStorage.getItem("clipper:gemini:v1"))) === null, "key forgotten");
+
     // Use the saved transcript: editing over the video, with an animation drawn over the speaker by default.
     await p.getByTestId("asr-use").click();
     await p.getByTestId("scene-cut").first().waitFor({ timeout: 10000 });
