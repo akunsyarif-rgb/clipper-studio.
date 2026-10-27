@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { GeminiError, judgeScenesWithGemini, type SceneScore } from "@/lib/gemini";
-import { getAccess } from "@/lib/gemini-access";
+import { ACCESS_EVENT, getAccess } from "@/lib/gemini-access";
 import { cloud } from "@/lib/cloud";
 
 /**
@@ -26,7 +26,8 @@ export default function GeminiJudge({ scenes, language, active, onScores, onClea
     const refresh = () => { void getAccess().then(a => { if (alive) setReady(!!a); }); };
     refresh();
     const off = cloud.subscribe(refresh);
-    return () => { alive = false; off(); abort.current?.abort(); };
+    window.addEventListener(ACCESS_EVENT, refresh);
+    return () => { alive = false; off(); window.removeEventListener(ACCESS_EVENT, refresh); abort.current?.abort(); };
   }, []);
 
   async function run() {

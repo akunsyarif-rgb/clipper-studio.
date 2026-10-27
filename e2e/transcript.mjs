@@ -235,6 +235,10 @@ try {
       if (m.action === "list-models") return send(200, { models: [{ name: "models/gemini-3.5-flash", supportedGenerationMethods: ["generateContent"] }, { name: "models/gemini-3.5-flash-tts", supportedGenerationMethods: ["generateContent"] }, { name: "models/gemini-embedding-001", supportedGenerationMethods: ["embedContent"] }] });
       if (m.action === "generate") {
         srv.generated++; srv.lastBody = m.body;
+        const promptText = srv.provider === "openai" ? m.body.messages[0].content : m.body.contents.at(-1).parts.at(-1).text;
+        const answer = obj => srv.provider === "openai" ? { choices: [{ message: { content: JSON.stringify(obj) } }] } : { candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] } }] };
+        if (promptText.includes("Isi klip:")) return send(200, answer({ title: "Judul Uji Coba", description: "Deskripsi singkat.", hashtags: ["uji", "#coba", "klip bagus"] }));
+        if (promptText.includes("\"moments\"")) return send(200, answer({ moments: [{ start: 0, end: 1, title: "Terlalu pendek", reason: "uji" }] }));
         if (srv.provider === "openai") {
           const lines = JSON.parse(m.body.messages[0].content.split("\n").at(-1));
           return send(200, { choices: [{ message: { content: JSON.stringify({ lines: lines.map((t, i) => i === 0 ? t + "?" : t) }) } }] });
@@ -270,6 +274,18 @@ try {
     await p.getByTestId("gemini-change").first().waitFor({ timeout: 10000 });
     assert(srv.generated === 1 && sent.length === directBefore, "the call went through the server, not straight to Google");
     assert(srv.authed, "the server was called with the signed-in token");
+
+    // AI suggestions for the clipper: title, description and hashtags; moments too short to cut are not offered.
+    await p.getByText("Saran AI: momen terbaik").click();
+    await p.getByTestId("assist-copy-all").click();
+    await p.getByTestId("assist-title").waitFor({ timeout: 10000 });
+    assert((await p.getByTestId("assist-title").inputValue()) === "Judul Uji Coba", "title shown");
+    assert((await p.getByTestId("assist-hashtags").inputValue()) === "#uji #coba #klipbagus", "hashtags cleaned: " + await p.getByTestId("assist-hashtags").inputValue());
+    await p.getByTestId("assist-moments").click();
+    await p.getByTestId("assist-error").waitFor({ timeout: 10000 });
+    assert(/tidak menemukan momen/.test(await p.getByTestId("assist-error").innerText()), "no moment worth cutting is said plainly");
+    assert((await p.getByTestId("assist-moment").count()) === 0, "a clip that is too short is not offered");
+
     await p.getByTestId("gemini-forget").click();
     await p.getByTestId("gemini-key").waitFor({ timeout: 5000 });
     assert(srv.key === null, "forgetting removes the key from the server");

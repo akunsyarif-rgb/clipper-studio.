@@ -5,7 +5,7 @@ import {
   applyCleanup, changedLines, cleanKey, cleanupLines, clearGeminiSettings, DEFAULT_GEMINI_MODEL, GeminiError, maskKey, saveGeminiSettings, wavPart,
   type LineChange,
 } from "@/lib/gemini";
-import { chooseModel, forgetOnServer, getAccess, listAvailableModels, OPENROUTER_URL, ROUTER_PRESETS, saveToServer, type Access, type Provider } from "@/lib/gemini-access";
+import { chooseModel, forgetOnServer, getAccess, listAvailableModels, notifyAccessChanged, OPENROUTER_URL, ROUTER_PRESETS, saveToServer, type Access, type Provider } from "@/lib/gemini-access";
 import { cloud } from "@/lib/cloud";
 import type { Transcript } from "@/lib/transcript";
 
@@ -13,13 +13,17 @@ import type { Transcript } from "@/lib/transcript";
  * Optional clean-up of the transcript text by Gemini (bring your own key). Only the text goes out, never audio or video;
  * the key stays in this browser. Every change is shown before and after and applied per segment, with the timing kept.
  */
-export default function GeminiCleanup({ transcript, language, disabled, onApply, getAudio }: {
+const AUTO_KEY = "clipper:auto-clean:v1";
+
+export default function GeminiCleanup({ transcript, language, disabled, onApply, getAudio, autoToken = 0 }: {
   transcript: Transcript;
   language: "id" | "en";
   disabled: boolean;
   onApply: (next: Transcript, count: number) => void;
   /** Gives the speech of this transcript (16 kHz mono). Only used when the creator chooses to let Gemini listen. */
   getAudio?: () => Promise<Float32Array>;
+  /** Changes each time a new transcript has just been made; with auto clean-up on, the review list then opens by itself. */
+  autoToken?: number;
 }) {
   const [saved, setSaved] = useState<Access | null>(null);
   const [signedIn, setSignedIn] = useState(false);
@@ -35,6 +39,10 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
   const [preset, setPreset] = useState<string>("openrouter");
   const [typedModel, setTypedModel] = useState("");
   const [note, setNote] = useState("");
+  const [autoClean, setAutoClean] = useState(false);
+  const pendingAuto = useRef(false);
+  useEffect(() => { try { setAutoClean(localStorage.getItem(AUTO_KEY) === "1"); } catch { /* storage blocked */ } }, []);
+  function toggleAuto(on: boolean) { setAutoClean(on); try { if (on) localStorage.setItem(AUTO_KEY, "1"); else localStorage.removeItem(AUTO_KEY); } catch { /* storage blocked */ } }
   const [error, setError] = useState("");
   const [changes, setChanges] = useState<LineChange[] | null>(null);
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
@@ -55,6 +63,9 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
   }, []);
   useEffect(() => () => abort.current?.abort(), []);
 
+  /** Looks at the key again after it changed, and lets the other AI screens know. */
+  async function syncSaved() { setSaved(await getAccess()); notifyAccessChanged(); }
+
   async function save() {
     const apiKey = cleanKey(keyInput);
     if (!apiKey) return setError("Kunci tidak valid. Tempel seluruh kunci API Gemini (tanpa spasi).");
@@ -68,7 +79,7 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
       }
       else if (!saveGeminiSettings({ apiKey, model: name, consent: true })) return setError("Browser menolak menyimpan kunci di perangkat ini.");
       setKeyInput("");
-      setSaved(await getAccess());
+      await syncSaved();
     } catch (e) { setError(e instanceof GeminiError ? e.message : "Kunci gagal disimpan."); }
     finally { setBusy(false); }
   }
@@ -82,7 +93,7 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
       setModels(list);
       if (saved) {
         if (!saved.model) setNote(`${list.length} model tersedia. Pilih salah satu di bawah.`);
-        else if (!list.includes(saved.model)) { await chooseModel(saved, list[0]); setSaved(await getAccess()); setNote(`Model diganti ke ${list[0]} karena ${saved.model} tidak tersedia untuk kunci ini. Coba lagi.`); }
+        else if (!list.includes(saved.model)) { await chooseModel(saved, list[0]); await syncSaved(); setNote(`Model diganti ke ${list[0]} karena ${saved.model} tidak tersedia untuk kunci ini. Coba lagi.`); }
         else if (!auto) setNote(`Model ${saved.model} tersedia. ${list.length} model bisa dipilih.`);
       } else if (!list.includes(model)) { setModel(list[0]); setNote(`Model diisi ${list[0]}.`); }
     } catch (e) { if (!auto) setError(e instanceof GeminiError ? e.message : "Daftar model gagal diambil."); }
@@ -91,7 +102,7 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
   async function pickModel(name: string) {
     if (!saved || name === saved.model) return;
     setBusy(true); setError(""); setNote("");
-    try { await chooseModel(saved, name); setSaved(await getAccess()); setNote(`Model dipakai: ${name}.`); }
+    try { await chooseModel(saved, name); await syncSaved(); setNote(`Model dipakai: ${name}.`); }
     catch (e) { setError(e instanceof GeminiError ? e.message : "Model gagal disimpan."); }
     finally { setBusy(false); }
   }
@@ -99,7 +110,7 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
   async function moveToServer() {
     if (!saved || saved.where !== "device") return;
     setBusy(true); setError("");
-    try { await saveToServer(saved.apiKey, saved.model); clearGeminiSettings(); setSaved(await getAccess()); }
+    try { await saveToServer(saved.apiKey, saved.model); clearGeminiSettings(); await syncSaved(); }
     catch (e) { setError(e instanceof GeminiError ? e.message : "Kunci gagal dipindahkan."); }
     finally { setBusy(false); }
   }
@@ -108,10 +119,18 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
     try {
       if (saved?.where === "server") await forgetOnServer();
       clearGeminiSettings();
-      setSaved(await getAccess()); setChanges(null); setKeyInput("");
+      await syncSaved(); setChanges(null); setKeyInput("");
     } catch (e) { setError(e instanceof GeminiError ? e.message : "Kunci gagal dihapus."); }
     finally { setBusy(false); }
   }
+
+  // A freshly made transcript is cleaned up by itself (text only, nothing applied) when the creator turned that on.
+  useEffect(() => { if (autoToken > 0) pendingAuto.current = autoClean; }, [autoToken]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!pendingAuto.current || !saved || busy) return;
+    pendingAuto.current = false;
+    void run(false);
+  }, [autoToken, saved, busy]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function run(withAudio: boolean) {
     if (!saved) return;
@@ -170,6 +189,7 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
       <p data-testid="gemini-where"><small>{saved.where === "server" ? "Kunci tersimpan di akun (server), tidak ada di browser" : `Kunci ${maskKey(saved.apiKey)} di perangkat ini`} · {saved.provider === "openai" ? `layanan ${saved.baseUrl ?? ""}` : "Google Gemini"} · model {saved.model || "(belum dipilih)"}</small></p>
       {saved.provider === "openai" && <div className="range-tools"><input value={typedModel} onChange={e => setTypedModel(e.target.value)} placeholder={`nama model, mis. ${ROUTER_PRESETS.find(p => p.url === saved.baseUrl)?.modelHint ?? "nama dari layanan Anda"}`} autoCapitalize="none" autoCorrect="off" data-testid="gemini-model-manual" /><button onClick={() => void pickModel(typedModel.trim())} disabled={busy || !typedModel.trim()} data-testid="gemini-model-use">Pakai model ini</button></div>}
       {saved.where === "device" && signedIn && <div className="range-tools"><button onClick={() => void moveToServer()} disabled={busy} data-testid="gemini-move">Pindahkan kunci ke akun (server)</button></div>}
+      <label className="gemini-consent"><input type="checkbox" checked={autoClean} onChange={e => toggleAuto(e.target.checked)} data-testid="gemini-auto" /> Rapikan otomatis setelah transkripsi selesai (hanya teks; hasilnya tetap ditinjau dulu, tidak diterapkan sendiri).</label>
       {getAudio && <label className="gemini-consent"><input type="checkbox" checked={audioOk} onChange={e => setAudioOk(e.target.checked)} data-testid="gemini-audio-consent" /> Izinkan AI mendengarkan audio bagian ini (audio dikirim ke layanan AI; maksimal 6 menit; tidak semua router mendukung audio). Lebih akurat untuk nama, istilah, dan angka.</label>}
       <div className="range-tools">
         <button onClick={() => void run(false)} disabled={busy || disabled} data-testid="gemini-run">{busy ? (stage || "Merapikan…") : "Rapikan dengan Gemini"}</button>

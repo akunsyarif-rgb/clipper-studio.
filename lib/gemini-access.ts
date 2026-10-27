@@ -50,6 +50,10 @@ export async function getAccess(): Promise<Access | null> {
   return local ? { where: "device", provider: "google", baseUrl: null, model: local.model, apiKey: local.apiKey, format: "gemini" } : null;
 }
 
+/** Tells every screen that shows AI features that the key (or the chosen model) changed, so they look again. */
+export const ACCESS_EVENT = "clipper:ai-access";
+export function notifyAccessChanged() { try { window.dispatchEvent(new Event(ACCESS_EVENT)); } catch { /* no window (tests) */ } }
+
 async function ok(res: Response | null, what: string) {
   if (!res) throw new GeminiError("key", "Sesi masuk berakhir. Masuk lagi.");
   if (!res.ok) {

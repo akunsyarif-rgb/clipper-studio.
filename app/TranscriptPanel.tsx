@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import GeminiCleanup from "./GeminiCleanup";
+import ClipAssist from "./ClipAssist";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { formatBytes, formatTime } from "@/lib/clip";
 import { isOneOffPreview, keepStorage, modelIsCached } from "@/lib/asr/storage";
@@ -18,7 +19,7 @@ type Range = { start: number; duration: number };
 type Phase = "idle" | "audio" | "download" | "running";
 
 /** Automatic transcript of the selected range: local Whisper, editable text, live caption preview, hand-off to /motion. */
-export default function TranscriptPanel({ file, video, range, locked, onWorking, onCopy, onUse }: {
+export default function TranscriptPanel({ file, video, range, locked, onWorking, onCopy, onUse, onPickRange }: {
   file: File;
   video: RefObject<HTMLVideoElement | null>;
   /** Selected clip range, or null while the range is invalid. */
@@ -30,6 +31,8 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
   onCopy: (text: string) => void;
   /** On the motion page: use the transcript directly instead of linking there. */
   onUse?: (t: Transcript) => void;
+  /** On the clipper page: sets the clip's start and end (video seconds) from an AI-suggested moment. */
+  onPickRange?: (start: number, end: number) => void;
 }) {
   const [model, setModel] = useState<ModelId>(MODELS[0].id);
   const [touch, setTouch] = useState(false);
@@ -48,6 +51,8 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
   const [error, setError] = useState("");
   const [detail, setDetail] = useState("");
   const [info, setInfo] = useState("");
+  /** Counts finished transcriptions (not stored ones), so clean-up can start by itself once per new transcript. */
+  const [freshRun, setFreshRun] = useState(0);
   const [caption, setCaption] = useState<{ segment: number; word: number } | null>(null);
   const handle = useRef<AsrHandle | null>(null);
   const cancelled = useRef(false);
@@ -130,7 +135,7 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
       });
       handle.current = h;
       const { transcript: value, timings } = await h.result;
-      setTranscript({ value, range });
+      setTranscript({ value, range }); setFreshRun(n => n + 1);
       void saveCachedTranscript(file, range, model, language, value);
       setInfo([value.granularity === "word"
         ? `${value.segments.length} segmen siap. Waktu tiap kata dari audio asli.`
@@ -200,8 +205,9 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
         </label>)}
       </div>
       <small className="asr-hint">Koreksi teks lalu ketuk di luar kolom. Waktu kata dipertahankan; jika jumlah kata berubah, waktu dibagi rata dalam segmen. Kosongkan kolom untuk menghapus segmen.</small>
-      <GeminiCleanup getAudio={async () => { await loadEngine(); try { return await extractAudio(file, transcript.range); } finally { terminateEngine(); } }} transcript={transcript.value} language={language === "english" ? "en" : "id"} disabled={working || locked}
+      <GeminiCleanup autoToken={freshRun} getAudio={async () => { await loadEngine(); try { return await extractAudio(file, transcript.range); } finally { terminateEngine(); } }} transcript={transcript.value} language={language === "english" ? "en" : "id"} disabled={working || locked}
         onApply={(v, n) => { setTranscript(old => old && { ...old, value: v }); void saveCachedTranscript(file, transcript.range, model, language, v); setInfo(`${n} perbaikan Gemini diterapkan; waktu kata dipertahankan.`); }} />
+      <ClipAssist transcript={transcript.value} rangeStart={transcript.range.start} language={language === "english" ? "en" : "id"} disabled={working || locked} onPickRange={onPickRange} />
       <div className="range-tools">
         <button onClick={() => { onCopy(transcriptText(transcript.value)); setInfo("Transkrip disalin ke kolom Subtitle di bawah."); }}>Salin ke kolom subtitle</button>
         <button onClick={() => void navigator.clipboard.writeText(cleanupRequest(transcript.value)).then(() => setInfo("Permintaan rapikan + transkrip disalin. Tempel ke obrolan Claude, lalu tempel hasilnya ke kolom Naskah: waktu kata tetap mengikuti ucapan."), () => setError("Browser menolak menyalin. Salin teks transkrip secara manual."))} data-testid="asr-claude">Salin untuk dirapikan Claude</button>

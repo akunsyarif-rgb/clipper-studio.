@@ -87,7 +87,7 @@ function explain(status: number, body: unknown): GeminiError {
 }
 
 /** The JSON the model answered with (it may sit inside a code fence), after the safety checks. */
-function answerJson(response: unknown): unknown {
+export function answerJson(response: unknown): unknown {
   // An OpenAI-format answer (choices[0].message.content) is read like a Gemini one.
   const oa = (response as { choices?: { finish_reason?: string; message?: { content?: unknown } }[] } | null)?.choices;
   if (Array.isArray(oa)) {
@@ -118,7 +118,7 @@ export function parseLines(response: unknown, expected: number): string[] {
 }
 
 /** One call to the model. The key travels in a header, never in the address. One automatic retry if the answer is malformed. */
-async function ask<T>(o: CleanupOptions, parts: unknown[], schema: object, parse: (json: unknown) => T): Promise<T> {
+export async function ask<T>(o: CleanupOptions, parts: unknown[], schema: object, parse: (json: unknown) => T): Promise<T> {
   const fetchImpl = o.fetchImpl ?? fetch;
   if (o.format === "openai" && !o.transport) throw new GeminiError("key", "Layanan berformat OpenAI hanya bisa dipakai setelah masuk ke akun (kunci disimpan di server).");
   const payload = o.format === "openai" ? openAiPayload(parts) : { contents: [{ role: "user", parts }], generationConfig: { temperature: 0.2, responseMimeType: "application/json", responseSchema: schema } };
