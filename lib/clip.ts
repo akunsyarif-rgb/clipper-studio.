@@ -137,6 +137,20 @@ export function audioArgs(input: string, range: { start: number; duration: numbe
   ];
 }
 
+/** Can this browser read the video's header and play it? Used to catch a damaged file before it is handed on. A browser that never answers counts as fine. */
+export function canPlayVideo(blob: Blob, timeoutMs = 10_000): Promise<boolean> {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(blob);
+    const v = document.createElement("video");
+    const done = (ok: boolean) => { clearTimeout(timer); v.removeAttribute("src"); v.load(); URL.revokeObjectURL(url); resolve(ok); };
+    const timer = setTimeout(() => done(true), timeoutMs);
+    v.preload = "metadata"; v.muted = true; v.playsInline = true;
+    v.onloadedmetadata = () => done(Number.isFinite(v.duration) && v.duration > 0);
+    v.onerror = () => done(false);
+    v.src = url;
+  });
+}
+
 export const MP3_OUTPUT_NAME = "clipper-audio.mp3";
 
 /** A range of the audio as a small mono MP3 (32 kbps, about 1 MB for four minutes) to send to an AI service that listens. */

@@ -30,7 +30,7 @@ import GeminiJudge from "../GeminiJudge";
 import CloudAccount from "../CloudAccount";
 import { cloud } from "@/lib/cloud";
 import type { SceneScore } from "@/lib/gemini";
-import { validateFile } from "@/lib/clip";
+import { canPlayVideo, validateFile } from "@/lib/clip";
 import "./motion.css";
 
 const SAMPLE = "Jangan tunggu semangat datang.\nMulailah, meski langkahmu kecil.\nDisiplin membuatmu tetap bergerak.\nSatu langkah hari ini lebih baik dari rencana sempurna.\nMulai sekarang.";
@@ -159,6 +159,8 @@ export default function MotionStudio() {
   function applyClipHandoff(h: ClipHandoff) {
     const file = new File([h.blob], h.name, { type: h.type || "video/mp4" });
     setSource({ file, url: URL.createObjectURL(file), seconds: h.seconds });
+    // A clip the browser cannot read is reported at once, instead of showing a black player.
+    void canPlayVideo(h.blob).then(ok => { if (!ok) { setSource(null); setVideoEdit(false); setHandoffNote("Klip yang diterima tidak bisa diputar di browser ini (file rusak atau terpotong). Kembali ke Clipper lalu ekspor ulang klipnya, atau pilih video langsung di sini."); } });
     if (h.title) setTitle(h.title.slice(0, 48).trim());
     if (h.transcript && h.transcript.segments.length > 0) {
       setScript(transcriptText(h.transcript)); setImported(h.transcript);

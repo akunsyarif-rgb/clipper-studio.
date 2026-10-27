@@ -70,15 +70,31 @@ export const deleteSource = () => kvDel(SOURCE);
 export type ClipHandoff = { blob: Blob; name: string; type: string; seconds: number; title: string; transcript: Transcript | null; at: number };
 const HANDOFF_MAX_AGE_MS = 60 * 60 * 1000;
 
-export const saveClipHandoff = (h: ClipHandoff) => kvSet(CLIP_HANDOFF, h);
+/**
+ * The clip waits in memory first: moving from the clipper to the motion studio is an in-app navigation, so the very same file
+ * is still there, whole. Safari on iPad can hand back a damaged or cut-short file when a large video is read back from
+ * IndexedDB (FFmpeg then says "moov atom not found"), so storage is only the fallback, for a new tab or a reload.
+ */
+let waiting: ClipHandoff | null = null;
+
+export async function saveClipHandoff(h: ClipHandoff): Promise<boolean> {
+  waiting = h;
+  void kvSet(CLIP_HANDOFF, h); // best effort; never needed while the app stays open
+  return true;
+}
+
+const usable = (h: ClipHandoff | null | undefined): h is ClipHandoff =>
+  !!h && h.blob instanceof Blob && h.blob.size > 0 && typeof h.name === "string" && Number.isFinite(h.seconds) && h.seconds > 0 && Date.now() - h.at < HANDOFF_MAX_AGE_MS;
 
 /** Takes the waiting clip (once): it is removed as it is read, and one older than an hour is ignored. */
 export async function takeClipHandoff(): Promise<ClipHandoff | null> {
+  const fromMemory = waiting;
+  waiting = null;
+  if (fromMemory) { void kvDel(CLIP_HANDOFF); return usable(fromMemory) ? fromMemory : null; }
   const h = await kvGet<ClipHandoff>(CLIP_HANDOFF);
   if (h === undefined) return null;
   await kvDel(CLIP_HANDOFF);
-  const valid = h && h.blob instanceof Blob && h.blob.size > 0 && typeof h.name === "string" && Number.isFinite(h.seconds) && h.seconds > 0 && Date.now() - h.at < HANDOFF_MAX_AGE_MS;
-  return valid ? h : null;
+  return usable(h) ? h : null;
 }
 
 /** Forgets the saved session and its video (the transcript cache stays: it only speeds up repeating the same video). */
