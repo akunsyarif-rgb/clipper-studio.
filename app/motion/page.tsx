@@ -19,6 +19,8 @@ import { autoCuts, ICONS, resolveVisual, type Cut, stripMarks, TEMPLATES, type T
 import { chooseFamily, FAMILY_LABELS } from "@/lib/composition";
 import { planNarrative } from "@/lib/narrative";
 import { releaseAsr } from "@/lib/asr/client";
+import { isPristine, SESSION_VERSION, type SessionData } from "@/lib/session";
+import { clearSession, deleteSource, loadSession, loadSource, saveSession, saveSource } from "@/lib/session-store";
 import { scenesToSrt } from "@/lib/srt";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
 import TranscriptPanel from "../TranscriptPanel";
@@ -117,6 +119,21 @@ export default function MotionStudio() {
   const [cutOverrides, setCutOverrides] = useState<Record<string, Cut>>({});
   // Where in the source video a "clip" scene starts (seconds), per scene text.
   const [clipStarts, setClipStarts] = useState<Record<string, number>>({});
+
+  // What this device remembers (never leaves it): offered after a refresh, saved automatically while editing.
+  const [saved, setSaved] = useState<SessionData | null>(null);
+  const [savedSource, setSavedSource] = useState<{ name: string; seconds: number } | null>(null);
+  const [autosave, setAutosave] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const [s, src] = await Promise.all([loadSession(), loadSource()]);
+      if (!alive) return;
+      if (s && !isPristine(s, SAMPLE, !!src)) { setSaved(s); setSavedSource(src ? { name: src.name, seconds: src.seconds } : null); }
+      else setAutosave(true);
+    })();
+    return () => { alive = false; };
+  }, []);
   useEffect(() => { if (!source) return; const url = source.url; return () => URL.revokeObjectURL(url); }, [source]);
   function onSourceVideo(e: ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -179,6 +196,36 @@ export default function MotionStudio() {
     title: title.trim(), scenes: sceneList, style, palette, audioSrc: narration?.url ?? null, captions, video: videoEdit && source ? { src: source.url, seconds: source.seconds } : null,
     music, speech: narration?.speech ?? null,
   } : null;
+  const snapshot = useMemo<SessionData>(() => ({
+    v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, imported,
+    voiceMode: voiceMode === "ai" ? "ai" : "none", ttsLang, ttsVoice, ttsSpeed,
+  }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed]);
+  useEffect(() => {
+    if (!autosave || isPristine(snapshot, SAMPLE, !!source)) return;
+    const t = setTimeout(() => { void saveSession({ ...snapshot, savedAt: Date.now() }); }, 1000);
+    return () => clearTimeout(t);
+  }, [autosave, snapshot, source]);
+  useEffect(() => {
+    if (!autosave) return;
+    if (!source) { void deleteSource(); return; }
+    void saveSource({ blob: source.file, name: source.file.name, type: source.file.type, lastModified: source.file.lastModified, seconds: source.seconds });
+  }, [autosave, source]);
+  async function restoreSession() {
+    const s = saved;
+    if (!s) return;
+    setScript(s.script); setTitle(s.title); setStyle(s.style); setPalette(s.palette); setContentPreset(s.contentPreset); setTarget(s.target); setCaptions(s.captions);
+    setOverrides(s.overrides); setCutOverrides(s.cutOverrides); setClipStarts(s.clipStarts); setCaptionOffset(s.captionOffset); setImported(s.imported);
+    setVoiceMode(s.voiceMode); setTtsLang(s.ttsLang); setTtsVoice(s.ttsVoice); setTtsSpeed(s.ttsSpeed);
+    const rec = savedSource ? await loadSource() : null;
+    if (rec) {
+      const file = rec.blob instanceof File ? rec.blob : new File([rec.blob], rec.name, { type: rec.type, lastModified: rec.lastModified });
+      setSource({ file, url: URL.createObjectURL(file), seconds: rec.seconds });
+      setVideoEdit(s.videoEdit);
+    } else setVideoEdit(false); // editing over the video needs the video itself
+    setSaved(null); setAutosave(true);
+  }
+  async function discardSession() { await clearSession(); setSaved(null); setSavedSource(null); setAutosave(true); }
+
   const blocker = !timeline.ok ? timeline.error : titleError
     ?? (recording ? "Selesaikan perekaman narasi terlebih dahulu." : null)
     ?? (voiceMode === "ai" && !aiFresh ? (aiNarration ? "Naskah, bahasa, suara, atau kecepatan berubah. Ketuk “Buat suara otomatis” lagi." : "Ketuk “Buat suara otomatis” untuk membuat voice over dari naskah.") : null);
@@ -424,6 +471,11 @@ export default function MotionStudio() {
       <div className="studio-grid">
         <section className="studio-panel">
           <div className="panel-heading"><div><small>01 / NASKAH & AUDIO</small><h2>Atur video</h2></div><span className="local-tag">Lokal · tanpa server</span></div>
+          {saved && <div className="notice" data-testid="restore-offer">
+            Sesi terakhir ditemukan: <strong>{saved.title || "tanpa judul"}</strong> · {splitScript(saved.script).length} scene{savedSource ? ` · video ${savedSource.name}` : ""}. Disimpan di perangkat ini saja.{" "}
+            <button className="text-button" data-testid="restore-session" onClick={() => void restoreSession()}>Lanjutkan</button>{" "}
+            <button className="text-button" data-testid="restore-discard" onClick={() => void discardSession()}>Mulai baru</button>
+          </div>}
           {offer && !imported && <div className="notice" data-testid="transcript-offer">
             Transkrip dari Clipper tersedia: <strong>{offer.source}</strong> ({allWords(offer.transcript).length} kata, {Math.round(offer.transcript.duration)} dtk).{" "}
             <button className="text-button" data-testid="transcript-import" onClick={() => { setScript(transcriptText(offer.transcript)); setImported(offer.transcript); setVoiceMode("manual"); setOffer(null); }}>Impor ke naskah</button>

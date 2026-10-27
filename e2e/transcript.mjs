@@ -102,6 +102,58 @@ try {
     return outcome === "error" ? "model unreachable here → clear error" : "transcript produced";
   });
 
+  await step("a refresh offers to continue the last session, including the video, and the saved transcript returns", async () => {
+    const ctx = await browser.newContext();
+    const p = await ctx.newPage();
+    const errors = [];
+    p.on("pageerror", e => errors.push(e.message));
+    await p.goto(BASE + "/motion");
+    await p.getByTestId("script").fill("Naskah saya yang pertama.\nKalimat kedua di sini.");
+    await p.getByTestId("title").fill("Judul tersimpan");
+    await p.getByTestId("palette").selectOption("pearl");
+    await p.getByTestId("source-video").setInputFiles(withAudio);
+    await p.getByTestId("asr-panel").waitFor({ timeout: 15000 });
+    await p.waitForTimeout(2500); // autosave is debounced and the video is written to storage
+
+    // A transcript made earlier for this exact video part is stored under the studio's cache key.
+    await p.evaluate(async t => {
+      const db = await new Promise((res, rej) => { const r = indexedDB.open("clipper-studio", 1); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+      const get = key => new Promise(res => { const q = db.transaction("kv").objectStore("kv").get(key); q.onsuccess = () => res(q.result); });
+      const src = await get("source");
+      const key = `asr:${src.name}|${src.blob.size}|${src.lastModified}|0.00|${src.seconds.toFixed(2)}|Xenova/whisper-small|indonesian`;
+      await new Promise(res => { const tx = db.transaction("kv", "readwrite"); tx.objectStore("kv").put(t, key); tx.oncomplete = res; });
+    }, transcript);
+
+    await p.reload();
+    await p.getByTestId("restore-offer").waitFor({ timeout: 10000 });
+    const offerText = await p.getByTestId("restore-offer").innerText();
+    assert(offerText.includes("Judul tersimpan") && offerText.includes("dengan-suara.mp4") && offerText.includes("2 scene"), "offer: " + offerText);
+    assert((await p.getByTestId("script").inputValue()).startsWith("Jangan tunggu"), "nothing is applied before the creator agrees");
+
+    await p.getByTestId("restore-session").click();
+    await p.getByText("Ganti video (dengan-suara.mp4)").waitFor({ timeout: 10000 });
+    assert((await p.getByTestId("script").inputValue()) === "Naskah saya yang pertama.\nKalimat kedua di sini.", "script restored");
+    assert((await p.getByTestId("title").inputValue()) === "Judul tersimpan", "title restored");
+    assert((await p.getByTestId("palette").inputValue()) === "pearl", "palette restored");
+    assert(!(await p.getByTestId("restore-offer").isVisible().catch(() => false)), "offer gone after restoring");
+    const seconds = await p.locator("video").first().evaluate(v => new Promise(res => { if (v.readyState >= 1) res(v.duration); else v.onloadedmetadata = () => res(v.duration); }));
+    assert(seconds > 5 && seconds < 7, "restored video is playable, duration " + seconds);
+    await p.getByTestId("asr-list").waitFor({ timeout: 10000 });
+    assert((await p.getByTestId("asr-seg").count()) === 2, "saved transcript shown again");
+    assert(/tanpa memproses ulang/.test(await p.getByTestId("asr-info").innerText()), "says it came from storage");
+
+    // Start over: everything is forgotten.
+    await p.reload();
+    await p.getByTestId("restore-offer").waitFor({ timeout: 10000 });
+    await p.getByTestId("restore-discard").click();
+    assert((await p.getByTestId("script").inputValue()).startsWith("Jangan tunggu"), "sample script after starting over");
+    await p.reload();
+    await p.waitForTimeout(1500);
+    assert((await p.getByTestId("restore-offer").count()) === 0, "nothing offered after starting over");
+    assert(errors.length === 0, errors.join(" | "));
+    await ctx.close();
+  });
+
   await step("no uncaught page errors", async () => { assert(pageErrors.length === 0, pageErrors.join(" | ")); });
   await browser.close();
 } finally {

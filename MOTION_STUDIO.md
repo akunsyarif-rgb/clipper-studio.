@@ -182,3 +182,13 @@ In a source-video edit each scene can show the speaker, a graphic, or **another 
 - **Real progress**: the bar follows finished 30-second windows of audio ("bagian 2 dari 5") with a time estimate. Before that the panel says whether it is loading, downloading (only the first time) or preparing the model.
 - **Where the time went** is shown after each run, e.g. "model dimuat 41 dtk; transkripsi 63 dtk untuk 45 dtk audio (1.4× durasi)". If the *small* model ran slower than the audio, the panel suggests *base*.
 - On devices without SharedArrayBuffer (iPad Safari) the model runs on one WebAssembly thread, so *small* with word timestamps is slow by nature; *base* is the practical choice there.
+
+## Remembered on this device (refresh does not start over)
+
+The studio saves your work in the browser's own storage (IndexedDB) on this device. Nothing is uploaded.
+
+- **Session**: script, title, style, palette, per-scene corrections and cuts, clip starts, caption offset, the applied transcript and the voice settings are saved about a second after each change, together with the **uploaded source video** (saved once). After a refresh the studio offers *Lanjutkan* / *Mulai baru*; nothing is applied until you choose, and an untouched sample script is never offered back. *Mulai baru* deletes the saved session and video.
+- **Transcripts**: a finished transcript is kept per video part, model and language (the 8 most recent). Making it again, or reopening the same video, shows the saved text at once without extracting audio or running the model.
+- A transcription that is still running when the page is refreshed cannot be resumed (the model runs inside the page); start it again, then it is saved when it finishes.
+- The storage can be cleared by the browser (Safari clears site data after a period without visits, or when space is low); the studio then simply starts fresh. A full disk or private mode only means nothing is remembered.
+- Voice recordings, generated voice and music are not kept: they are regenerated or re-added.

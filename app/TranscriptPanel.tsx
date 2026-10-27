@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { formatBytes, formatTime } from "@/lib/clip";
 import { extractAudio, loadEngine } from "@/lib/engine";
+import { loadCachedTranscript, saveCachedTranscript } from "@/lib/session-store";
 import { MODELS, releaseAsr, transcribe, TranscribeCancelled, type AsrHandle, type ModelId } from "@/lib/asr/client";
 import {
   activeAt, asrEta, asrSlowHint, asrTimingSummary, editSegment, explainTranscribeError, HANDOFF_KEY, LANGUAGES, serializeHandoff, toSrt, transcriptText, validateTranscribeRange,
@@ -46,6 +47,17 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
   // Leaving the page frees the model's memory; a cancelled run already did.
   useEffect(() => () => { handle.current?.cancel(); releaseAsr(); }, []);
 
+  // A transcript made earlier for this exact video part, model and language is shown again at once (e.g. after a refresh).
+  const rangeStart = range?.start, rangeDuration = range?.duration;
+  useEffect(() => {
+    if (rangeStart === undefined || rangeDuration === undefined || transcript || working) return;
+    let alive = true;
+    void loadCachedTranscript(file, { start: rangeStart, duration: rangeDuration }, model, language).then(t => {
+      if (alive && t) { setTranscript({ value: t, range: { start: rangeStart, duration: rangeDuration } }); setInfo("Transkrip dari proses sebelumnya dimuat dari penyimpanan perangkat (tanpa memproses ulang)."); }
+    });
+    return () => { alive = false; };
+  }, [file, rangeStart, rangeDuration, model, language]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Live caption: follow the original audio of the player using requestAnimationFrame while it plays.
   useEffect(() => {
     const el = video.current;
@@ -70,6 +82,12 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
     cancelled.current = false;
     setError(""); setDetail(""); setInfo(""); setTranscript(null); setPhase("audio"); onWorking(true);
     try {
+      const cached = await loadCachedTranscript(file, range, model, language);
+      if (cached) {
+        setTranscript({ value: cached, range });
+        setInfo("Memakai hasil yang tersimpan dari proses sebelumnya (video, bagian, model, dan bahasa sama), tanpa memproses ulang.");
+        return;
+      }
       await loadEngine();
       const audio = await extractAudio(file, range);
       if (cancelled.current) throw new TranscribeCancelled();
@@ -82,6 +100,7 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
       handle.current = h;
       const { transcript: value, timings } = await h.result;
       setTranscript({ value, range });
+      void saveCachedTranscript(file, range, model, language, value);
       setInfo([value.granularity === "word"
         ? `${value.segments.length} segmen siap. Waktu tiap kata dari audio asli.`
         : `${value.segments.length} segmen siap. Model ini hanya memberi waktu per segmen; waktu kata diperkirakan merata.`, `Waktu: ${asrTimingSummary(timings)}.`, asrSlowHint(model, timings)].filter(Boolean).join(" "));
