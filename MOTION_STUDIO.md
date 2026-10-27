@@ -332,3 +332,16 @@ Langkah 1 dari bantuan Gemini. Whisper tetap mendengar suara dan memberi waktu k
 - Skor digabung dengan skor aturan (`blendAi`, bobot sama, rata-rata): Gemini bisa menaikkan atau menurunkan, tetapi tidak memutuskan sendiri. Yang ditandai manual (`*kata*`) dan istilah populer tetap sesuai aturan; kalimat yang tidak punya apa pun untuk ditampilkan (skor aturan 0) tidak bisa dinaikkan. Kepadatan animasi, jarak minimal, dan batas cakupan tetap berlaku.
 - Alasan Gemini tampil di daftar adegan ("Gemini 0.05: basa-basi"). "Pakai aturan saja" menghapus penilaiannya. Penilaian hanya berlaku selama kunjungan itu (tidak ikut disimpan di sesi).
 - Kode: `judgeScenesWithGemini`, `parseScores` di `lib/gemini.ts`; `blendAi` di `lib/importance.ts`; `app/GeminiJudge.tsx`.
+
+## Sinkron antar perangkat (Supabase)
+
+Backend hanya menyimpan **data teks kecil**: sesi kerja (naskah, gaya, pilihan adegan, transkrip yang dipakai) dan transkrip hasil Whisper. **Video, audio, dan hasil render tidak pernah diunggah.**
+
+- **Proyek:** `clipper-studio` (Supabase, Singapura, paket Free). Tabel `app_sessions` (satu baris `current` per pengguna) dan `app_transcripts` (kunci sama dengan cache transkrip di perangkat). RLS: tiap baris hanya bisa dibaca/ditulis pemiliknya (`auth.uid() = user_id`). Batas ukuran 2 MB per baris.
+- **Login:** email + kata sandi. Tombol "Masuk untuk sinkron antar perangkat" di halaman utama dan Motion Studio. Tanpa login, app tidak mengirim satu permintaan pun ke layanan ini.
+- **Mode pribadi:** trigger `only_first_user` di `auth.users` menolak pendaftaran akun kedua. **Hapus trigger ini sebelum aplikasi dibuka untuk umum** (`drop trigger only_first_user on auth.users;`).
+- **Alur:** sesi didorong ke akun setiap kali tersimpan otomatis (≈1 detik setelah perubahan). Saat masuk di perangkat lain, sesi akun yang lebih baru ditawarkan lewat banner "Lanjutkan" (pilih lagi videonya, karena video tetap di perangkat; transkripnya ikut, jadi tidak perlu transkripsi ulang). Transkrip yang belum ada di perangkat diambil dari akun lebih dulu sebelum memproses ulang.
+- **Konflik:** yang terbaru menang (`savedAt`); tidak ada penggabungan. Satu pengguna, satu perangkat aktif pada satu waktu sudah cukup untuk pemakaian pribadi.
+- **Kode:** `lib/cloud.ts` (klien `fetch` tanpa SDK, penyegaran token otomatis, gagal dengan tenang), `app/CloudAccount.tsx`, pengait di `lib/session-store.ts` dan `app/motion/page.tsx`. URL proyek dan kunci *publishable* bersifat publik; `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_KEY` bisa menimpa bawaannya.
+- **Pengaturan di dashboard Supabase (tidak bisa lewat kode):** pada Authentication → Providers → Email, matikan **Confirm email** supaya pendaftaran pertama langsung masuk tanpa email konfirmasi.
+- **Belum dikerjakan:** kunci Gemini di server (perantara lewat Edge Function), sehingga kunci tidak lagi disimpan di browser.

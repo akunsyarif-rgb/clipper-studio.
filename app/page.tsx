@@ -7,6 +7,7 @@ import {
   parseTime, parseYouTube, validateFile, validateRange, type Aspect, type Fit, type Quality, type YouTubeRef,
 } from "@/lib/clip";
 import TranscriptPanel from "./TranscriptPanel";
+import CloudAccount from "./CloudAccount";
 import { releaseAsr } from "@/lib/asr/client";
 import { ExportCancelled, exportClip, isEngineLoaded, terminateEngine } from "@/lib/engine";
 
@@ -158,6 +159,7 @@ export default function Home() {
 
   return <main className="shell">
     <header className="topbar"><Link className="brand" href="/"><span className="logo">c</span><span>clipper<span className="light">studio</span></span></Link><span className="pill"><i /> LOCAL-FIRST MVP</span></header>
+    <CloudAccount />
     <section className="hero"><div className="eyebrow"><span className="eyebrow-line" /> VIDEO WORKSPACE</div><h1>Video panjang.<br/><em>Potongan yang tepat.</em></h1><p>Potong video menjadi klip 9:16, 16:9, atau 1:1. Pilih video, atur rentang waktu, lalu ekspor MP4 langsung dari perangkat.</p><div className="hero-tags"><span><b>01</b> Lokal dahulu</span><span><b>02</b> Tanpa login</span><span><b>03</b> Maks. 1 GB</span></div></section>
     <section className="workspace">
       <div className="section-heading"><div><small>LANGKAH 01</small><h2>Pilih video sumber</h2></div><span className="step-count">01 / 03</span></div>

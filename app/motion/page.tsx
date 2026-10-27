@@ -27,6 +27,8 @@ import { scenesToSrt } from "@/lib/srt";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
 import TranscriptPanel from "../TranscriptPanel";
 import GeminiJudge from "../GeminiJudge";
+import CloudAccount from "../CloudAccount";
+import { cloud } from "@/lib/cloud";
 import type { SceneScore } from "@/lib/gemini";
 import { validateFile } from "@/lib/clip";
 import "./motion.css";
@@ -135,6 +137,8 @@ export default function MotionStudio() {
   const [saved, setSaved] = useState<SessionData | null>(null);
   const [savedSource, setSavedSource] = useState<{ name: string; seconds: number } | null>(null);
   const [autosave, setAutosave] = useState(false);
+  const [cloudUser, setCloudUser] = useState<string | null>(null);
+  const [savedCloud, setSavedCloud] = useState(false);
   useEffect(() => {
     let alive = true;
     void (async () => {
@@ -218,9 +222,21 @@ export default function MotionStudio() {
   }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlayPos, density, brandMotion, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed]);
   useEffect(() => {
     if (!autosave || isPristine(snapshot, SAMPLE, !!source)) return;
-    const t = setTimeout(() => { void saveSession({ ...snapshot, savedAt: Date.now() }); }, 1000);
+    const t = setTimeout(() => { const s = { ...snapshot, savedAt: Date.now() }; void saveSession(s); void cloud.pushSession(s); }, 1000);
     return () => clearTimeout(t);
   }, [autosave, snapshot, source]);
+  // Signed in: a session saved from another device that is newer than this one is offered like a local one.
+  useEffect(() => {
+    if (!cloudUser) return;
+    let alive = true;
+    void (async () => {
+      const [remote, local] = await Promise.all([cloud.pullSession(), loadSession()]);
+      if (!alive || !remote || isPristine(remote, SAMPLE, false)) return;
+      if (remote.savedAt <= (local?.savedAt ?? 0)) return;
+      setSaved(remote); setSavedCloud(true); setSavedSource(null);
+    })();
+    return () => { alive = false; };
+  }, [cloudUser]);
   useEffect(() => {
     // Writing a large video to storage competes for memory with transcription and rendering; wait until they are done.
     if (!autosave || asrBusy || rendering) return;
@@ -239,9 +255,9 @@ export default function MotionStudio() {
       setSource({ file, url: URL.createObjectURL(file), seconds: rec.seconds });
       setVideoEdit(s.videoEdit);
     } else setVideoEdit(false); // editing over the video needs the video itself
-    setSaved(null); setAutosave(true);
+    setSaved(null); setSavedCloud(false); setAutosave(true);
   }
-  async function discardSession() { await clearSession(); setSaved(null); setSavedSource(null); setAutosave(true); }
+  async function discardSession() { await clearSession(); setSavedCloud(false); setSaved(null); setSavedSource(null); setAutosave(true); }
 
   const blocker = !timeline.ok ? timeline.error : titleError
     ?? (recording ? "Selesaikan perekaman narasi terlebih dahulu." : null)
@@ -487,9 +503,10 @@ export default function MotionStudio() {
 
       <div className="studio-grid">
         <section className="studio-panel">
-          <div className="panel-heading"><div><small>01 / NASKAH & AUDIO</small><h2>Atur video</h2></div><span className="local-tag">Lokal · tanpa server</span></div>
+          <div className="panel-heading"><div><small>01 / NASKAH & AUDIO</small><h2>Atur video</h2></div><span className="local-tag">{cloudUser ? "Tersinkron · tanpa media" : "Lokal · tanpa server"}</span></div>
+          <CloudAccount onUser={setCloudUser} />
           {saved && <div className="notice" data-testid="restore-offer">
-            Sesi terakhir ditemukan: <strong>{saved.title || "tanpa judul"}</strong> · {splitScript(saved.script).length} scene{savedSource ? ` · video ${savedSource.name}` : ""}. Disimpan di perangkat ini saja.{" "}
+            Sesi terakhir ditemukan: <strong>{saved.title || "tanpa judul"}</strong> · {splitScript(saved.script).length} scene{savedSource ? ` · video ${savedSource.name}` : ""}. {savedCloud ? "Dari akun Anda (perangkat lain); pilih lagi videonya setelah Lanjutkan." : "Disimpan di perangkat ini saja."}{" "}
             <button className="text-button" data-testid="restore-session" onClick={() => void restoreSession()}>Lanjutkan</button>{" "}
             <button className="text-button" data-testid="restore-discard" onClick={() => void discardSession()}>Mulai baru</button>
           </div>}

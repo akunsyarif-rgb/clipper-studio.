@@ -2,6 +2,7 @@
 // database just means nothing is remembered; the studio keeps working.
 import { asrCacheKey, touchCache, type SessionData, type SourceRecord, isSession } from "./session";
 import type { Transcript } from "./transcript";
+import { cloud } from "./cloud";
 
 const DB_NAME = "clipper-studio";
 const STORE = "kv";
@@ -68,12 +69,22 @@ export const deleteSource = () => kvDel(SOURCE);
 export async function clearSession() { await kvDel(SESSION); await kvDel(SOURCE); }
 
 export async function loadCachedTranscript(file: File, range: { start: number; duration: number }, model: string, language: string): Promise<Transcript | null> {
-  const t = await kvGet<Transcript>(asrCacheKey(file, range, model, language));
-  return t && Array.isArray(t.segments) && t.segments.length ? t : null;
+  const key = asrCacheKey(file, range, model, language);
+  const t = await kvGet<Transcript>(key);
+  if (t && Array.isArray(t.segments) && t.segments.length) return t;
+  // Not on this device: a transcript made on another device (signed in only) is fetched and kept here too.
+  const remote = await cloud.getTranscript(key);
+  if (remote) await storeTranscript(key, remote);
+  return remote;
 }
 
 export async function saveCachedTranscript(file: File, range: { start: number; duration: number }, model: string, language: string, t: Transcript) {
   const key = asrCacheKey(file, range, model, language);
+  void cloud.putTranscript(key, t);
+  await storeTranscript(key, t);
+}
+
+async function storeTranscript(key: string, t: Transcript) {
   if (!(await kvSet(key, t))) return;
   const { index, drop } = touchCache((await kvGet<string[]>(ASR_INDEX)) ?? [], key);
   for (const k of drop) await kvDel(k);

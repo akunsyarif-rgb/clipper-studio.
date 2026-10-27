@@ -283,6 +283,85 @@ try {
     await ctx.close();
   });
 
+  await step("signing in syncs the session and transcripts between devices (Supabase faked); signed out sends nothing", async () => {
+    const SB = "https://smwealrfgnzxquqqscxs.supabase.co";
+    const db = { session: null, transcripts: {}, users: [] };
+    const seen = [];
+    const mock = async ctx => ctx.route(SB + "/**", async route => {
+      const req = route.request(), u = new URL(req.url());
+      const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET, POST, OPTIONS" };
+      if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+      seen.push(req.method() + " " + u.pathname + u.search);
+      const ok = (status, body) => route.fulfill({ status, headers: cors, contentType: "application/json", body: JSON.stringify(body) });
+      const tokens = { access_token: "AT", refresh_token: "RT", expires_in: 3600, user: { email: "saya@contoh.id" } };
+      if (u.pathname === "/auth/v1/signup") { if (db.users.length) return ok(500, { error_code: "unexpected_failure", msg: "Database error saving new user" }); db.users.push("saya"); return ok(200, tokens); }
+      if (u.pathname === "/auth/v1/token") { const b = JSON.parse(req.postData()); return b.password === "benar-sekali" ? ok(200, tokens) : ok(400, { error_code: "invalid_credentials", msg: "Invalid login credentials" }); }
+      if (req.headers().authorization !== "Bearer AT") return ok(401, {});
+      if (u.pathname === "/rest/v1/app_sessions") {
+        if (req.method() === "POST") { db.session = JSON.parse(req.postData()).data; return route.fulfill({ status: 201, headers: cors }); }
+        return ok(200, db.session ? [{ data: db.session }] : []);
+      }
+      if (u.pathname === "/rest/v1/app_transcripts") {
+        if (req.method() === "POST") { const b = JSON.parse(req.postData()); db.transcripts[b.cache_key] = b.data; return route.fulfill({ status: 201, headers: cors }); }
+        const key = u.searchParams.get("cache_key").replace(/^eq\./, "");
+        return ok(200, db.transcripts[key] ? [{ data: db.transcripts[key] }] : []);
+      }
+      return ok(404, {});
+    });
+
+    // Device A: wrong password is explained, then signing in, then writing a script is saved to the account.
+    const a = await browser.newContext(); await mock(a);
+    const pa = await a.newPage();
+    await pa.goto(BASE + "/motion");
+    await pa.getByTestId("cloud-open").click();
+    await pa.getByTestId("cloud-email").fill("saya@contoh.id");
+    await pa.getByTestId("cloud-password").fill("salah-banget");
+    await pa.getByTestId("cloud-signin").click();
+    assert(/salah/.test(await pa.getByTestId("cloud-error").innerText()), "wrong password explained");
+    await pa.getByTestId("cloud-password").fill("benar-sekali");
+    await pa.getByTestId("cloud-signup").click();
+    await pa.getByTestId("cloud-signed-in").waitFor({ timeout: 5000 });
+    assert(/Tersinkron/.test(await pa.locator(".local-tag").innerText()), "heading says synced");
+    await pa.getByTestId("script").fill("Naskah dari perangkat pertama.\nKalimat kedua untuk diuji.");
+    await pa.waitForFunction(() => true); await pa.waitForTimeout(3500);
+    assert(db.session?.script?.startsWith("Naskah dari perangkat pertama"), "session reached the account");
+    assert(!JSON.stringify(db).includes("benar-sekali"), "the password is never stored as data");
+    db.transcripts["asr2:contoh.mp4|1|2|0.00|3.00|Xenova/whisper-base|indonesian"] = { language: "indonesian", granularity: "word", duration: 3, segments: [{ start: 0, end: 1, text: "dari akun", words: [{ text: "dari", start: 0, end: 0.5 }, { text: "akun", start: 0.5, end: 1 }] }] };
+    await a.close();
+
+    // Device B (a fresh browser): signed out it sends nothing; signed in it is offered the newer session from device A.
+    const b = await browser.newContext(); await mock(b);
+    const pb = await b.newPage();
+    seen.length = 0;
+    await pb.goto(BASE + "/motion");
+    await pb.getByTestId("cloud-open").waitFor({ timeout: 10000 });
+    await pb.waitForTimeout(1500);
+    assert(seen.length === 0, "signed out: no request to the service: " + seen.join(", "));
+    await pb.getByTestId("cloud-open").click();
+    await pb.getByTestId("cloud-email").fill("saya@contoh.id");
+    await pb.getByTestId("cloud-password").fill("benar-sekali");
+    await pb.getByTestId("cloud-signin").click();
+    await pb.getByTestId("restore-offer").waitFor({ timeout: 10000 });
+    assert(/Dari akun Anda/.test(await pb.getByTestId("restore-offer").innerText()), "offer says it comes from the account");
+    await pb.getByTestId("restore-session").click();
+    assert((await pb.getByTestId("script").inputValue()).startsWith("Naskah dari perangkat pertama"), "script restored on the other device");
+    await pb.getByTestId("cloud-signout").click();
+    await pb.getByTestId("cloud-open").waitFor({ timeout: 3000 });
+    assert((await pb.evaluate(() => localStorage.getItem("clipper:cloud:v1"))) === null, "signing out forgets the session");
+    await b.close();
+
+    // A closed sign-up (the owner's account exists) is explained.
+    const c = await browser.newContext(); await mock(c);
+    const pc = await c.newPage();
+    await pc.goto(BASE);
+    await pc.getByTestId("cloud-open").click();
+    await pc.getByTestId("cloud-email").fill("orang@lain.id");
+    await pc.getByTestId("cloud-password").fill("kata-sandi-lain");
+    await pc.getByTestId("cloud-signup").click();
+    assert(/masih pribadi/.test(await pc.getByTestId("cloud-error").innerText()), "closed sign-up explained");
+    await c.close();
+  });
+
   await step("no uncaught page errors", async () => { assert(pageErrors.length === 0, pageErrors.join(" | ")); });
   await browser.close();
 } finally {
