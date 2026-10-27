@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import {
   ASPECTS, FITS, QUALITIES, MAX_CLIP_SECONDS, exportFileName, explainError, formatBytes, formatTime, outputSize,
-  canPlayVideo, parseTime, parseYouTube, validateFile, validateRange, type Aspect, type Fit, type Quality, type YouTubeRef,
+  checkedVideo, parseTime, parseYouTube, validateFile, validateRange, type Aspect, type Fit, type Quality, type YouTubeRef,
 } from "@/lib/clip";
 import TranscriptPanel from "./TranscriptPanel";
 import CloudAccount from "./CloudAccount";
@@ -120,13 +120,15 @@ export default function Home() {
     void runExport({
       start: c.start, duration: c.end - c.start, aspect: "9:16",
       after: async blob => {
-        if (!(await canPlayVideo(blob))) {
+        const checked = await checkedVideo(blob);
+        if (!checked.probe.ok) {
           const { width, height } = outputSize("9:16", quality);
           setResult({ url: URL.createObjectURL(blob), name, size: blob.size, label: `${width}×${height} · ${formatTime(c.end - c.start)}` });
+          setErrorDetail(checked.probe.detail);
           say("Hasil potongan tidak bisa diputar di browser ini, jadi tidak dikirim ke Motion. Coba unduh hasilnya, atau ekspor ulang (kualitas lebih rendah bisa membantu).", true);
           return;
         }
-        const ok = await saveClipHandoff({ blob, name, type: "video/mp4", seconds: c.end - c.start, title: c.title ?? "", transcript: c.transcript ?? null, at: Date.now() });
+        const ok = await saveClipHandoff({ blob: checked.blob, name, type: "video/mp4", seconds: c.end - c.start, title: c.title ?? "", transcript: c.transcript ?? null, at: Date.now() });
         if (!ok) { say("Browser menolak menyimpan klip untuk dikirim. Ekspor dulu lalu pilih videonya di Motion Graphics.", true); return; }
         router.push("/motion");
       },
