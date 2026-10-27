@@ -200,7 +200,7 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
         </label>)}
       </div>
       <small className="asr-hint">Koreksi teks lalu ketuk di luar kolom. Waktu kata dipertahankan; jika jumlah kata berubah, waktu dibagi rata dalam segmen. Kosongkan kolom untuk menghapus segmen.</small>
-      <GeminiCleanup transcript={transcript.value} language={language === "english" ? "en" : "id"} disabled={working || locked}
+      <GeminiCleanup getAudio={async () => { await loadEngine(); try { return await extractAudio(file, transcript.range); } finally { terminateEngine(); } }} transcript={transcript.value} language={language === "english" ? "en" : "id"} disabled={working || locked}
         onApply={(v, n) => { setTranscript(old => old && { ...old, value: v }); void saveCachedTranscript(file, transcript.range, model, language, v); setInfo(`${n} perbaikan Gemini diterapkan; waktu kata dipertahankan.`); }} />
       <div className="range-tools">
         <button onClick={() => { onCopy(transcriptText(transcript.value)); setInfo("Transkrip disalin ke kolom Subtitle di bawah."); }}>Salin ke kolom subtitle</button>

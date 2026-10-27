@@ -108,6 +108,27 @@ export function judgeScenes(scenes: SceneInput[]): Judgement[] {
   });
 }
 
+/** What Gemini thought of a sentence (0..1) and why, in a few words. */
+export type AiScore = { score: number; reason: string };
+/** How much the language model counts next to the rules (equal voice). */
+export const AI_WEIGHT = 0.5;
+
+/**
+ * Mixes the model's opinion into the rule scores. Rules keep the last word where it matters: what the creator marked by
+ * hand and popular names stay as they are, and a sentence the rules found nothing to show for cannot be lifted (there
+ * would be no graphic to draw). Everywhere else the two scores are averaged, so the model can raise or lower a call
+ * but never decide alone.
+ */
+export function blendAi(rules: Judgement[], ai?: (AiScore | undefined)[]): Judgement[] {
+  if (!ai) return rules;
+  return rules.map((j, i) => {
+    const a = ai[i];
+    if (!a || j.score === 0 || j.reasons.some(r => r === "ditandai manual" || r === "istilah populer")) return j;
+    const score = Math.round(((1 - AI_WEIGHT) * j.score + AI_WEIGHT * a.score) * 100) / 100;
+    return { score, reasons: [...j.reasons, `Gemini ${a.score.toFixed(2)}${a.reason ? `: ${a.reason}` : ""}`] };
+  });
+}
+
 export type AnimationPlan = { cuts: Cut[]; judgements: Judgement[] };
 
 /**
@@ -115,8 +136,8 @@ export type AnimationPlan = { cuts: Cut[]; judgements: Judgement[] };
  * scene is taken only if it reaches the density's bar, starts far enough from the animations already chosen and fits
  * the share of the video that animations may cover.
  */
-export function planAnimations(scenes: SceneInput[], density: Density): AnimationPlan {
-  const judgements = judgeScenes(scenes);
+export function planAnimations(scenes: SceneInput[], density: Density, ai?: (AiScore | undefined)[]): AnimationPlan {
+  const judgements = blendAi(judgeScenes(scenes), ai);
   const { threshold, minGapSeconds, maxCoverage } = SETTINGS[density];
   const starts: number[] = [];
   let at = 0;

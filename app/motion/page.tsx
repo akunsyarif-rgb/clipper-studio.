@@ -26,6 +26,8 @@ import { clearSession, deleteSource, loadSession, loadSource, saveSession, saveS
 import { scenesToSrt } from "@/lib/srt";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
 import TranscriptPanel from "../TranscriptPanel";
+import GeminiJudge from "../GeminiJudge";
+import type { SceneScore } from "@/lib/gemini";
 import { validateFile } from "@/lib/clip";
 import "./motion.css";
 
@@ -122,6 +124,8 @@ export default function MotionStudio() {
   const [overlayPos, setOverlayPos] = useState<OverlayPosition>("top");
   // How many scenes get an animation, and how elaborate a popular name's animation is.
   const [density, setDensity] = useState<Density>("balanced");
+  // Gemini's opinion per sentence (by its text); optional, kept for this visit only.
+  const [aiScores, setAiScores] = useState<Record<string, SceneScore>>({});
   const [brandMotion, setBrandMotion] = useState<BrandMotion>("simple");
   const [cutOverrides, setCutOverrides] = useState<Record<string, Cut>>({});
   // Where in the source video a "clip" scene starts (seconds), per scene text.
@@ -197,7 +201,7 @@ export default function MotionStudio() {
   const narrativePlan = timeline.ok ? planNarrative(timeline.scenes.map(sc => sc.text)) : [];
   // Which scenes deserve an animation: judged on what they say, not on whether an icon exists for a word.
   const animationPlan = timeline.ok
-    ? planAnimations(timeline.scenes.map((sc, i) => ({ text: sc.text, visual: sceneVisuals[i], seconds: sc.durationInFrames / FPS })), density)
+    ? planAnimations(timeline.scenes.map((sc, i) => ({ text: sc.text, visual: sceneVisuals[i], seconds: sc.durationInFrames / FPS })), density, timeline.scenes.map(sc => aiScores[sc.text]))
     : { cuts: [], judgements: [] };
   const planned = animationPlan.cuts;
   const sceneList = timeline.ok ? timeline.scenes.map((sc, i) => ({
@@ -512,6 +516,8 @@ export default function MotionStudio() {
               {DENSITIES.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
             </select>
           </label>}
+          {videoEdit && timeline.ok && <GeminiJudge scenes={timeline.scenes.map(sc => ({ text: sc.text, seconds: sc.durationInFrames / FPS }))} language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"}
+            active={timeline.scenes.filter(sc => aiScores[sc.text]).length} onScores={setAiScores} onClear={() => setAiScores({})} />}
           {videoEdit && <label className="field-label" htmlFor="brand-motion">Gaya animasi istilah populer <span className="field-hint">sederhana = ikon dan nama dengan satu denyut halus; lengkap = adegan kecil khas tiap layanan</span>
             <select id="brand-motion" value={brandMotion} onChange={e => setBrandMotion(e.target.value as BrandMotion)} data-testid="brand-motion">
               <option value="simple">Sederhana (elegan)</option>

@@ -203,3 +203,91 @@ describe("applyCleanup keeps the timing of the speech", () => {
     expect(allWords(out)).toHaveLength(allWords(t).length);
   });
 });
+
+import { audioCleanupPrompt, judgePrompt, judgeScenesWithGemini, MAX_AUDIO_SECONDS, parseScores, wavPart } from "./gemini";
+import { blendAi, judgeScenes } from "./importance";
+import { detectVisual } from "./visuals";
+
+describe("listening to the speech", () => {
+  it("encodes 16 kHz mono samples as a WAV", () => {
+    const part = wavPart(new Float32Array([0, 0.5, -0.5, 1, -1]));
+    expect(part.mimeType).toBe("audio/wav");
+    const bytes = Uint8Array.from(atob(part.data), c => c.charCodeAt(0));
+    expect(String.fromCharCode(...bytes.slice(0, 4))).toBe("RIFF");
+    expect(String.fromCharCode(...bytes.slice(8, 12))).toBe("WAVE");
+    expect(bytes.length).toBe(44 + 10);
+    const v = new DataView(bytes.buffer);
+    expect(v.getUint32(24, true)).toBe(16000);
+    expect(v.getInt16(44 + 6, true)).toBe(32767);
+    expect(v.getInt16(44 + 8, true)).toBe(-32768);
+  });
+  it("refuses audio that would not fit in a request", () => {
+    expect(() => wavPart(new Float32Array(16000 * (MAX_AUDIO_SECONDS + 1)))).toThrow(/terlalu panjang/);
+  });
+  it("sends the audio before the instruction, with the start of every line", async () => {
+    const { fn, calls } = fakeFetch(ok(reply(["A", "B"])));
+    const audio = wavPart(new Float32Array(160));
+    await cleanupLines(["a", "b"], { ...opts(fn), audio, starts: [0.04, 3.26] });
+    const parts = JSON.parse(calls[0].init.body as string).contents[0].parts;
+    expect(parts[0].inlineData).toEqual({ mimeType: "audio/wav", data: audio.data });
+    expect(parts[1].text).toContain("[0,3.3]");
+    expect(parts[1].text.split("\n").at(-1)).toBe(JSON.stringify(["a", "b"]));
+    expect(audioCleanupPrompt(["x"], [1], "en")).toContain("bahasa Inggris");
+  });
+  it("sends no audio unless asked", async () => {
+    const { fn, calls } = fakeFetch(ok(reply(["A"])));
+    await cleanupLines(["a"], opts(fn));
+    expect(JSON.parse(calls[0].init.body as string).contents[0].parts).toHaveLength(1);
+  });
+});
+
+describe("judging which sentences deserve an animation", () => {
+  const scores = (list: unknown[]) => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({ scenes: list }) }] } }] });
+  it("reads scores by index, clamps them, and leaves skipped sentences empty", () => {
+    const out = parseScores(scores([{ index: 0, score: 1.4, reason: "  angka   uang " }, { index: 2, score: 0.2, reason: "basa-basi" }, { index: 9, score: 1, reason: "x" }, { index: 1, score: "tinggi", reason: "" }]), 3);
+    expect(out).toEqual([{ score: 1, reason: "angka uang" }, undefined, { score: 0.2, reason: "basa-basi" }]);
+  });
+  it("rejects an answer with nothing usable", () => {
+    expect(() => parseScores(scores([]), 2)).toThrow(GeminiError);
+    expect(() => parseScores(scores([{ index: 5, score: 1 }]), 2)).toThrow(/nilai/);
+  });
+  it("sends only the sentences, key in the header", async () => {
+    const { fn, calls } = fakeFetch(ok(scores([{ index: 0, score: 0.9, reason: "uang" }, { index: 1, score: 0.1, reason: "basa-basi" }])));
+    const out = await judgeScenesWithGemini([{ text: "Gaji *100 juta* sebulan", seconds: 3 }, { text: "ya gitu deh", seconds: 1 }], opts(fn));
+    expect(out.map(x => x?.score)).toEqual([0.9, 0.1]);
+    expect(calls[0].init.headers).toMatchObject({ "x-goog-api-key": KEY });
+    const text = JSON.parse(calls[0].init.body as string).contents[0].parts[0].text as string;
+    expect(text).toContain("Gaji 100 juta sebulan");
+    expect(text).not.toContain("*");
+    expect(judgePrompt([{ text: "a", seconds: 1 }], "en")).toContain("bahasa Inggris");
+  });
+  it("sends nothing for an empty script", async () => {
+    const { fn, calls } = fakeFetch();
+    expect(await judgeScenesWithGemini([], opts(fn))).toEqual([]);
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe("mixing Gemini into the rule scores", () => {
+  const scene = (text: string) => ({ text, visual: detectVisual(text), seconds: 4 });
+  const rules = judgeScenes([scene("Gaji saya 100 juta sebulan"), scene("Coba pikirkan soal tabungan dan investasi untuk masa depan"), scene("ya gitu deh gimana sih"), scene("Mari belajar di YouTube hari ini")]);
+  it("averages the two where the rules saw something", () => {
+    const i = rules.findIndex(j => j.score > 0 && !j.reasons.includes("istilah populer") && !j.reasons.includes("ditandai manual"));
+    const out = blendAi(rules, rules.map(() => ({ score: 0.1, reason: "biasa" })));
+    expect(out[i].score).toBeCloseTo((rules[i].score + 0.1) / 2, 2);
+    expect(out[i].reasons.at(-1)).toBe("Gemini 0.10: biasa");
+  });
+  it("cannot lift a sentence that has nothing to show", () => {
+    const zero = rules.findIndex(j => j.score === 0);
+    if (zero < 0) return;
+    expect(blendAi(rules, rules.map(() => ({ score: 1, reason: "x" })))[zero]).toEqual(rules[zero]);
+  });
+  it("leaves popular names and manual marks as the rules judged them", () => {
+    const marked = judgeScenes([scene("Ini *penting sekali* untuk kamu"), scene("Buka YouTube sekarang juga")]);
+    expect(blendAi(marked, [{ score: 0, reason: "x" }, { score: 0, reason: "x" }])).toEqual(marked);
+  });
+  it("changes nothing without an opinion, or for a sentence it skipped", () => {
+    expect(blendAi(rules)).toBe(rules);
+    expect(blendAi(rules, [undefined, undefined, undefined, undefined])).toEqual(rules);
+  });
+});

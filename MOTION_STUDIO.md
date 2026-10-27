@@ -319,4 +319,16 @@ Langkah 1 dari bantuan Gemini. Whisper tetap mendengar suara dan memberi waktu k
 - **Waktu dipertahankan.** Jumlah kata sama → tiap kata memakai waktu kata lamanya; jumlah beda → disejajarkan (`alignWords`), dan sebagai cadangan dibagi rata dalam segmen.
 - **Galat dijelaskan** (kunci salah, model tidak ada, kuota, diblokir, jaringan, waktu habis, format) tanpa memuat kunci. Jumlah baris salah dicoba ulang sekali.
 - **Kode:** `lib/gemini.ts` (klien, pengaturan, diff, penerapan), `app/GeminiCleanup.tsx`. Diuji dengan fetch palsu (`lib/gemini.test.ts`) dan e2e dengan endpoint Gemini dipalsukan; panggilan nyata ke Google tidak bisa diuji dari sandbox.
-- **Belum dikerjakan:** transkripsi audio oleh Gemini digabung dengan waktu Whisper, dan penilaian animasi dibantu Gemini.
+
+### Fase 2: Gemini ikut mendengarkan audio
+
+- Tombol **"Rapikan sambil mendengarkan audio"** (aktif hanya setelah kotak izin audio dicentang, tiap sesi): audio bagian terpilih diekstrak lagi di perangkat, dikodekan WAV 16 kHz mono, lalu dilampirkan (`inlineData`) bersama baris transkrip dan detik mulai tiap baris.
+- Gemini tidak membuat transkrip baru: ia memperbaiki baris yang sudah ada dengan mendengar suaranya (jumlah baris sama), sehingga **waktu kata Whisper tetap dipakai** lewat jalur tinjau-dan-terapkan yang sama dengan fase 1. Cocok untuk nama, istilah, dan angka.
+- Batas: maksimal 6 menit per permintaan (`MAX_AUDIO_SECONDS`, muatan inline ±20 MB). Audio dikirim ke Google hanya saat tombol ini dipakai.
+
+### Fase 3: pendapat kedua Gemini untuk pemilihan animasi
+
+- Di Motion Studio (mode edit video), tombol **"Nilai dengan Gemini"** mengirim teks kalimat (tanpa audio/video) dan menerima skor 0–1 serta alasan singkat per kalimat.
+- Skor digabung dengan skor aturan (`blendAi`, bobot sama, rata-rata): Gemini bisa menaikkan atau menurunkan, tetapi tidak memutuskan sendiri. Yang ditandai manual (`*kata*`) dan istilah populer tetap sesuai aturan; kalimat yang tidak punya apa pun untuk ditampilkan (skor aturan 0) tidak bisa dinaikkan. Kepadatan animasi, jarak minimal, dan batas cakupan tetap berlaku.
+- Alasan Gemini tampil di daftar adegan ("Gemini 0.05: basa-basi"). "Pakai aturan saja" menghapus penilaiannya. Penilaian hanya berlaku selama kunjungan itu (tidak ikut disimpan di sesi).
+- Kode: `judgeScenesWithGemini`, `parseScores` di `lib/gemini.ts`; `blendAi` di `lib/importance.ts`; `app/GeminiJudge.tsx`.

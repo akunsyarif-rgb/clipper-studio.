@@ -155,7 +155,12 @@ try {
       if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
       const body = JSON.parse(req.postData());
       sent.push({ url: req.url(), key: req.headers()["x-goog-api-key"], body: JSON.stringify(body) });
-      const lines = JSON.parse(body.contents[0].parts[0].text.split("\n").at(-1));
+      const prompt = body.contents.at(-1).parts.at(-1).text;
+      if (prompt.includes('{"scenes"')) {
+        const scenes = JSON.parse(prompt.split("\n").at(-1)).map(x => ({ index: x.index, score: 0.05, reason: "basa-basi" }));
+        return route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ scenes }) }] } }] }) });
+      }
+      const lines = JSON.parse(prompt.split("\n").at(-1));
       const fixed = lines.map((t, i) => i === 0 ? t.replace(/\.?$/, "!") : t);
       await route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ lines: fixed }) }] } }] }) });
     });
@@ -177,8 +182,15 @@ try {
     assert((await p.getByTestId("asr-seg").first().inputValue()).endsWith("!"), "accepted change applied");
     assert(/waktu kata dipertahankan/.test(await p.getByTestId("asr-info").innerText()), "says timing is kept");
     assert((await p.evaluate(() => localStorage.getItem("clipper:gemini:v1")) ?? "").includes(KEY), "key kept on this device");
-    await p.getByTestId("gemini-forget").click();
-    assert((await p.evaluate(() => localStorage.getItem("clipper:gemini:v1"))) === null, "key forgotten");
+
+    // Letting Gemini listen is a separate, explicit choice; the audio then travels with the request.
+    assert(await p.getByTestId("gemini-run-audio").isDisabled(), "audio is off until the creator allows it");
+    await p.getByTestId("gemini-audio-consent").check();
+    await p.getByTestId("gemini-run-audio").click();
+    await p.getByTestId("gemini-change").first().waitFor({ timeout: 60000 });
+    const heard = JSON.parse(sent.at(-1).body).contents[0].parts;
+    assert(sent.length === 2 && heard[0].inlineData?.mimeType === "audio/wav" && heard[0].inlineData.data.startsWith("UklGR"), "the audio is attached as a WAV");
+    assert(/Detik mulai/.test(heard.at(-1).text), "each line carries its start time");
 
     // Use the saved transcript: editing over the video, with an animation drawn over the speaker by default.
     await p.getByTestId("asr-use").click();
@@ -189,6 +201,20 @@ try {
     assert((await p.getByTestId("animation-density").inputValue()) === "balanced", "balanced by default");
     assert((await p.getByTestId("brand-motion").inputValue()) === "simple", "calm brand animation by default");
     await p.getByTestId("animation-density").selectOption("rich");
+
+    // A second opinion from Gemini on which sentences deserve an animation: averaged with the rules, shown per scene.
+    const notesBefore = await p.getByTestId("scene-importance").allInnerTexts();
+    assert(!notesBefore.some(t => /Gemini/.test(t)), "no Gemini opinion until asked");
+    await p.getByTestId("gemini-judge-run").click();
+    await p.getByTestId("gemini-judge-active").waitFor({ timeout: 10000 });
+    const judgeCall = JSON.parse(sent.at(-1).body);
+    assert(!JSON.stringify(judgeCall).includes("inlineData"), "judging sends text only");
+    const notesAfter = await p.getByTestId("scene-importance").allInnerTexts();
+    assert(notesAfter.some(t => /Gemini 0\.05: basa-basi/.test(t)), "scene list shows Gemini's reason: " + notesAfter.join(" | "));
+    await p.getByTestId("gemini-judge-clear").click();
+    assert(!(await p.getByTestId("scene-importance").allInnerTexts()).some(t => /Gemini/.test(t)), "rules only again after clearing");
+    await p.getByTestId("gemini-forget").click();
+    assert((await p.evaluate(() => localStorage.getItem("clipper:gemini:v1"))) === null, "key forgotten");
     const autoLabel = await p.getByTestId("scene-cut").first().locator("option").first().innerText();
     assert(/Video \+ animasi/.test(autoLabel), "first scene defaults to an animation over the video: " + autoLabel);
     const options = await p.getByTestId("scene-cut").first().locator("option").allInnerTexts();

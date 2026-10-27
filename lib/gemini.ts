@@ -75,35 +75,31 @@ function explain(status: number, body: unknown): GeminiError {
   return new GeminiError("format", "Permintaan ditolak oleh Gemini. Coba lagi, atau periksa nama model.");
 }
 
-/** Reads the answer: a JSON object with `lines`, possibly inside a code fence, with exactly `expected` strings. */
-export function parseLines(response: unknown, expected: number): string[] {
+/** The JSON the model answered with (it may sit inside a code fence), after the safety checks. */
+function answerJson(response: unknown): unknown {
   const r = response as { promptFeedback?: { blockReason?: string }; candidates?: { finishReason?: string; content?: { parts?: { text?: string }[] } }[] } | null;
   if (r?.promptFeedback?.blockReason) throw new GeminiError("blocked", "Gemini menolak memproses teks ini (diblokir oleh filter keamanannya).");
   const cand = r?.candidates?.[0];
   if (cand?.finishReason && /SAFETY|BLOCKLIST|PROHIBITED|RECITATION/.test(cand.finishReason)) throw new GeminiError("blocked", "Gemini menghentikan jawabannya karena filter keamanan.");
   const text = (cand?.content?.parts ?? []).map(p => p.text ?? "").join("").trim();
   if (!text) throw new GeminiError("format", "Gemini tidak memberi jawaban. Coba lagi.");
-  let parsed: unknown;
-  try { parsed = JSON.parse(text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")); }
+  try { return JSON.parse(text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")); }
   catch { throw new GeminiError("format", "Jawaban Gemini tidak berbentuk JSON yang bisa dibaca. Coba lagi."); }
+}
+
+/** Reads the answer: a JSON object with `lines`, possibly inside a code fence, with exactly `expected` strings. */
+export function parseLines(response: unknown, expected: number): string[] {
+  const parsed = answerJson(response);
   const lines = Array.isArray(parsed) ? parsed : (parsed as { lines?: unknown } | null)?.lines;
   if (!Array.isArray(lines) || !lines.every(l => typeof l === "string")) throw new GeminiError("format", "Jawaban Gemini tidak berisi daftar baris. Coba lagi.");
   if (lines.length !== expected) throw new GeminiError("format", `Gemini mengembalikan ${lines.length} baris, seharusnya ${expected}. Coba lagi.`);
   return lines as string[];
 }
 
-/** Sends the lines to Gemini and returns the corrected lines (same count). One automatic retry if the answer is malformed. */
-export async function cleanupLines(lines: string[], o: CleanupOptions): Promise<string[]> {
-  if (lines.length === 0) return [];
+/** One call to the model. The key travels in a header, never in the address. One automatic retry if the answer is malformed. */
+async function ask<T>(o: CleanupOptions, parts: unknown[], schema: object, parse: (json: unknown) => T): Promise<T> {
   const fetchImpl = o.fetchImpl ?? fetch;
-  const body = JSON.stringify({
-    contents: [{ role: "user", parts: [{ text: cleanupPrompt(lines, o.language) }] }],
-    generationConfig: {
-      temperature: 0.2,
-      responseMimeType: "application/json",
-      responseSchema: { type: "OBJECT", properties: { lines: { type: "ARRAY", items: { type: "STRING" } } }, required: ["lines"] },
-    },
-  });
+  const body = JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: { temperature: 0.2, responseMimeType: "application/json", responseSchema: schema } });
   const url = `${GEMINI_ENDPOINT}/${encodeURIComponent(o.model)}:generateContent`;
   const once = async () => {
     const ctl = new AbortController();
@@ -111,12 +107,11 @@ export async function cleanupLines(lines: string[], o: CleanupOptions): Promise<
     const onAbort = () => ctl.abort();
     o.signal?.addEventListener("abort", onAbort);
     try {
-      // The key travels in a header, never in the address (addresses end up in logs and history).
       const res = await fetchImpl(url, { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": o.apiKey }, body, signal: ctl.signal });
       let json: unknown = null;
       try { json = await res.json(); } catch { /* an error page without JSON */ }
       if (!res.ok) throw explain(res.status, json);
-      return parseLines(json, lines.length);
+      return parse(json);
     } catch (e) {
       if (e instanceof GeminiError) throw e;
       if (o.signal?.aborted) throw new GeminiError("timeout", "Dibatalkan.");
@@ -126,6 +121,95 @@ export async function cleanupLines(lines: string[], o: CleanupOptions): Promise<
   };
   try { return await once(); }
   catch (e) { if (e instanceof GeminiError && e.kind === "format") return once(); throw e; }
+}
+
+const LINES_SCHEMA = { type: "OBJECT", properties: { lines: { type: "ARRAY", items: { type: "STRING" } } }, required: ["lines"] };
+
+/** Sends the lines to Gemini and returns the corrected lines (same count). With `audio`, the model also listens to the speech. */
+export async function cleanupLines(lines: string[], o: CleanupOptions & { audio?: AudioPart; starts?: number[] }): Promise<string[]> {
+  if (lines.length === 0) return [];
+  const text = o.audio ? audioCleanupPrompt(lines, o.starts ?? [], o.language) : cleanupPrompt(lines, o.language);
+  const parts: unknown[] = [...(o.audio ? [{ inlineData: { mimeType: o.audio.mimeType, data: o.audio.data } }] : []), { text }];
+  return ask(o, parts, LINES_SCHEMA, json => parseLines(json, lines.length));
+}
+
+// ---- listening to the speech (the creator opts in each time) -----------------------------------------------------
+
+/** Inline audio must keep the whole request under about 20 MB; 16 kHz mono 16-bit is 32 kB per second. */
+export const MAX_AUDIO_SECONDS = 360;
+export type AudioPart = { mimeType: string; data: string };
+
+/** 16 kHz mono samples as a base64 WAV, ready to attach to a request. */
+export function wavPart(samples: Float32Array, rate = 16000): AudioPart {
+  if (samples.length / rate > MAX_AUDIO_SECONDS) throw new GeminiError("format", `Audio terlalu panjang untuk dikirim (maksimal ${MAX_AUDIO_SECONDS / 60} menit). Pilih bagian video yang lebih pendek.`);
+  const bytes = new Uint8Array(44 + samples.length * 2);
+  const v = new DataView(bytes.buffer);
+  const tag = (at: number, t: string) => { for (let i = 0; i < t.length; i++) v.setUint8(at + i, t.charCodeAt(i)); };
+  tag(0, "RIFF"); v.setUint32(4, 36 + samples.length * 2, true); tag(8, "WAVE"); tag(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  tag(36, "data"); v.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) { const x = Math.max(-1, Math.min(1, samples[i])); v.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7fff, true); }
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { mimeType: "audio/wav", data: btoa(bin) };
+}
+
+/** Like the text-only instruction, but the model also hears the speech and each line carries the second it starts. */
+export function audioCleanupPrompt(lines: string[], starts: number[], language: string): string {
+  const lang = language === "en" ? "bahasa Inggris" : "bahasa Indonesia";
+  return [
+    `Terlampir audio sebuah video (${lang}) beserta transkrip otomatisnya yang berisi salah dengar. Dengarkan audionya dan perbaiki transkrip.`,
+    "Aturan:",
+    "- tiap baris adalah potongan ucapan pada detik mulai yang tertera; dengarkan bagian itu untuk memastikan kata yang benar;",
+    "- perbaiki kata yang salah dengar, nama merek, istilah, angka, ejaan dan tanda baca; pertahankan gaya bicara dan urutan kata (bahasa gaul tetap gaul);",
+    "- jangan menambah, membuang, memecah, atau menggabungkan baris: jumlah baris keluaran harus persis sama dengan masukan;",
+    "- bila audio tidak jelas, biarkan baris apa adanya; jangan mengarang kata yang tidak diucapkan.",
+    "Balas hanya JSON dengan bentuk {\"lines\": [...]} sesuai urutan masukan.",
+    "",
+    `Detik mulai tiap baris: ${JSON.stringify(starts.map(x => Math.round(x * 10) / 10))}`,
+    "Masukan (JSON):",
+    JSON.stringify(lines),
+  ].join("\n");
+}
+
+// ---- judging which sentences deserve an animation ----------------------------------------------------------------
+
+export type SceneScore = { score: number; reason: string };
+
+export function judgePrompt(scenes: { text: string; seconds: number }[], language: string): string {
+  const lang = language === "en" ? "bahasa Inggris" : "bahasa Indonesia";
+  return [
+    `Kamu membantu editor video pendek (${lang}). Berikut kalimat-kalimat sebuah video yang dibacakan satu per satu. Nilai tiap kalimat 0 sampai 1: seberapa pantas diberi animasi grafis di atas pembicara.`,
+    "Nilai tinggi: istilah/merek populer, angka atau uang, perbandingan, ajakan bertindak, poin kunci yang perlu diingat penonton.",
+    "Nilai rendah: basa-basi, pengisi, transisi, pengulangan, kalimat yang cukup didengar saja.",
+    "Beri alasan singkat (maksimal 6 kata, bahasa Indonesia). Jangan menilai berdasarkan panjang kalimat saja.",
+    "Balas hanya JSON {\"scenes\": [{\"index\": n, \"score\": 0..1, \"reason\": \"...\"}]} untuk setiap kalimat.",
+    "",
+    "Masukan (JSON):",
+    JSON.stringify(scenes.map((s, index) => ({ index, text: s.text.replace(/\*/g, ""), seconds: Math.round(s.seconds * 10) / 10 }))),
+  ].join("\n");
+}
+
+/** Scores by scene index; a scene the model skipped or scored with something that is not a number stays undefined. */
+export function parseScores(response: unknown, expected: number): (SceneScore | undefined)[] {
+  const parsed = answerJson(response);
+  const list = Array.isArray(parsed) ? parsed : (parsed as { scenes?: unknown } | null)?.scenes;
+  if (!Array.isArray(list)) throw new GeminiError("format", "Jawaban Gemini tidak berisi daftar nilai. Coba lagi.");
+  const out: (SceneScore | undefined)[] = Array.from({ length: expected }, () => undefined);
+  for (const item of list as { index?: unknown; score?: unknown; reason?: unknown }[]) {
+    if (typeof item?.index !== "number" || !Number.isInteger(item.index) || item.index < 0 || item.index >= expected) continue;
+    if (typeof item.score !== "number" || !Number.isFinite(item.score)) continue;
+    out[item.index] = { score: Math.round(Math.min(1, Math.max(0, item.score)) * 100) / 100, reason: String(item.reason ?? "").replace(/\s+/g, " ").trim().slice(0, 60) };
+  }
+  if (!out.some(Boolean)) throw new GeminiError("format", "Gemini tidak memberi nilai yang bisa dipakai. Coba lagi.");
+  return out;
+}
+
+/** Asks Gemini how much each sentence deserves an animation. Only the sentences' text is sent. */
+export async function judgeScenesWithGemini(scenes: { text: string; seconds: number }[], o: CleanupOptions): Promise<(SceneScore | undefined)[]> {
+  if (scenes.length === 0) return [];
+  const schema = { type: "OBJECT", properties: { scenes: { type: "ARRAY", items: { type: "OBJECT", properties: { index: { type: "INTEGER" }, score: { type: "NUMBER" }, reason: { type: "STRING" } }, required: ["index", "score", "reason"] } } }, required: ["scenes"] };
+  return ask(o, [{ text: judgePrompt(scenes, o.language) }], schema, json => parseScores(json, scenes.length));
 }
 
 // ---- turning the answer into a better transcript -----------------------------------------------------------------
