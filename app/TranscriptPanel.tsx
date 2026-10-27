@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { formatBytes, formatTime } from "@/lib/clip";
-import { extractAudio, loadEngine } from "@/lib/engine";
+import { ASR_RUN_KEY, defaultModelFor, isTouchDevice, lighterModel, parseRunMark } from "@/lib/asr/device";
+import { extractAudio, loadEngine, terminateEngine } from "@/lib/engine";
 import { loadCachedTranscript, saveCachedTranscript } from "@/lib/session-store";
 import { MODELS, releaseAsr, transcribe, TranscribeCancelled, type AsrHandle, type ModelId } from "@/lib/asr/client";
 import {
@@ -29,6 +30,9 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
   onUse?: (t: Transcript) => void;
 }) {
   const [model, setModel] = useState<ModelId>(MODELS[0].id);
+  const [touch, setTouch] = useState(false);
+  const [crashed, setCrashed] = useState<string | null>(null);
+  const modelTouched = useRef(false);
   const [language, setLanguage] = useState<LanguageId>("indonesian");
   const [phase, setPhase] = useState<Phase>("idle");
   const [download, setDownload] = useState({ loaded: 0, total: 0 });
@@ -43,6 +47,16 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
   const handle = useRef<AsrHandle | null>(null);
   const cancelled = useRef(false);
   const working = phase !== "idle";
+
+  // After mount: a lighter default on tablets and phones, and recognise a run that took the page down last time.
+  useEffect(() => {
+    const isTouch = isTouchDevice(navigator.userAgent, navigator.maxTouchPoints);
+    setTouch(isTouch);
+    let mark = null;
+    try { mark = parseRunMark(localStorage.getItem(ASR_RUN_KEY)); localStorage.removeItem(ASR_RUN_KEY); } catch { /* storage blocked */ }
+    if (mark) { setCrashed(mark.model); setModel(lighterModel(mark.model)); }
+    else if (!modelTouched.current) setModel(defaultModelFor(navigator.userAgent, navigator.maxTouchPoints));
+  }, []);
 
   // Leaving the page frees the model's memory; a cancelled run already did.
   useEffect(() => () => { handle.current?.cancel(); releaseAsr(); }, []);
@@ -90,7 +104,10 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
       }
       await loadEngine();
       const audio = await extractAudio(file, range);
+      // The video engine is not needed while the model runs; freeing its memory matters on tablets (it loads again when needed).
+      terminateEngine();
       if (cancelled.current) throw new TranscribeCancelled();
+      try { localStorage.setItem(ASR_RUN_KEY, JSON.stringify({ model, at: Date.now() })); } catch { /* storage blocked */ }
       setPhase("download"); setDownload({ loaded: 0, total: 0 }); setChunk({ done: 0, total: 0, eta: "" });
       const h = transcribe(audio, model, language, Math.min(range.duration, audio.length / 16000), {
         onDownload: (loaded, total) => setDownload({ loaded, total }),
@@ -111,7 +128,7 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
         setDetail(d);
         setError(/no speech/i.test(d) ? "Tidak ada ucapan yang terdeteksi pada bagian ini. Pilih bagian yang ada suaranya." : explainTranscribeError(d));
       }
-    } finally { handle.current = null; setPhase("idle"); onWorking(false); }
+    } finally { try { localStorage.removeItem(ASR_RUN_KEY); } catch { /* storage blocked */ } handle.current = null; setPhase("idle"); onWorking(false); }
   }
 
   function cancel() { cancelled.current = true; handle.current?.cancel(); }
@@ -136,9 +153,11 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
   return <div className="asr-panel" data-testid="asr-panel">
     <div className="settings-label">Transkrip otomatis <span>suara → teks berwaktu, diproses di perangkat</span></div>
     <div className="time-grid">
-      <label>Model<select value={model} disabled={working || locked} onChange={e => setModel(e.target.value as ModelId)} data-testid="asr-model">{MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}</select></label>
+      <label>Model<select value={model} disabled={working || locked} onChange={e => { modelTouched.current = true; setCrashed(null); setModel(e.target.value as ModelId); }} data-testid="asr-model">{MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}</select></label>
       <label>Bahasa<select value={language} disabled={working || locked} onChange={e => setLanguage(e.target.value as LanguageId)} data-testid="asr-language">{LANGUAGES.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
     </div>
+    {crashed && <div className="notice notice-error" role="status" data-testid="asr-crashed">Transkripsi sebelumnya terhenti di tengah jalan (biasanya karena memori perangkat habis). Model otomatis diganti ke yang lebih ringan; bagian video yang lebih pendek juga membantu.</div>}
+    {touch && /small/.test(model) && !working && <div className="notice" data-testid="asr-heavy-hint">Model ini berat; di iPad atau ponsel Safari bisa menutup aplikasi karena memori. Disarankan &quot;Akurat (base)&quot;.</div>}
     <button className="secondary-button" disabled={working || locked || !range} onClick={run} data-testid="asr-run"><span>✎</span> {working ? "Sedang membuat transkrip…" : transcript ? "Buat ulang transkrip bagian terpilih" : "Buat transkrip bagian terpilih"}<small>maks. 3 menit</small></button>
     {working && <div className="progress-wrap" data-testid="asr-progress">
       <div className="progress-label"><span>{phase === "audio" ? "Mengambil audio asli dari video…"

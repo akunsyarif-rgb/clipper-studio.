@@ -1,5 +1,6 @@
 // Pure script → timeline logic shared by the UI, the Remotion composition and unit tests.
 import type { Music } from "./audio";
+import type { OverlayPosition } from "./overlay";
 import type { Cut, SceneVisual } from "./visuals";
 import type { NarrativePlan } from "./narrative";
 
@@ -80,6 +81,8 @@ export type VideoProps = {
   /** Source video edit: the video (with its own audio) is the base layer and scenes become overlays or cutaways. */
   /** `seconds` is the source length; it keeps a clip from running past the end of the video. */
   video?: { src: string; seconds?: number } | null;
+  /** Where animations over the speaker sit: in the space above the head (default) or just above the captions. */
+  overlay?: OverlayPosition;
 };
 
 const words = (s: string) => s.split(/\s+/).filter(Boolean);

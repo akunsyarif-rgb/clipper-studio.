@@ -332,19 +332,22 @@ export function templateLabel(t: Template): string {
   return TEMPLATES.find(x => x.id === t)?.label ?? t;
 }
 
-/** What a source-video scene shows: the speaker, a graphic, or another part ("clip") of the same video (audio never changes). */
-export type Cut = "video" | "graphic" | "clip";
+/**
+ * What a source-video scene shows: the speaker alone, the speaker with an animation drawn over the picture ("overlay"),
+ * a full-screen graphic ("graphic"), or another part of the same video ("clip"). The speaker's audio never changes.
+ */
+export type Cut = "video" | "overlay" | "graphic" | "clip";
 
 /**
- * Edit plan for a source-video edit: the speaker stays on screen by default; a scene with a recognised
- * concept, number, list, question, comparison or call-to-action cuts away to a graphic scene (audio keeps playing).
- * The first scene always shows the speaker, and two graphic scenes never follow each other.
+ * Edit plan for a source-video edit: a scene with a recognised concept, emphasised word, number, list, question,
+ * comparison or call-to-action gets an animation drawn over the speaker, so the picture stays on the person; plain
+ * statements stay as they are. Full-screen graphics and clips are chosen by hand.
  */
 export function autoCuts(visuals: SceneVisual[]): Cut[] {
   const out: Cut[] = [];
-  visuals.forEach((v, i) => {
-    const meaningful = v.template !== "statement" || !!v.icon;
-    out.push(i > 0 && meaningful && out[i - 1] !== "graphic" ? "graphic" : "video");
+  visuals.forEach(v => {
+    const meaningful = v.template !== "statement" || !!v.icon || v.emphasis.length > 0;
+    out.push(meaningful ? "overlay" : "video");
   });
   return out;
 }

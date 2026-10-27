@@ -192,3 +192,25 @@ The studio saves your work in the browser's own storage (IndexedDB) on this devi
 - A transcription that is still running when the page is refreshed cannot be resumed (the model runs inside the page); start it again, then it is saved when it finishes.
 - The storage can be cleared by the browser (Safari clears site data after a period without visits, or when space is low); the studio then simply starts fresh. A full disk or private mode only means nothing is remembered.
 - Voice recordings, generated voice and music are not kept: they are regenerated or re-added.
+
+## Animations over the speaker (source-video edits)
+
+Each scene of a source-video edit has a *Layar* choice:
+
+| Choice | What shows |
+|---|---|
+| Video + subtitle | the speaker and the caption |
+| **Video + animasi** | the speaker **with the animation drawn over the picture**: a counter for a number, a step badge, a question mark, a ✗/✓ pair for a comparison, a call-to-action button, an icon with the featured word, or the featured word alone |
+| Grafis penuh (ganti layar) | a full-screen graphic replaces the picture for up to 4 s (the speaker's audio keeps playing) |
+| Potongan lain dari video | another part of the same video (see above) |
+
+- **Default**: a scene in which the studio finds something (a number, step, question, comparison, call to action, a concept icon or a *emphasised* word) gets *Video + animasi*; plain statements stay *Video + subtitle*. Full-screen graphics and clips are never chosen automatically.
+- **Position** (*Posisi animasi di atas video*): *Atas* uses the empty space above the head (inside the safe area, below the app's status bar); *Bawah* sits just above the captions. Neither touches the caption band. An animation lasts at most 4 s of the scene and fades in and out.
+- A dark veil behind the animation and white text keep it readable on any footage; the accent colour is the palette's own when it is readable on the veil, otherwise the palette's light tone (light palettes such as Pearl and Ivory).
+- Preview and render use the same composition, so what the player shows is what the MP4 contains. Verified with CLI renders of a synthetic source (all animation kinds, both positions, light and dark palettes) and a browser test that checks the animation element in the live preview; not yet seen on a real iPad.
+
+## Memory on tablets (transcription)
+
+- On iPad, iPhone and Android the transcription model starts as **Akurat (base)**; computers keep *small*. Choosing *small* on a tablet shows a memory warning.
+- The video engine (FFmpeg) is released once the audio is extracted, and the saved source video is written to storage only when no transcription or render is running.
+- If the page died during a transcription (usually Safari closing the tab for memory), the next visit says so and moves one model lighter automatically.

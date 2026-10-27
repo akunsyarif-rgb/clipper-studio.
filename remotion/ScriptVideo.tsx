@@ -6,7 +6,9 @@ import { activeWordIndex, clipPlan, phraseLine, spokenFrames, PALETTES, totalFra
 import { chooseFamily } from "../lib/composition";
 import { contentBox, MOTION, SAFE } from "../lib/layout";
 import { detectVisual, stripMarks } from "../lib/visuals";
+import { MAX_OVERLAY_FRAMES } from "../lib/overlay";
 import { FamilyView } from "./Families";
+import { VideoOverlay } from "./Overlays";
 import { BottomVisual, TopVisual } from "./SceneVisuals";
 
 function resolveAudio(src: string): string {
@@ -124,7 +126,7 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
   );
 }
 
-export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech, video }) => {
+export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech, video, overlay }) => {
   const frame = useCurrentFrame();
   const { durationInFrames, fps } = useVideoConfig();
   const colors = PALETTES[palette] ?? PALETTES.violet;
@@ -168,6 +170,7 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
             {video
               ? <>
                 {clip && video ? <Sequence from={0} durationInFrames={clip.lengthFrames}><ClipCutaway src={video.src} startFrame={clip.startFrame} length={clip.lengthFrames} /></Sequence> : null}
+                {scene.cut === "overlay" ? <Sequence from={0} durationInFrames={Math.min(scene.durationInFrames, MAX_OVERLAY_FRAMES)}><VideoOverlay scene={scene} visual={scene.visual ?? detectVisual(scene.text)} colors={colors} position={overlay ?? "top"} length={Math.min(scene.durationInFrames, MAX_OVERLAY_FRAMES)} /></Sequence> : null}
                 {captions ? <VideoCaption scene={scene} /> : null}
                 {/* Cutaway: an opaque graphic over the speaker (at most 4 s); the video underneath keeps playing, so audio never breaks. */}
                 {scene.cut === "graphic" ? <Sequence from={0} durationInFrames={Math.min(scene.durationInFrames, 120)}><Cutaway scene={scene} colors={colors} length={Math.min(scene.durationInFrames, 120)} /></Sequence> : null}

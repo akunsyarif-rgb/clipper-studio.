@@ -2,6 +2,7 @@
 // Stored in the browser's own storage by session-store.ts; nothing is sent anywhere.
 import { CONTENT_PRESETS, PALETTES, STYLES, type ContentPresetId, type PaletteId, type StyleId } from "./script";
 import type { Transcript } from "./transcript";
+import type { OverlayPosition } from "./overlay";
 import type { Cut, VisualOverride } from "./visuals";
 
 export const SESSION_VERSION = 1;
@@ -21,6 +22,8 @@ export type SessionData = {
   clipStarts: Record<string, number>;
   videoEdit: boolean;
   captionOffset: number;
+  /** Added later: older saved sessions do not have it (the default is used). */
+  overlay?: OverlayPosition;
   imported: Transcript | null;
   /** "manual" (a recording that is not kept) is stored as "none". */
   voiceMode: "ai" | "none";
@@ -44,9 +47,10 @@ export function isSession(v: unknown): v is SessionData {
     && (v.contentPreset === "custom" || CONTENT_PRESETS.some(p => p.id === v.contentPreset))
     && typeof v.target === "string" && typeof v.captions === "boolean"
     && isObject(v.overrides) && isObject(v.cutOverrides) && isObject(v.clipStarts)
-    && Object.values(v.cutOverrides).every(c => c === "video" || c === "graphic" || c === "clip")
+    && Object.values(v.cutOverrides).every(c => c === "video" || c === "overlay" || c === "graphic" || c === "clip")
     && Object.values(v.clipStarts).every(n => typeof n === "number" && Number.isFinite(n) && n >= 0)
     && typeof v.videoEdit === "boolean" && typeof v.captionOffset === "number" && Number.isFinite(v.captionOffset)
+    && (v.overlay === undefined || v.overlay === "top" || v.overlay === "lower")
     && (v.imported === null || isTranscript(v.imported))
     && (v.voiceMode === "ai" || v.voiceMode === "none") && (v.ttsLang === "id" || v.ttsLang === "en")
     && typeof v.ttsVoice === "number" && typeof v.ttsSpeed === "number";

@@ -15,6 +15,12 @@ describe("isSession", () => {
     expect(isSession(stored({ ...base, imported: { language: "id", granularity: "word", duration: 5, segments: [{ start: 0, end: 1, text: "Halo", words: [] }] }, contentPreset: "custom" }))).toBe(true);
   });
 
+  it("accepts sessions saved before the overlay setting existed, and the two positions", () => {
+    expect(isSession(stored({ ...base, overlay: "lower" }))).toBe(true);
+    expect(isSession(stored({ ...base, overlay: "top", cutOverrides: { a: "overlay" } }))).toBe(true);
+    expect(isSession(stored({ ...base, overlay: "middle" }))).toBe(false);
+  });
+
   it("rejects other versions, missing fields and wrong types instead of half-applying them", () => {
     expect(isSession(null)).toBe(false);
     expect(isSession([])).toBe(false);

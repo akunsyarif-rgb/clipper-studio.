@@ -74,6 +74,8 @@ type HeadlineProps = {
   wordOffset?: number;
   delay?: number;
   color?: string;
+  /** Draws a line through every word (a rejected option); exactly as wide as the words. */
+  strike?: boolean;
 };
 
 /** Fitted headline: line breaks are computed, so nothing wraps or crops differently from what was measured. */
@@ -103,7 +105,7 @@ export function Headline(p: HeadlineProps) {
               const underline = emph && said ? interpolate(frame, [Math.max(at, p.delay ?? 0) + 2, Math.max(at, p.delay ?? 0) + 14], [0, 100], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 0;
               return (
                 <React.Fragment key={wi}>
-                  <span style={{ position: "relative", display: "inline-block", color: emph ? p.colors.accent : undefined, opacity: p.reveal === "words" ? 0.24 + 0.76 * wp : 1, transform: p.reveal === "words" ? `translateY(${(1 - wp) * 10}px)` : undefined }}>
+                  <span style={{ position: "relative", display: "inline-block", textDecoration: p.strike ? "line-through" : undefined, textDecorationThickness: p.strike ? "0.08em" : undefined, color: emph ? p.colors.accent : undefined, opacity: p.reveal === "words" ? 0.24 + 0.76 * wp : 1, transform: p.reveal === "words" ? `translateY(${(1 - wp) * 10}px)` : undefined }}>
                     {w}
                     {emph && <span style={{ position: "absolute", left: 0, bottom: "-0.06em", height: "0.07em", width: `${underline}%`, background: p.colors.accent }} />}
                   </span>
@@ -131,7 +133,7 @@ function Rule({ colors, width, delay = 0, align = "center" }: { colors: Colors; 
   return <div style={{ width, height: 3, background: colors.accent, transform: `scaleX(${p})`, transformOrigin: align === "left" ? "left" : "center", alignSelf: align === "left" ? "flex-start" : "center" }} />;
 }
 
-function DownArrow({ color }: { color: string }) {
+export function DownArrow({ color }: { color: string }) {
   return <svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v16M6 14l6 6 6-6" /></svg>;
 }
 
@@ -233,17 +235,14 @@ function Explainer({ scene, visual, role, colors, box }: FamilyProps) {
 
 const CARD_PAD = 34, CARD_ICON = 64;
 
-function CompareCard({ text, good, delay, neutral, scene, colors, width, textHeight }: { text: string; good: boolean; delay: number; neutral: boolean; scene: Scene; colors: Colors; width: number; textHeight: number }) {
+export function CompareCard({ text, good, delay, neutral, scene, colors, width, textHeight }: { text: string; good: boolean; delay: number; neutral: boolean; scene: Scene; colors: Colors; width: number; textHeight: number }) {
   const p = useAppear(delay);
-  const strike = useAppear(delay + 12);
   const strong = good || neutral;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 24, padding: CARD_PAD, borderRadius: 24, width, boxSizing: "border-box", border: `3px solid ${strong ? colors.accent : colors.text + "40"}`, background: strong ? `${colors.accent}18` : "transparent", opacity: p, transform: `translateY(${(1 - p) * MOTION.rise}px)` }}>
       <LineIcon node={neutral ? ICONS.balance.icon : good ? ICONS.right.icon : ICONS.wrong.icon} size={CARD_ICON} color={strong ? colors.accent : colors.text + "99"} delay={delay + 4} strokeWidth={2} />
-      <div style={{ position: "relative", opacity: strong ? 1 : 0.62 }}>
-        {/* Text-decoration does not reach inline-block words, so the rejected option gets a drawn strike instead. */}
-        {!strong && <div style={{ position: "absolute", left: -6, right: -6, top: "52%", height: 4, background: colors.text, transform: `scaleX(${strike})`, transformOrigin: "left" }} />}
-        <Headline text={text} width={width - CARD_PAD * 2 - CARD_ICON - 24} height={textHeight} maxSize={64} minSize={34} lineHeight={1.12} align="left" colors={colors} focus={new Set()} font={TYPE.sans} weight={800} letterSpacing={-0.01} reveal="none" scene={scene} />
+      <div style={{ opacity: strong ? 1 : 0.62 }}>
+        <Headline text={text} width={width - CARD_PAD * 2 - CARD_ICON - 24} height={textHeight} maxSize={64} minSize={34} lineHeight={1.12} align="left" colors={colors} focus={new Set()} font={TYPE.sans} weight={800} letterSpacing={-0.01} reveal="none" scene={scene} strike={!strong} />
       </div>
     </div>
   );
@@ -268,7 +267,7 @@ function Comparison({ scene, visual, colors, box }: FamilyProps) {
   );
 }
 
-function formatNumber(value: number, decimals: number, prefix: string): string {
+export function formatNumber(value: number, decimals: number, prefix: string): string {
   const s = value.toLocaleString(prefix === "$" ? "en-US" : "id-ID", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   return prefix ? `${prefix}${prefix === "Rp" ? " " : ""}${s}` : s;
 }

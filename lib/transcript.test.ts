@@ -196,14 +196,19 @@ describe("audioArgs", () => {
 
 describe("autoCuts (source-video edit plan)", () => {
   const v = (t: string) => detectVisual(t);
-  it("keeps the speaker first and never puts two graphics in a row", () => {
-    const cuts = autoCuts([v("Ada 100 ribu orang yang ikut."), v("Uang itu penting sekali."), v("Waktu itu berharga."), v("Ya begitulah."), v("Siapa yang mau mulai?")]);
-    expect(cuts[0]).toBe("video");
-    expect(cuts.some(c => c === "graphic")).toBe(true);
-    for (let i = 1; i < cuts.length; i++) expect(cuts[i] === "graphic" && cuts[i - 1] === "graphic").toBe(false);
+  it("draws an animation over the speaker for scenes with a number, step, question, concept or call to action", () => {
+    const cuts = autoCuts([v("Ada 100 ribu orang yang ikut."), v("Uang itu penting sekali."), v("Pertama, tentukan targetmu."), v("Siapa yang mau mulai?"), v("Ikuti untuk tips berikutnya.")]);
+    expect(cuts).toEqual(["overlay", "overlay", "overlay", "overlay", "overlay"]);
   });
   it("stays on the speaker for plain statements", () => {
     expect(autoCuts([v("Ya begitulah."), v("Sudah lama sekali.")])).toEqual(["video", "video"]);
+  });
+  it("never chooses a full-screen graphic or a clip by itself", () => {
+    const cuts = autoCuts([v("Ada 100 ribu orang yang ikut."), v("Ya begitulah."), v("Uang itu penting."), v("Bukan motivasi, tapi sistem.")]);
+    expect(cuts.includes("graphic") || cuts.includes("clip")).toBe(false);
+  });
+  it("features a hand-emphasised word even without an icon", () => {
+    expect(autoCuts([{ template: "statement", icon: null, emphasis: ["sederhana"] }])).toEqual(["overlay"]);
   });
 });
 

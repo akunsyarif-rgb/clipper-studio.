@@ -142,6 +142,26 @@ try {
     assert((await p.getByTestId("asr-seg").count()) === 2, "saved transcript shown again");
     assert(/tanpa memproses ulang/.test(await p.getByTestId("asr-info").innerText()), "says it came from storage");
 
+    // Use the saved transcript: editing over the video, with an animation drawn over the speaker by default.
+    await p.getByTestId("asr-use").click();
+    await p.getByTestId("scene-cut").first().waitFor({ timeout: 10000 });
+    const autoLabel = await p.getByTestId("scene-cut").first().locator("option").first().innerText();
+    assert(/Video \+ animasi/.test(autoLabel), "first scene defaults to an animation over the video: " + autoLabel);
+    const options = await p.getByTestId("scene-cut").first().locator("option").allInnerTexts();
+    assert(options.some(o => /Grafis penuh/.test(o)) && options.some(o => /Potongan lain/.test(o)), "full graphic and clip stay available: " + options.join("|"));
+    const player = p.locator(".player-wrap");
+    await p.getByTestId("scene-item").first().locator(".scene-row").click();
+    await player.locator('[data-overlay="top"]').first().waitFor({ state: "attached", timeout: 10000 });
+    await p.getByTestId("overlay-position").selectOption("lower");
+    await player.locator('[data-overlay="lower"]').first().waitFor({ state: "attached", timeout: 10000 });
+    assert((await player.locator('[data-overlay="top"]').count()) === 0, "the top overlay is replaced by the lower one");
+    await p.getByTestId("scene-cut").first().selectOption("video");
+    await p.waitForTimeout(800);
+    assert((await player.locator("[data-overlay]").count()) === 0, "no animation when the scene is set to video + subtitle");
+    await p.getByTestId("scene-cut").first().selectOption("overlay");
+    await p.getByTestId("overlay-position").selectOption("top");
+    await p.waitForTimeout(1200); // autosave includes the overlay position
+
     // Start over: everything is forgotten.
     await p.reload();
     await p.getByTestId("restore-offer").waitFor({ timeout: 10000 });
@@ -151,6 +171,39 @@ try {
     await p.waitForTimeout(1500);
     assert((await p.getByTestId("restore-offer").count()) === 0, "nothing offered after starting over");
     assert(errors.length === 0, errors.join(" | "));
+    await ctx.close();
+  });
+
+  await step("a tablet gets the lighter model, and a run that took the page down is recognised", async () => {
+    const IPAD = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15";
+    const pc = await browser.newContext();
+    const desktop = await pc.newPage();
+    await desktop.goto(BASE);
+    await desktop.getByTestId("file-input").setInputFiles(withAudio);
+    await desktop.getByTestId("asr-panel").waitFor({ timeout: 15000 });
+    assert((await desktop.getByTestId("asr-model").inputValue()) === "Xenova/whisper-small", "computers keep the accurate model");
+    assert((await desktop.getByTestId("asr-heavy-hint").count()) === 0, "no memory warning on a computer");
+    await pc.close();
+
+    const ctx = await browser.newContext({ userAgent: IPAD, hasTouch: true, viewport: { width: 1024, height: 1366 } });
+    // A real iPad reports 5 touch points (Playwright's emulation reports 1).
+    await ctx.addInitScript(() => Object.defineProperty(navigator, "maxTouchPoints", { get: () => 5 }));
+    const p = await ctx.newPage();
+    await p.goto(BASE);
+    await p.getByTestId("file-input").setInputFiles(withAudio);
+    await p.getByTestId("asr-panel").waitFor({ timeout: 15000 });
+    assert((await p.getByTestId("asr-model").inputValue()) === "Xenova/whisper-base", "tablets start with the base model");
+    await p.getByTestId("asr-model").selectOption("Xenova/whisper-small");
+    await p.getByTestId("asr-heavy-hint").waitFor({ timeout: 3000 });
+
+    // The previous run died: the mark is still there when the page opens again.
+    await p.evaluate(() => localStorage.setItem("clipper:asr-run", JSON.stringify({ model: "Xenova/whisper-small", at: Date.now() })));
+    await p.reload();
+    await p.getByTestId("file-input").setInputFiles(withAudio);
+    await p.getByTestId("asr-panel").waitFor({ timeout: 15000 });
+    await p.getByTestId("asr-crashed").waitFor({ timeout: 3000 });
+    assert((await p.getByTestId("asr-model").inputValue()) === "Xenova/whisper-base", "one model lighter after a crash");
+    assert((await p.evaluate(() => localStorage.getItem("clipper:asr-run"))) === null, "the mark is cleared once reported");
     await ctx.close();
   });
 

@@ -19,6 +19,7 @@ import { autoCuts, ICONS, resolveVisual, type Cut, stripMarks, TEMPLATES, type T
 import { chooseFamily, FAMILY_LABELS } from "@/lib/composition";
 import { planNarrative } from "@/lib/narrative";
 import { releaseAsr } from "@/lib/asr/client";
+import type { OverlayPosition } from "@/lib/overlay";
 import { isPristine, SESSION_VERSION, type SessionData } from "@/lib/session";
 import { clearSession, deleteSource, loadSession, loadSource, saveSession, saveSource } from "@/lib/session-store";
 import { scenesToSrt } from "@/lib/srt";
@@ -116,6 +117,8 @@ export default function MotionStudio() {
   // Edit mode: the uploaded video is the base layer (with its own audio); scenes become captions or cutaway graphics.
   const [videoEdit, setVideoEdit] = useState(false);
   const [captionOffset, setCaptionOffset] = useState(0);
+  // Where animations drawn over the speaker sit: the empty space above the head, or just above the captions.
+  const [overlayPos, setOverlayPos] = useState<OverlayPosition>("top");
   const [cutOverrides, setCutOverrides] = useState<Record<string, Cut>>({});
   // Where in the source video a "clip" scene starts (seconds), per scene text.
   const [clipStarts, setClipStarts] = useState<Record<string, number>>({});
@@ -193,28 +196,29 @@ export default function MotionStudio() {
     ...(videoEdit && source ? { cut: cutOverrides[sc.text] ?? planned[i], ...(cutOverrides[sc.text] === "clip" ? { clipFrom: clipStarts[sc.text] ?? 0 } : {}) } : {}),
   })) : [];
   const props: VideoProps | null = timeline.ok ? {
-    title: title.trim(), scenes: sceneList, style, palette, audioSrc: narration?.url ?? null, captions, video: videoEdit && source ? { src: source.url, seconds: source.seconds } : null,
+    title: title.trim(), scenes: sceneList, style, palette, audioSrc: narration?.url ?? null, captions, video: videoEdit && source ? { src: source.url, seconds: source.seconds } : null, overlay: overlayPos,
     music, speech: narration?.speech ?? null,
   } : null;
   const snapshot = useMemo<SessionData>(() => ({
-    v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, imported,
+    v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlay: overlayPos, imported,
     voiceMode: voiceMode === "ai" ? "ai" : "none", ttsLang, ttsVoice, ttsSpeed,
-  }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed]);
+  }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlayPos, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed]);
   useEffect(() => {
     if (!autosave || isPristine(snapshot, SAMPLE, !!source)) return;
     const t = setTimeout(() => { void saveSession({ ...snapshot, savedAt: Date.now() }); }, 1000);
     return () => clearTimeout(t);
   }, [autosave, snapshot, source]);
   useEffect(() => {
-    if (!autosave) return;
+    // Writing a large video to storage competes for memory with transcription and rendering; wait until they are done.
+    if (!autosave || asrBusy || rendering) return;
     if (!source) { void deleteSource(); return; }
     void saveSource({ blob: source.file, name: source.file.name, type: source.file.type, lastModified: source.file.lastModified, seconds: source.seconds });
-  }, [autosave, source]);
+  }, [autosave, source, asrBusy, rendering]);
   async function restoreSession() {
     const s = saved;
     if (!s) return;
     setScript(s.script); setTitle(s.title); setStyle(s.style); setPalette(s.palette); setContentPreset(s.contentPreset); setTarget(s.target); setCaptions(s.captions);
-    setOverrides(s.overrides); setCutOverrides(s.cutOverrides); setClipStarts(s.clipStarts); setCaptionOffset(s.captionOffset); setImported(s.imported);
+    setOverrides(s.overrides); setCutOverrides(s.cutOverrides); setClipStarts(s.clipStarts); setCaptionOffset(s.captionOffset); setOverlayPos(s.overlay ?? "top"); setImported(s.imported);
     setVoiceMode(s.voiceMode); setTtsLang(s.ttsLang); setTtsVoice(s.ttsVoice); setTtsSpeed(s.ttsSpeed);
     const rec = savedSource ? await loadSource() : null;
     if (rec) {
@@ -488,6 +492,12 @@ export default function MotionStudio() {
           {imported && videoEdit && <label className="field-label">Geser waktu subtitle: {captionOffset > 0 ? "+" : ""}{captionOffset.toFixed(1)} dtk <span className="field-hint">kurangi jika teks muncul terlambat, tambah jika terlalu cepat</span>
             <input type="range" min={-1} max={1} step={0.1} value={captionOffset} onChange={e => setCaptionOffset(Number(e.target.value))} data-testid="caption-offset" />
           </label>}
+          {videoEdit && <label className="field-label" htmlFor="overlay-position">Posisi animasi di atas video <span className="field-hint">atas = di ruang kosong di atas kepala; bawah = tepat di atas subtitle</span>
+            <select id="overlay-position" value={overlayPos} onChange={e => setOverlayPos(e.target.value as OverlayPosition)} data-testid="overlay-position">
+              <option value="top">Atas (di atas kepala)</option>
+              <option value="lower">Bawah (di atas subtitle)</option>
+            </select>
+          </label>}
           {timed && timed.aligned && <div className="notice" data-testid="aligned-notice">Naskah sudah diedit setelah transkripsi; kata-katanya diselaraskan dengan ucapan asli, jadi waktu caption mungkin bergeser sedikit di bagian yang diubah.</div>}
           {timed && timed.tooShort > 0 && <div className="notice notice-error" data-testid="short-warning">{timed.tooShort} scene lebih pendek dari {MIN_SCENE_SECONDS} dtk, sehingga akan diperpanjang dan membuat subtitle sesudahnya bergeser. Gabungkan barisnya di kolom Naskah, tetapi pertahankan kata-katanya.</div>}
           <div className="field-label">Video sumber <span className="field-hint">opsional · unggah video, ucapannya jadi naskah &amp; subtitle otomatis (maks. 3 menit)</span></div>
@@ -682,9 +692,10 @@ function SceneVisualControls({ text, override, disabled, onChange, cut, onCut, o
       {cut && <label>
         <span>Layar</span>
         <select value={cut.value ?? ""} disabled={disabled} data-testid="scene-cut" onChange={e => onCut((e.target.value || undefined) as Cut | undefined)}>
-          <option value="">Otomatis · {cut.auto === "graphic" ? "Grafis" : "Video"}</option>
+          <option value="">Otomatis · {cut.auto === "graphic" ? "Grafis penuh" : cut.auto === "overlay" ? "Video + animasi" : "Video + subtitle"}</option>
           <option value="video">Video + subtitle</option>
-          <option value="graphic">Grafis</option>
+          <option value="overlay">Video + animasi</option>
+          <option value="graphic">Grafis penuh (ganti layar)</option>
           <option value="clip">Potongan lain dari video</option>
         </select>
       </label>}
