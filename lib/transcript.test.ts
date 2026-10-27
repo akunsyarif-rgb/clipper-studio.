@@ -3,7 +3,7 @@ import { audioArgs } from "./clip";
 import { autoCuts, detectVisual } from "./visuals";
 import { activeWordIndex, buildTimeline, FPS, phraseChunks, phraseLine, splitScript } from "./script";
 import {
-  activeAt, alignWords, allWords, asrChunkCount, asrEta, asrSlowHint, asrTimingSummary, editSegment, explainTranscribeError, formatSrtTime, groupSegments, mergeSubwords, parseHandoff, parseWords, shiftWords,
+  activeAt, alignWords, allWords, asrEta, collapseRepeats, looksLooping, asrSlowHint, asrTimingSummary, editSegment, explainTranscribeError, formatSrtTime, groupSegments, mergeSubwords, parseHandoff, parseWords, shiftWords,
   sceneTimings, serializeHandoff, spreadWords, toSrt, transcriptFromSegments, transcriptFromWords, transcriptText, validateTranscribeRange,
   type RawChunk,
 } from "./transcript";
@@ -298,18 +298,6 @@ describe("alignWords / edited scripts (fuzzy timing)", () => {
 });
 
 describe("ASR progress helpers", () => {
-  it("counts the audio windows like Transformers.js does (30 s windows, 5 s overlap on each side)", () => {
-    const sr = 16000;
-    expect(asrChunkCount(0)).toBe(1);
-    expect(asrChunkCount(10 * sr)).toBe(1);
-    expect(asrChunkCount(30 * sr)).toBe(1);
-    expect(asrChunkCount(30 * sr + 1)).toBe(2);
-    // each window after the first advances 20 s
-    expect(asrChunkCount(50 * sr)).toBe(2);
-    expect(asrChunkCount(50 * sr + 1)).toBe(3);
-    expect(asrChunkCount(180 * sr)).toBe(9); // windows start at 0, 20, … 160 s
-  });
-
   it("estimates the time left from the windows already done", () => {
     expect(asrEta(0, 4, 10)).toBe("");
     expect(asrEta(4, 4, 80)).toBe("");
@@ -317,6 +305,7 @@ describe("ASR progress helpers", () => {
     expect(asrEta(3, 4, 30)).toBe("sekitar 10 dtk lagi");
     expect(asrEta(7, 8, 70)).toBe("sekitar 10 dtk lagi");
     expect(asrEta(7, 8, 14)).toBe("kurang dari 5 dtk lagi");
+    expect(asrEta(12.5, 50, 25)).toBe("sekitar 1 mnt 15 dtk lagi"); // any unit works, e.g. seconds of speech
   });
 
   it("reports where the time went", () => {
@@ -329,5 +318,53 @@ describe("ASR progress helpers", () => {
     expect(asrSlowHint("Xenova/whisper-small", slow)).toMatch(/base/);
     expect(asrSlowHint("Xenova/whisper-small", { ...slow, inferSeconds: 30 })).toBe("");
     expect(asrSlowHint("Xenova/whisper-base", slow)).toBe("");
+  });
+});
+
+describe("repetition loops (a model stuck repeating itself)", () => {
+  const w = (text: string): { text: string; start: number; end: number }[] => text.split(" ").map((t, i) => ({ text: t, start: i, end: i + 0.5 }));
+
+  it("recognises a looping phrase and leaves natural repetition alone", () => {
+    expect(looksLooping("Jadi, apa yang mana? " + "Yang mana? ".repeat(30))).toBe(true);
+    expect(looksLooping("ya ya ya ya ya")).toBe(true);
+    expect(looksLooping("tidak, tidak, tidak, aku tidak mau")).toBe(false);
+    expect(looksLooping("Halo semuanya, selamat datang kembali di channel kami.")).toBe(false);
+    expect(looksLooping("satu dua tiga satu dua tiga")).toBe(false);
+    expect(looksLooping("satu dua tiga satu dua tiga satu dua tiga")).toBe(true);
+  });
+
+  it("ignores case and punctuation when comparing", () => {
+    expect(looksLooping("Yang mana? yang MANA, Yang mana! yang mana.")).toBe(true);
+  });
+
+  it("folds a loop into its first occurrence and keeps its timing", () => {
+    const words = w("Jadi apa " + "yang mana? ".repeat(10).trim() + " sendiri");
+    const out = collapseRepeats(words);
+    expect(out.map(x => x.text).join(" ")).toBe("Jadi apa yang mana? sendiri");
+    expect(out[2]).toEqual(words[2]);
+    expect(out.at(-1)).toEqual(words.at(-1));
+  });
+
+  it("folds a single repeated word only from the fourth repeat", () => {
+    expect(collapseRepeats(w("ya ya ya itu")).map(x => x.text).join(" ")).toBe("ya ya ya itu");
+    expect(collapseRepeats(w("ya ya ya ya itu")).map(x => x.text).join(" ")).toBe("ya itu");
+  });
+
+  it("does not touch normal text", () => {
+    const words = w("Aplikasi di TikTok punya indikasi sendiri lah gitu");
+    expect(collapseRepeats(words)).toEqual(words);
+    expect(collapseRepeats([])).toEqual([]);
+  });
+
+  it("is applied to a transcript, so a looping recording gives a readable one", () => {
+    const chunks = [" Jadi", " apa", ...Array.from({ length: 12 }, (_, i) => [{ text: " yang", timestamp: [2 + i, 2.4 + i] as [number, number] }, { text: " mana?", timestamp: [2.4 + i, 2.8 + i] as [number, number] }]).flat()]
+      .map((c, i) => typeof c === "string" ? { text: c, timestamp: [i, i + 0.5] as [number, number] } : c);
+    const t = transcriptFromWords(chunks, 20, "id");
+    expect(transcriptText(t)).toBe("Jadi apa yang mana?");
+  });
+
+  it("also folds loops in a segment-only transcript", () => {
+    const t = transcriptFromSegments([{ text: " Halo " + "yang mana? ".repeat(8), timestamp: [0, 10] }], 10, "id");
+    expect(t.segments[0].text).toBe("Halo yang mana?");
   });
 });

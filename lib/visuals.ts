@@ -10,6 +10,7 @@ import {
   ShieldCheck, ShoppingCart, Smartphone, Sparkles, Sprout, Star, Stethoscope, Sun, Tag, Target, TrendingDown, TrendingUp, TriangleAlert,
   ThumbsUp, Trophy, Truck, Umbrella, Users, Utensils, Video, Wallet, Wrench, Zap, type IconNode,
 } from "lucide";
+import { ambiguousMask, isCallToAction, WEAK_WORDS } from "./sense";
 
 export type Template = "statement" | "list" | "question" | "number" | "compare" | "cta" | "quote";
 
@@ -23,7 +24,8 @@ export const TEMPLATES: { id: Template; label: string }[] = [
   { id: "quote", label: "Kutipan" },
 ];
 
-type Concept = { id: string; label: string; icon: IconNode; words: string[]; weight?: number };
+/** `soft` words count half: a content word elsewhere in the sentence ("coffee" in "do you like coffee") wins over them. */
+type Concept = { id: string; label: string; icon: IconNode; words: string[]; weight?: number; soft?: string[] };
 
 /**
  * Concepts with Indonesian and English keywords. Keywords of 4+ letters also match inside longer words
@@ -36,7 +38,7 @@ export const CONCEPTS: Concept[] = [
   { id: "habit", label: "Ulang (kebiasaan)", icon: Repeat, words: ["kebiasaan", "rutin", "rutinitas", "ulangi", "setiap hari", "habit", "routine", "repeat", "daily", "every day"] },
   { id: "forever", label: "Tak terbatas", icon: InfinityIcon, words: ["selalu", "selamanya", "konsisten", "terus", "always", "forever", "consistent", "consistency", "never stop"] },
   { id: "money", label: "Koin (uang)", icon: Coins, words: ["uang", "rupiah", "biaya", "harga", "gaji", "penghasilan", "cuan", "money", "cash", "cost", "price", "salary", "income", "earn", "profit"] },
-  { id: "wallet", label: "Dompet (tabungan)", icon: Wallet, words: ["dompet", "tabung", "tabungan", "hemat", "investasi", "wallet", "saving", "budget", "invest"] },
+  { id: "wallet", label: "Dompet (tabungan)", icon: Wallet, words: ["save money", "save up", "save cash", "hemat uang", "dompet", "tabung", "tabungan", "hemat", "investasi", "wallet", "saving", "budget", "invest"] },
   { id: "growth", label: "Grafik naik", icon: TrendingUp, words: ["tumbuh", "naik", "meningkat", "berkembang", "pertumbuhan", "progres", "kemajuan", "growth", "grow", "increase", "rise", "improve", "progress"] },
   { id: "decline", label: "Grafik turun", icon: TrendingDown, words: ["turun", "menurun", "rugi", "merosot", "decline", "decrease", "drop", "loss", "lose", "worse"] },
   { id: "data", label: "Diagram (data)", icon: ChartColumn, words: ["data", "statistik", "analisis", "laporan", "riset", "penelitian", "statistic", "analytics", "analysis", "report", "research", "survey"] },
@@ -57,8 +59,8 @@ export const CONCEPTS: Concept[] = [
   { id: "heart", label: "Hati", icon: Heart, words: ["cinta", "sayang", "peduli", "kasih", "love", "care", "kind"] },
   { id: "health", label: "Detak jantung (sehat)", icon: HeartPulse, words: ["sehat", "kesehatan", "jantung", "health", "healthy", "heart rate"] },
   { id: "exercise", label: "Dumbel (olahraga)", icon: Dumbbell, words: ["olahraga", "latihan", "gym", "otot", "exercise", "workout", "training", "muscle", "fitness"] },
-  { id: "sleep", label: "Bulan (tidur)", icon: Moon, words: ["tidur", "malam", "istirahat", "sleep", "night", "rest"] },
-  { id: "morning", label: "Matahari (pagi)", icon: Sun, words: ["pagi", "matahari", "siang", "morning", "sunrise", "sun"] },
+  { id: "sleep", label: "Bulan (tidur)", icon: Moon, words: ["selamat malam", "good night", "tidur", "malam", "istirahat", "sleep", "night", "rest"] },
+  { id: "morning", label: "Matahari (pagi)", icon: Sun, words: ["selamat pagi", "good morning", "good afternoon", "selamat siang", "pagi", "matahari", "siang", "morning", "sunrise", "sun"] },
   { id: "food", label: "Alat makan", icon: Utensils, words: ["makan", "makanan", "sarapan", "masak", "resep", "food", "eat", "meal", "breakfast", "cook", "recipe"] },
   { id: "water", label: "Tetes air", icon: Droplets, words: ["minum", "hidrasi", "drink", "water", "hydrat"] },
   { id: "coffee", label: "Kopi (santai)", icon: Coffee, words: ["kopi", "santai", "rehat", "coffee", "relax", "break"] },
@@ -121,7 +123,7 @@ export const CONCEPTS: Concept[] = [
   { id: "notify", label: "Lonceng", icon: Bell, words: ["notifikasi", "pengingat", "ingatkan", "notification", "reminder", "remind"] },
   { id: "share", label: "Bagikan", icon: Share2, words: ["bagikan", "sebarkan", "share"] },
   { id: "save", label: "Penanda (simpan)", icon: Bookmark, words: ["simpan", "save", "bookmark"] },
-  { id: "like", label: "Jempol", icon: ThumbsUp, words: ["suka", "setuju", "bagus", "like", "agree", "good"] },
+  { id: "like", label: "Jempol", icon: ThumbsUp, words: ["suka", "setuju", "bagus", "like", "agree", "good job", "great job", "well done", "nice work", "good work", "kerja bagus", "bagus sekali"], soft: ["like", "suka", "agree", "setuju"] },
   { id: "new", label: "Kilau (baru)", icon: Sparkles, words: ["baru", "keren", "ajaib", "menakjubkan", "new", "amazing", "magic", "wow"] },
   { id: "next", label: "Panah kanan", icon: ArrowRight, words: ["lanjut", "berikutnya", "selanjutnya", "next", "continue"] },
 ];
@@ -176,23 +178,34 @@ function wordMatches(token: string, keyword: string): boolean {
   return token.includes(keyword);
 }
 
-/** Best matching concept for the text, with the words that triggered it. */
-export function matchConcept(text: string): { id: string; words: string[] } | null {
+/**
+ * Best matching concept for the text, with the words that triggered it.
+ * `topics` are the concepts the neighbouring scenes are about: a generic word ("move", "see", "day") counts only when
+ * its concept is one of them, and a word used in another sense ("looks like", "so, like,") never counts.
+ */
+export function matchConcept(text: string, topics?: ReadonlySet<string>): { id: string; words: string[] } | null {
   const plain = stripMarks(text);
   const tokens = plain.split(/\s+/).map(wordKey).filter(Boolean);
+  const masked = ambiguousMask(tokens);
   const lower = " " + tokens.join(" ") + " ";
   let best: { id: string; words: string[]; score: number; pos: number } | null = null;
   for (const c of CONCEPTS) {
-    let score = 0, pos = Infinity;
-    const words: string[] = [];
+    let score = 0, pos = Infinity, weakScore = 0, weakPos = Infinity;
+    const words: string[] = [], weakWords: string[] = [];
     for (const k of c.words) {
       if (k.includes(" ")) {
         const i = lower.indexOf(" " + k + " ");
         if (i >= 0) { score += 1.5; pos = Math.min(pos, i); words.push(...k.split(" ")); }
         continue;
       }
-      tokens.forEach((t, i) => { if (wordMatches(t, k)) { score += 1; pos = Math.min(pos, i * 10); words.push(t); } });
+      tokens.forEach((t, i) => {
+        if (masked.has(i) || !wordMatches(t, k)) return;
+        if (WEAK_WORDS.has(k)) { weakScore += 1; weakPos = Math.min(weakPos, i * 10); weakWords.push(t); }
+        else { score += c.soft?.includes(k) ? 0.5 : 1; pos = Math.min(pos, i * 10); words.push(t); }
+      });
     }
+    // Generic words stand on their own only when the surrounding script is about the same thing.
+    if (weakScore > 0 && topics?.has(c.id)) { score += weakScore; pos = Math.min(pos, weakPos); words.push(...weakWords); }
     score *= c.weight ?? 1;
     if (score > 0 && (!best || score > best.score || (score === best.score && pos < best.pos))) best = { id: c.id, words, score, pos };
   }
@@ -211,6 +224,15 @@ const NUMBER_WORDS: Record<string, number> = {
 const STOPWORDS = new Set(["setiap", "per", "di", "dan", "untuk", "yang", "dari", "ke", "dalam", "kali", "lebih", "hanya", "sampai", "of", "in", "per", "and", "for", "to", "a", "the", "every", "more", "only", "than", "out", "on", "at"]);
 const COUNTABLE = /^(tips?|cara|langkah|hal|alasan|kesalahan|kebiasaan|rahasia|aturan|trik|ways?|steps?|things?|reasons?|mistakes?|habits?|secrets?|rules?|tricks?|ideas?|ide)$/i;
 const CTA = /\b(follow|ikuti|subscribe|share|bagikan|klik|click|tap|ketuk|coba|try|download|unduh|daftar|sign up|join|gabung|komentar|comment|like|save|simpan|order|pesan sekarang|beli sekarang|buy now|kunjungi|visit|link in bio|cek|check out|mulai sekarang|start now|start today|mulai hari ini)\b/i;
+
+/** The call-to-action word of a sentence ("FOLLOW", "START NOW"), or null; "like", "save" or "try" count only when they ask something of the viewer. */
+function findCta(plain: string): string | null {
+  for (const m of plain.matchAll(new RegExp(CTA.source, "gi"))) {
+    const at = m.index ?? 0;
+    if (isCallToAction(m[1], plain.slice(0, at), plain.slice(at + m[0].length))) return m[1].toUpperCase();
+  }
+  return null;
+}
 
 function trimPhrase(s: string): string {
   return s.replace(/^[\s,;:—–-]+|[\s,.;:!?—–-]+$/g, "").replace(/^(dan|and|tapi|but|yang|that)\s+/i, "").slice(0, 42).trim();
@@ -282,11 +304,12 @@ export function detectSemanticConcept(text: string): string | null {
 }
 
 /** Automatic visual for one scene. */
-export function detectVisual(text: string): SceneVisual {
+/** `topics`: concepts of the neighbouring scenes (see sceneTopics); without them generic words stay silent. */
+export function detectVisual(text: string, topics?: ReadonlySet<string>): SceneVisual {
   const plain = stripMarks(text).trim();
   const manual = [...text.matchAll(/\*([^*]+)\*/g)].flatMap(m => m[1].split(/\s+/).map(wordKey)).filter(Boolean);
   const semanticId = detectSemanticConcept(text);
-  const concept = matchConcept(text);
+  const concept = matchConcept(text, topics);
   const icon = semanticId && ICONS[semanticId] ? semanticId : concept?.id ?? null;
   const emphasis = new Set<string>([...manual, ...(manual.length ? [] : concept?.words ?? [])]);
 
@@ -305,22 +328,31 @@ export function detectVisual(text: string): SceneVisual {
     emphasis.add(wordKey(number.raw));
     return { template: "number", icon, emphasis: [...emphasis], number };
   }
-  const cta = CTA.exec(plain);
-  if (cta) return { template: "cta", icon, emphasis: [...emphasis], cta: cta[1].toUpperCase() };
+  const cta = findCta(plain);
+  if (cta) return { template: "cta", icon, emphasis: [...emphasis], cta };
   if (/^["“].+["”][.!]?$/.test(plain)) return { template: "quote", icon, emphasis: [...emphasis] };
   return { template: "statement", icon, emphasis: [...emphasis] };
 }
 
+/**
+ * What each scene's neighbours (two scenes either side) are about, as concept ids. This is the "whole script" context
+ * that lets a generic word count when the script is clearly on that subject, and keeps it silent otherwise.
+ */
+export function sceneTopics(texts: string[]): Set<string>[] {
+  const own = texts.map(t => detectSemanticConcept(t) ?? matchConcept(t)?.id ?? null);
+  return texts.map((_, i) => new Set(own.filter((id, j) => id !== null && j !== i && Math.abs(j - i) <= 2) as string[]));
+}
+
 /** Applies a user override; data the forced template needs is filled in when the text allows it. */
-export function resolveVisual(text: string, override?: VisualOverride): SceneVisual {
-  const auto = detectVisual(text);
+export function resolveVisual(text: string, override?: VisualOverride, topics?: ReadonlySet<string>): SceneVisual {
+  const auto = detectVisual(text, topics);
   if (!override) return auto;
   const v: SceneVisual = { ...auto };
   if (override.template && override.template !== auto.template) {
     v.template = override.template;
     if (v.template === "number") v.number = detectNumber(text) ?? undefined;
     if (v.template === "compare") v.compare = detectCompare(text) ?? undefined;
-    if (v.template === "cta") v.cta = CTA.exec(stripMarks(text))?.[1].toUpperCase() ?? (/\b(the|you|your)\b/i.test(text) ? "START NOW" : "MULAI");
+    if (v.template === "cta") v.cta = findCta(stripMarks(text)) ?? (/\b(the|you|your)\b/i.test(text) ? "START NOW" : "MULAI");
     if (v.template === "list" && v.listIndex === undefined) v.listIndex = null;
   }
   if (override.icon) v.icon = override.icon === "none" ? null : override.icon in ICONS ? override.icon : v.icon;

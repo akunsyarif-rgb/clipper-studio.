@@ -36,12 +36,23 @@ export function overlayColors(colors: { accent: string; bg1: string; bg2: string
   return { text: "#ffffff", accent, bg1: SCRIM, bg2: SCRIM };
 }
 
-/** The word to feature on an icon or keyword overlay: the first emphasised word, as written (upper-case), or null. */
+/**
+ * The words to feature on an icon or keyword overlay: the first run of emphasised words as written, in capitals
+ * ("GOOD MORNING", not just "GOOD"), at most three words; null when nothing is emphasised.
+ */
 export function overlayKeyword(text: string, visual: Pick<SceneVisual, "emphasis">): string | null {
   const emphasis = new Set(visual.emphasis);
-  const word = stripMarks(text).split(/\s+/).find(w => emphasis.has(wordKey(w)));
-  const clean = word?.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
-  return clean ? clean.toUpperCase() : null;
+  const words = stripMarks(text).split(/\s+/).filter(Boolean);
+  const first = words.findIndex(w => emphasis.has(wordKey(w)));
+  if (first < 0) return null;
+  const run: string[] = [];
+  for (let i = first; i < words.length && run.length < 3 && emphasis.has(wordKey(words[i])); i++) {
+    run.push(words[i].replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""));
+    // A comma or full stop ends the phrase.
+    if (/[,.;:!?]$/.test(words[i])) break;
+  }
+  const phrase = run.filter(Boolean).join(" ");
+  return phrase ? phrase.toUpperCase() : null;
 }
 
 /** Whether a scene has something worth drawing over the speaker. */

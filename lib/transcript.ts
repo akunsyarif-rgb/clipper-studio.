@@ -111,8 +111,51 @@ export function spreadWords(text: string, start: number, end: number): Word[] {
   });
 }
 
+const loopKey = (w: string) => w.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]+/gu, "");
+
+/**
+ * Repeats needed before a phrase is treated as the model looping: a single word four times in a row ("ya ya ya ya"
+ * can be real speech at three), a phrase of two to eight words three times ("yang mana? yang mana? yang mana?").
+ */
+const minRepeats = (n: number) => (n === 1 ? 4 : 3);
+
+/** Length (in blocks) of the run of identical `n`-word blocks that starts at `at`. */
+function runLength(keys: string[], at: number, n: number): number {
+  let r = 1;
+  while (at + (r + 1) * n <= keys.length && keys.slice(at + r * n, at + (r + 1) * n).every((k, j) => k === keys[at + j])) r++;
+  return r;
+}
+
+/** True when the text contains a phrase of up to eight words that repeats back to back more often than people do. */
+export function looksLooping(text: string): boolean {
+  const keys = text.split(/\s+/).map(loopKey).filter(Boolean);
+  for (let at = 0; at < keys.length; at++) {
+    for (let n = 1; n <= 8 && at + 2 * n <= keys.length; n++) if (runLength(keys, at, n) >= minRepeats(n)) return true;
+  }
+  return false;
+}
+
+/**
+ * Folds a phrase that repeats back to back (a model stuck in a loop) into its first occurrence, keeping that
+ * occurrence's timing. Natural repetition ("tidak, tidak, tidak") is left alone.
+ */
+export function collapseRepeats(words: Word[]): Word[] {
+  const keys = words.map(w => loopKey(w.text));
+  const out: Word[] = [];
+  for (let at = 0; at < words.length;) {
+    let folded = 0;
+    for (let n = 1; n <= 8 && at + 2 * n <= words.length && !folded; n++) {
+      if (keys.slice(at, at + n).some(k => !k)) continue;
+      const r = runLength(keys, at, n);
+      if (r >= minRepeats(n)) { out.push(...words.slice(at, at + n)); folded = n * r; }
+    }
+    if (folded) at += folded; else { out.push(words[at]); at++; }
+  }
+  return out;
+}
+
 export function transcriptFromWords(chunks: RawChunk[], duration: number, language: string): Transcript {
-  const words = parseWords(mergeSubwords(chunks), duration);
+  const words = collapseRepeats(parseWords(mergeSubwords(chunks), duration));
   return { language, granularity: "word", duration, segments: groupSegments(words) };
 }
 
@@ -121,7 +164,7 @@ export function transcriptFromSegments(chunks: RawChunk[], duration: number, lan
   const segments: Segment[] = [];
   let cursor = 0;
   chunks.forEach((c, i) => {
-    const text = clean(c.text ?? "");
+    const text = collapseRepeats(splitWords(c.text ?? "").map(t => ({ text: t, start: 0, end: 0 }))).map(w => w.text).join(" ");
     if (!text) return;
     const s = typeof c.timestamp?.[0] === "number" ? c.timestamp[0] : cursor;
     const next = chunks[i + 1]?.timestamp?.[0];
@@ -345,23 +388,7 @@ export function explainTranscribeError(detail: string): string {
   return "Transkripsi gagal. Coba lagi, pilih bagian lebih pendek, atau pakai model Cepat.";
 }
 
-/** Whisper window and overlap used by the studio (seconds). */
-export const ASR_CHUNK_SECONDS = 30;
-export const ASR_STRIDE_SECONDS = 5;
-
-/**
- * How many windows the speech model will process for `samples` at `sampleRate`; mirrors the loop in
- * Transformers.js (each window advances by chunk - 2 × stride), so progress can be shown as "n of total".
- */
-export function asrChunkCount(samples: number, sampleRate = TRANSCRIBE_SAMPLE_RATE, chunk = ASR_CHUNK_SECONDS, stride = ASR_STRIDE_SECONDS): number {
-  const window = sampleRate * chunk, jump = window - 2 * sampleRate * stride;
-  if (samples <= 0 || jump <= 0) return 1;
-  let n = 1;
-  for (let offset = 0; offset + window < samples; offset += jump) n++;
-  return n;
-}
-
-/** "kira-kira 1 mnt 20 dtk" from the time per finished window; empty until a window has finished. */
+/** "sekitar 1 mnt 20 dtk lagi" from the share already done (any unit); empty until something has finished. */
 export function asrEta(done: number, total: number, elapsedSeconds: number): string {
   if (done <= 0 || done >= total || elapsedSeconds <= 0) return "";
   const left = Math.round((elapsedSeconds / done) * (total - done));
@@ -369,13 +396,14 @@ export function asrEta(done: number, total: number, elapsedSeconds: number): str
   return left >= 60 ? `sekitar ${Math.floor(left / 60)} mnt ${left % 60} dtk lagi` : `sekitar ${left} dtk lagi`;
 }
 
-export type AsrTimings = { loadSeconds: number; reused: boolean; inferSeconds: number; audioSeconds: number };
+export type AsrTimings = { loadSeconds: number; reused: boolean; inferSeconds: number; audioSeconds: number; /** Seconds in which speech was found; the rest was skipped. */ speechSeconds?: number };
 
 /** One line for the creator (and for bug reports): where the time went. */
 export function asrTimingSummary(t: AsrTimings): string {
   const speed = t.audioSeconds > 0 ? t.inferSeconds / t.audioSeconds : 0;
   const load = t.reused ? "model sudah siap (dipakai ulang)" : `model dimuat ${t.loadSeconds.toFixed(0)} dtk`;
-  return `${load}; transkripsi ${t.inferSeconds.toFixed(0)} dtk untuk ${t.audioSeconds.toFixed(0)} dtk audio (${speed.toFixed(1)}× durasi)`;
+  const skipped = t.speechSeconds !== undefined && t.audioSeconds - t.speechSeconds >= 2 ? `; ucapan terdeteksi ${t.speechSeconds.toFixed(0)} dtk, bagian hening atau berisik dilewati` : "";
+  return `${load}; transkripsi ${t.inferSeconds.toFixed(0)} dtk untuk ${t.audioSeconds.toFixed(0)} dtk audio (${speed.toFixed(1)}× durasi)${skipped}`;
 }
 
 /** Suggests a faster model when the heavy one ran slower than the audio itself; empty otherwise. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ASR_CACHE_LIMIT, asrCacheKey, isPristine, isSession, SESSION_VERSION, sourceMatches, touchCache, type SessionData } from "./session";
+import { ASR_CACHE_LIMIT, ASR_PIPELINE_VERSION, asrCacheKey, isPristine, isSession, SESSION_VERSION, sourceMatches, touchCache, type SessionData } from "./session";
 
 const base: SessionData = {
   v: SESSION_VERSION, savedAt: 1, script: "Halo dunia.", title: "Judul", style: "editorial", palette: "ivory", contentPreset: "quiet-editorial", target: "auto", captions: true,
@@ -63,6 +63,11 @@ describe("transcript cache", () => {
     expect(asrCacheKey(file, { start: 5, duration: 30 }, "Xenova/whisper-base", "indonesian")).not.toBe(k);
     expect(asrCacheKey(file, { start: 0, duration: 30 }, "Xenova/whisper-small", "indonesian")).not.toBe(k);
     expect(asrCacheKey(file, { start: 0, duration: 30 }, "Xenova/whisper-base", "english")).not.toBe(k);
+  });
+
+  it("does not reuse a transcript made by an older transcription method", () => {
+    expect(asrCacheKey(file, { start: 0, duration: 30 }, "m", "l").startsWith(`asr${ASR_PIPELINE_VERSION}:`)).toBe(true);
+    expect(ASR_PIPELINE_VERSION).toBeGreaterThanOrEqual(2);
   });
 
   it("ignores sub-centisecond noise in the range", () => {

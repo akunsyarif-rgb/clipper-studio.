@@ -162,7 +162,7 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
     {working && <div className="progress-wrap" data-testid="asr-progress">
       <div className="progress-label"><span>{phase === "audio" ? "Mengambil audio asli dari video…"
         : phase === "download" ? (download.total === 0 ? "Memuat model ucapan…" : download.loaded < download.total ? "Mengunduh model ucapan (sekali, lalu disimpan)…" : "Menyiapkan model (bisa beberapa menit di perangkat kecil)…")
-        : chunk.total > 1 ? `Mengubah ucapan menjadi teks… bagian ${Math.min(chunk.done + 1, chunk.total)} dari ${chunk.total}` : "Mengubah ucapan menjadi teks…"}</span>
+        : chunk.total > 0 ? `Mengubah ucapan menjadi teks… ${Math.round(chunk.done)} dari ${Math.round(chunk.total)} dtk ucapan` : "Mengubah ucapan menjadi teks…"}</span>
         <strong>{phase === "download" && download.total ? `${formatBytes(download.loaded)} / ${formatBytes(download.total)}` : phase === "running" && chunk.eta ? chunk.eta : "…"}</strong></div>
       <div className="progress-track"><span style={{ width: (phase === "download" && download.total ? Math.round((download.loaded / download.total) * 100) : phase === "running" ? Math.max(6, chunk.total ? Math.round((chunk.done / chunk.total) * 100) : 6) : 4) + "%" }} /></div>
       <small>Jangan tutup atau pindah tab. Pada iPad, bagian pendek dan model Cepat lebih aman untuk memori.</small>

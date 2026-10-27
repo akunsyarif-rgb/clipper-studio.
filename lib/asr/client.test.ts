@@ -19,7 +19,7 @@ class FakeWorker {
 const words = [{ text: " Halo", timestamp: [0.2, 0.6] as [number, number] }, { text: " dunia", timestamp: [0.6, 1.2] as [number, number] }];
 const audio = () => new Float32Array(16000 * 4);
 const finish = (w: FakeWorker, extra: Partial<Extract<AsrMessage, { type: "result" }>> = {}) =>
-  w.say({ type: "result", granularity: "word", chunks: words, inferSeconds: 3, ...extra });
+  w.say({ type: "result", granularity: "word", chunks: words, inferSeconds: 3, speechSeconds: 4, ...extra });
 const start = (events = {}) => transcribe(audio(), "Xenova/whisper-base", "indonesian", 4, { onDownload: () => undefined, onRunning: () => undefined, ...events });
 
 beforeEach(() => { FakeWorker.all = []; vi.useFakeTimers(); vi.stubGlobal("Worker", FakeWorker); });

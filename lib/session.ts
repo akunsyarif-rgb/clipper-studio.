@@ -65,9 +65,15 @@ export function sourceMatches(a: { name: string; size: number; lastModified: num
   return a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
 }
 
-/** Key for a finished transcript: the same file part, model and language always give the same text. */
+/**
+ * Version of the transcription method. Raising it makes transcripts made by an older method (before speech-only
+ * processing and loop folding) stop being reused, so a better method is not hidden behind a worse saved result.
+ */
+export const ASR_PIPELINE_VERSION = 2;
+
+/** Key for a finished transcript: the same file part, model, language and method always give the same text. */
 export function asrCacheKey(file: { name: string; size: number; lastModified: number }, range: { start: number; duration: number }, model: string, language: string): string {
-  return `asr:${file.name}|${file.size}|${file.lastModified}|${range.start.toFixed(2)}|${range.duration.toFixed(2)}|${model}|${language}`;
+  return `asr${ASR_PIPELINE_VERSION}:${file.name}|${file.size}|${file.lastModified}|${range.start.toFixed(2)}|${range.duration.toFixed(2)}|${model}|${language}`;
 }
 
 /** How many finished transcripts are kept (oldest dropped first). */

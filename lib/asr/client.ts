@@ -17,7 +17,7 @@ export class TranscribeCancelled extends Error {
 export type AsrEvents = {
   onDownload: (loaded: number, total: number) => void;
   onRunning: (info: { loadSeconds: number; reused: boolean }) => void;
-  /** `done` of `total` audio windows are finished. */
+  /** `done` of `total` seconds of speech are transcribed. */
   onChunk?: (done: number, total: number) => void;
 };
 export type AsrHandle = { result: Promise<{ transcript: Transcript; timings: AsrTimings }>; cancel: () => void };
@@ -58,7 +58,7 @@ export function transcribe(audio: Float32Array, model: ModelId, language: Langua
         // Keep the worker (and model) for the next transcription, but not forever: it holds a lot of memory.
         worker.onmessage = null;
         idleTimer = setTimeout(releaseAsr, ASR_IDLE_MS);
-        if (t.segments.length) resolve({ transcript: t, timings: { ...info, inferSeconds: m.inferSeconds, audioSeconds } });
+        if (t.segments.length) resolve({ transcript: t, timings: { ...info, inferSeconds: m.inferSeconds, audioSeconds, speechSeconds: m.speechSeconds } });
         else reject(new Error("no speech: tidak ada ucapan terdeteksi"));
       } else fail(new Error(m.detail), reject);
     };

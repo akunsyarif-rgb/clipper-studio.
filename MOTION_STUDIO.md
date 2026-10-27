@@ -179,7 +179,7 @@ In a source-video edit each scene can show the speaker, a graphic, or **another 
 ## Transcription speed and progress
 
 - **The speech model stays ready between transcriptions.** One worker is shared, so a second transcription in the same session skips loading the model (the slowest step on a tablet). It is released after 2 minutes idle, when a run is cancelled or fails, when leaving the page, and before an MP4 render or clip export, so its memory goes to the encoder instead.
-- **Real progress**: the bar follows finished 30-second windows of audio ("bagian 2 dari 5") with a time estimate. Before that the panel says whether it is loading, downloading (only the first time) or preparing the model.
+- **Real progress**: the bar follows the seconds of speech already transcribed ("12 dari 38 dtk ucapan") with a time estimate. Before that the panel says whether it is loading, downloading (only the first time) or preparing the model.
 - **Where the time went** is shown after each run, e.g. "model dimuat 41 dtk; transkripsi 63 dtk untuk 45 dtk audio (1.4× durasi)". If the *small* model ran slower than the audio, the panel suggests *base*.
 - On devices without SharedArrayBuffer (iPad Safari) the model runs on one WebAssembly thread, so *small* with word timestamps is slow by nature; *base* is the practical choice there.
 
@@ -214,3 +214,23 @@ Each scene of a source-video edit has a *Layar* choice:
 - On iPad, iPhone and Android the transcription model starts as **Akurat (base)**; computers keep *small*. Choosing *small* on a tablet shows a memory warning.
 - The video engine (FFmpeg) is released once the audio is extracted, and the saved source video is written to storage only when no transcription or render is running.
 - If the page died during a transcription (usually Safari closing the tab for memory), the next visit says so and moves one model lighter automatically.
+
+## Transcript quality (Indonesian and English)
+
+Whisper invents text on silence, room noise and music: the typical sign is a phrase repeated dozens of times ("Yang mana? Yang mana? …"). The studio now guards against it in three layers (`lib/asr/speech.ts`, `lib/asr/run.ts`, `lib/transcript.ts`):
+
+1. **Only speech reaches the model.** The recording is levelled (a quiet recording is raised, gain-limited) and the spoken parts are found from the loudness of each 30 ms (the threshold follows the recording's own noise floor and speech level). Silence, clicks shorter than a word and steady noise are skipped, pauses under 0.6 s stay inside a region, regions are padded 0.25 s and cut at their quietest moment before 27.5 s. This also makes long recordings faster; the result line says how much was skipped.
+2. **A region whose text loops is run once more** with a repetition penalty and a ban on repeating three-word sequences.
+3. **What still repeats is folded.** A phrase of 2–8 words repeated three times in a row, or a single word four times in a row, is reduced to its first occurrence (timing kept). Natural repetition such as "tidak, tidak, tidak" is untouched.
+
+Saved transcripts from the older method are not reused (`ASR_PIPELINE_VERSION`), so one video may need to be transcribed again once. Accuracy of individual words still depends on the model: *small* is clearly better than *base* for Indonesian but too heavy for most tablets; the text can be corrected by hand in the list.
+
+## Icons that follow the sentence, not just a word
+
+The visual detector (`lib/visuals.ts`, `lib/sense.ts`) reads each sentence in its context:
+
+- **Senses**: "I like it / you'll like this / would like to" is the verb (thumbs-up, shown as *LIKE*); "looks like", "just like", "like a …" and a filler "so, like," are ignored. "Good morning / good night" name the morning or night icon with the whole phrase on screen; "good job / great job / well done" is praise; plain "good" is no longer an icon.
+- **Calls to action** need an ask: "like and subscribe", "hit the like button", "save this video", "try it now", "follow me" are buttons; "I like this idea", "save money", "I try to", "follow these steps" are not (same for *simpan*, *coba*, *ikuti*, *daftar*, *komentar*).
+- **A content word beats a generic verb**: "Do you like coffee?" shows coffee.
+- **The whole script as context** (`sceneTopics`): generic words ("move", "see", "day", "work", …) trigger an icon only when a neighbouring scene (two either side) is about the same thing; otherwise the scene gets no icon rather than a wrong one.
+- On-screen keywords show the whole emphasised phrase (up to three words), not only its first word.
