@@ -376,5 +376,17 @@ Alur utama halaman Clipper sekarang: **pilih video → "Analisis video & saranka
 - **Daftar klip** maksimal 10. Tiap klip menyimpan judul dan **subtitlenya sendiri** (potongan transkrip, waktu dimulai dari 0).
 - **Kirim ke Motion:** memotong klip (selalu 9:16), menyimpannya di penyimpanan perangkat bersama subtitlenya, lalu membuka Motion Graphics yang langsung memuat video, judul, dan naskah/subtitle dalam mode edit video. Dipakai sekali (kedaluwarsa 1 jam), dan didahulukan atas sesi lama. Bila waktu per kalimat dari AI kurang pas, buat ulang transkrip lokal di panel Transkrip Motion.
 - **Cara manual** (Whisper di perangkat + saran AI untuk bagian terpilih) tetap ada: terbuka bila belum ada kunci AI, terlipat bila sudah ada.
-- **Belum dikerjakan (tahap 2):** link YouTube. Rencananya link + teks otomatis (caption) YouTube diambil lewat server untuk saran momen, lalu Anda memilih file videonya dan app memotong di waktu itu. App tidak mengunduh video YouTube.
+- **Link YouTube** (tahap 2): lihat bagian berikutnya.
 - **Pengujian:** `e2e/clipflow.mjs` (FFmpeg asli memotong MP3, AI palsu, pratinjau, penyesuaian, persetujuan, ekspor 9:16, serah-terima ke Motion).
+
+### Dari link YouTube (tanpa mengunduh apa pun)
+
+Panel "Mulai dari link YouTube: AI mencari klip terbaik" (terbuka selama belum ada file). Alurnya: **link → teks video → saran klip AI → setujui → pilih file video yang sama → klip ditambahkan otomatis.**
+
+- **Teks video** punya dua jalur:
+  1. **Ambil teks otomatis:** fungsi server `youtube` (`supabase/functions/youtube/`, JWT wajib) membaca caption lewat endpoint pemutar tidak resmi YouTube dan mengembalikan judul, durasi, bahasa, dan baris teks berwaktu (dua format XML, entitas HTML dua lapis, hanya alamat caption `*.youtube.com`). **Ini upaya terbaik:** YouTube sering menolak permintaan dari server (kode `BLOCKED`), bisa mengubah cara kerjanya kapan saja, dan video tanpa caption tidak bisa dibaca. Sandbox pengembangan tidak bisa menjangkau YouTube, jadi **belum teruji terhadap YouTube asli** (hanya terhadap jawaban palsu).
+  2. **Tempel transkrip** (cadangan yang selalu bisa dipakai): salin dari YouTube (⋯ → Tampilkan transkrip) atau teks SRT/VTT; `parsePastedTranscript` membacanya, termasuk format "0:00 teks" sebaris dan jam `1:02:03`.
+- **Saran klip:** baris caption (sering hanya 2–4 detik) digabung jadi ±8 detik per baris (`mergeCaptionLines`), lalu AI memilih momen dengan batas yang sama seperti alur file (20–180 detik, maks. 3 menit). Tiap saran punya tautan **"Buka di YouTube"** pada detik awalnya untuk diperiksa, dan bisa disesuaikan ±2 detik. Daftar saran dipakai bersama alur file (`app/SuggestionList.tsx`).
+- **Pilih file:** setelah "Lanjut", app membuka pemilih file. Klip menunggu sampai file dipilih, lalu ditambahkan otomatis ke daftar klip (dengan subtitle dari caption). Bila **durasi file tidak cocok** dengan video YouTube (selisih lebih dari 15 detik atau 10%), file ditolak dengan pesan jelas dan klip tetap menunggu, supaya klip tidak dipotong dari video yang salah.
+- **Soal YouTube:** app tidak mengunduh video, hanya membaca teks dan waktunya. Pakai video milik Anda atau yang Anda punya izinnya. Mengambil caption lewat endpoint tidak resmi berada di wilayah abu-abu ketentuan YouTube; jalur tempel transkrip tidak punya masalah itu.
+- **Pengujian:** `lib/youtube.test.ts`, `lib/youtube-function.test.ts`, dan `e2e/clipflow.mjs` (server palsu menolak, tempel transkrip, saran AI, tautan YouTube, file salah ditolak, klip ditambahkan, serah-terima ke Motion).

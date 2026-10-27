@@ -10,6 +10,8 @@ import {
 import TranscriptPanel from "./TranscriptPanel";
 import CloudAccount from "./CloudAccount";
 import ClipFlow, { type NewClip } from "./ClipFlow";
+import YoutubeFlow from "./YoutubeFlow";
+import { lengthsMatch } from "@/lib/youtube";
 import { useGeminiAccess } from "./useGeminiAccess";
 import { saveClipHandoff } from "@/lib/session-store";
 import type { Transcript } from "@/lib/transcript";
@@ -46,7 +48,6 @@ export default function Home() {
   const [result, setResult] = useState<{ url: string; name: string; size: number; label: string } | null>(null);
   const [lastJob, setLastJob] = useState<Job | null>(null);
   const [errorDetail, setErrorDetail] = useState("");
-  const [ytUrl, setYtUrl] = useState("");
   const [yt, setYt] = useState<YouTubeRef | null>(null);
   const [asrBusy, setAsrBusy] = useState(false);
   const busy = phase !== "idle";
@@ -89,6 +90,19 @@ export default function Home() {
   }
 
   function currentRange() { return validateRange(start, end, duration); }
+
+  // Clips approved from a YouTube link wait here until the matching video file is chosen.
+  const [pending, setPending] = useState<{ clips: NewClip[]; seconds: number } | null>(null);
+  function approveYoutube(items: NewClip[], seconds: number) {
+    setPending({ clips: items, seconds });
+    if (!file) { say("Pilih file video yang sama dengan video YouTube itu. Klipnya akan ditambahkan otomatis."); picker.current?.click(); }
+  }
+  useEffect(() => {
+    if (!pending || !file || !duration) return;
+    if (!lengthsMatch(duration, pending.seconds)) { say(`File ini berdurasi ${formatTime(duration)}, sedangkan video YouTube ${formatTime(pending.seconds)}. Pilih file yang sama dengan video itu.`, true); return; }
+    addClips(pending.clips);
+    setPending(null);
+  }, [pending, file, duration]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Adds the clips the creator approved from the AI's suggestions (as many as fit). */
   function addClips(items: NewClip[]) {
@@ -179,12 +193,6 @@ export default function Home() {
     }
   }
 
-  function loadYouTube() {
-    const ref = parseYouTube(ytUrl);
-    setYt(ref);
-    if (!ref) say("URL YouTube tidak dikenali. Contoh: https://youtu.be/xxxxxxxxxxx", true);
-  }
-
   const { width: outW, height: outH } = outputSize(aspect, quality);
   const range = file && duration ? currentRange() : null;
   const startSeconds = parseTime(start);
@@ -200,14 +208,14 @@ export default function Home() {
         {file && src ? <><video ref={player} src={src} controls playsInline preload="metadata" onLoadedMetadata={onMetadata} onError={onVideoError}/><div className="file-details"><span className="file-mark">▶</span><div className="file-name"><strong>{file.name}</strong><span>{formatBytes(file.size)} · {duration ? formatTime(duration) : "Membaca durasi…"}</span></div><button className="text-button" disabled={busy||asrBusy} onClick={e => { e.stopPropagation(); resetFile(); say("Pilih video baru untuk memulai."); }}>Ganti</button></div></> : <div className="empty-drop"><div className="upload-icon"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg></div><strong>Ketuk untuk memilih video</strong><span>Ambil dari Files atau Photos di iPhone/iPad</span><div className="format-chips"><span>MP4</span><span>MOV</span><span>≤ 1 GB</span></div><small>Format/codec harus didukung browser.</small></div>}
       </div>
       <div className="privacy-note"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span><strong>Video tetap di perangkat.</strong> Pemotongan dilakukan di browser dengan FFmpeg WebAssembly. Tidak ada unggahan ke server.</span></div>
-      {file && src && duration > 0 && <ClipFlow file={file} duration={duration} video={player} busy={busy || asrBusy} room={MAX_CLIPS - clips.length} onAdd={addClips} onMotion={c => sendToMotion(c)} />}
-      {file && src && <details key={ai ? "ai" : "plain"} open={!ai} className="manual-box"><summary>Cara manual: transkrip di perangkat (Whisper) dan saran untuk bagian terpilih</summary><TranscriptPanel key={src} file={file} video={player} range={duration ? (() => { const r = currentRange(); return r.ok ? { start: r.start, duration: r.duration } : null; })() : null} locked={phase !== "idle"} onWorking={setAsrBusy} onCopy={setTranscript} onPickRange={(s, e) => { setStart(formatTime(s)); setEnd(formatTime(e)); seek(s); }} /></details>}
-      <details className="yt-panel">
-        <summary>Punya link YouTube? Pratinjau sebagai referensi</summary>
-        <p>Link YouTube hanya untuk <strong>menonton dan mencatat timestamp</strong>. Clipper Studio tidak mengunduh video YouTube; untuk mengekspor, gunakan berkas video milik Anda sendiri atau yang Anda punya izinnya.</p>
-        <div className="yt-row"><input value={ytUrl} onChange={e => setYtUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=…" inputMode="url" aria-label="URL YouTube"/><button onClick={loadYouTube}>Pratinjau</button></div>
+      <details className="yt-panel" open={!file} data-testid="yt-panel">
+        <summary>Mulai dari link YouTube: AI mencari klip terbaik</summary>
+        <YoutubeFlow room={MAX_CLIPS - clips.length} onPreview={u => setYt(parseYouTube(u))} onApprove={approveYoutube} />
+        {pending && !file && <div className="notice" role="status" data-testid="yt-pending">{pending.clips.length} klip menunggu file videonya. Pilih video yang sama dengan video YouTube tadi. <button className="text-button" onClick={() => setPending(null)}>Batal</button></div>}
         {yt && <div className="embed"><iframe src={`https://www.youtube-nocookie.com/embed/${yt.id}?start=${yt.start}&playsinline=1`} title="Pratinjau YouTube" allow="encrypted-media; picture-in-picture" allowFullScreen referrerPolicy="strict-origin-when-cross-origin"/></div>}
       </details>
+      {file && src && duration > 0 && <ClipFlow file={file} duration={duration} video={player} busy={busy || asrBusy} room={MAX_CLIPS - clips.length} onAdd={addClips} onMotion={c => sendToMotion(c)} />}
+      {file && src && <details key={ai ? "ai" : "plain"} open={!ai} className="manual-box"><summary>Cara manual: transkrip di perangkat (Whisper) dan saran untuk bagian terpilih</summary><TranscriptPanel key={src} file={file} video={player} range={duration ? (() => { const r = currentRange(); return r.ok ? { start: r.start, duration: r.duration } : null; })() : null} locked={phase !== "idle"} onWorking={setAsrBusy} onCopy={setTranscript} onPickRange={(s, e) => { setStart(formatTime(s)); setEnd(formatTime(e)); seek(s); }} /></details>}
 
       <div className="section-heading second"><div><small>LANGKAH 02</small><h2>Pilih bagian & format</h2></div><span className="step-count">02 / 03</span></div>
       <div className="time-grid"><label>Waktu mulai<input value={start} onChange={e=>setStart(e.target.value)} onBlur={()=>seek(parseTime(start))} placeholder="00:00:00" inputMode="decimal" data-testid="start"/></label><label>Waktu selesai<input value={end} onChange={e=>setEnd(e.target.value)} onBlur={()=>seek(parseTime(end))} placeholder="00:00:30" inputMode="decimal" data-testid="end"/></label></div>

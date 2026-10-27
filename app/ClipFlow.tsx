@@ -10,12 +10,9 @@ import { GeminiError } from "@/lib/gemini";
 import { loadCachedTranscript, saveCachedTranscript } from "@/lib/session-store";
 import { sliceTranscript, type LanguageId, type Transcript } from "@/lib/transcript";
 import { useGeminiAccess } from "./useGeminiAccess";
+import SuggestionList, { type Item } from "./SuggestionList";
 
 export type NewClip = { start: number; end: number; title: string; transcript: Transcript };
-type Item = { start: number; end: number; title: string; reason: string; checked: boolean };
-
-const MIN_SECONDS = 5;
-const MAX_SECONDS = 180;
 
 /**
  * The main way to make clips: the AI listens to the whole video, suggests the best clips (up to three minutes each), and
@@ -76,14 +73,6 @@ export default function ClipFlow({ file, duration, video, busy, room, onAdd, onM
     } finally { setPhase("idle"); }
   }
 
-  function update(i: number, patch: Partial<Item>) { setItems(old => old && old.map((m, k) => (k === i ? { ...m, ...patch } : m))); }
-  /** Moves a clip's start or end by a few seconds, keeping it between 5 s and 3 min and inside the video. */
-  function nudge(i: number, edge: "start" | "end", delta: number) {
-    const m = items?.[i];
-    if (!m) return;
-    if (edge === "start") update(i, { start: Math.min(Math.max(m.start + delta, Math.max(0, m.end - MAX_SECONDS)), m.end - MIN_SECONDS) });
-    else update(i, { end: Math.max(Math.min(m.end + delta, duration, m.start + MAX_SECONDS), m.start + MIN_SECONDS) });
-  }
   function preview(m: Item) {
     const v = video.current;
     if (!v) return;
@@ -118,27 +107,15 @@ export default function ClipFlow({ file, duration, video, busy, room, onAdd, onM
       </>}
     {note && <div className="notice" role="status" data-testid="flow-note">{note}</div>}
     {error && <div className="notice notice-error" role="alert" data-testid="flow-error">{error}</div>}
-    {items && items.length > 0 && <div className="flow-list" data-testid="flow-list">
-      <p><small>{items.length} klip disarankan. Putar untuk memeriksa, sesuaikan bila perlu, lalu centang yang Anda mau.</small></p>
-      {items.map((m, i) => <div className="flow-item" key={i} data-testid="flow-item">
-        <label className="flow-title"><input type="checkbox" checked={m.checked} onChange={e => update(i, { checked: e.target.checked })} data-testid="flow-check" /> <b>{m.title}</b></label>
-        <small>{formatTime(m.start)} – {formatTime(m.end)} · {Math.round(m.end - m.start)} detik{m.reason ? ` · ${m.reason}` : ""}</small>
-        <div className="range-tools">
-          <button onClick={() => preview(m)} data-testid="flow-play">▶ Putar</button>
-          <button onClick={() => onMotion(toClip(m))} disabled={busy} data-testid="flow-motion">Kirim ke Motion</button>
-        </div>
-        <details className="flow-adjust"><summary>Sesuaikan waktu</summary>
-          <div className="range-tools">
-            <button onClick={() => nudge(i, "start", -2)} aria-label="Mulai 2 detik lebih awal">Mulai −2 dtk</button>
-            <button onClick={() => nudge(i, "start", 2)} aria-label="Mulai 2 detik lebih lambat">Mulai +2 dtk</button>
-            <button onClick={() => nudge(i, "end", -2)} aria-label="Selesai 2 detik lebih awal">Selesai −2 dtk</button>
-            <button onClick={() => nudge(i, "end", 2)} aria-label="Selesai 2 detik lebih lambat" data-testid="flow-end-plus">Selesai +2 dtk</button>
-          </div>
-        </details>
-      </div>)}
+    {items && items.length > 0 && <SuggestionList items={items} onItems={setItems} duration={duration}
+      intro={`${items.length} klip disarankan. Putar untuk memeriksa, sesuaikan bila perlu, lalu centang yang Anda mau.`}
+      actions={m => <>
+        <button onClick={() => preview(m)} data-testid="flow-play">▶ Putar</button>
+        <button onClick={() => onMotion(toClip(m))} disabled={busy} data-testid="flow-motion">Kirim ke Motion</button>
+      </>}>
       <button className="secondary-button" disabled={chosen.length === 0 || chosen.length > room || busy} onClick={() => { onAdd(chosen.map(toClip)); }} data-testid="flow-add">
         <span>＋</span> Tambahkan {chosen.length} klip terpilih ke daftar <small>{room} slot tersisa</small>
       </button>
-    </div>}
+    </SuggestionList>}
   </section>;
 }

@@ -12,7 +12,8 @@ const PORT = Number(process.env.E2E_PORT || 3213);
 const BASE = `http://localhost:${PORT}`;
 const dir = mkdtempSync(join(tmpdir(), "clipflow-e2e-"));
 const video = join(dir, "video-panjang.mp4");
-execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=100", "-f", "lavfi", "-i", "sine=frequency=300:duration=100", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", video]);
+const shortVideo = join(dir, "video-pendek.mp4");
+for (const [path, seconds] of [[video, 100], [shortVideo, 30]]) execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", `testsrc=size=320x240:rate=30:duration=${seconds}`, "-f", "lavfi", "-i", `sine=frequency=300:duration=${seconds}`, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", path]);
 
 const server = spawn("npx", ["next", "start", "-p", String(PORT)], { stdio: ["ignore", "pipe", "pipe"], detached: true });
 const results = [];
@@ -31,7 +32,10 @@ const LINES = [
   { start: 30, end: 50, text: "Tips pertama adalah catat semua pengeluaran Anda." },
   { start: 55, end: 80, text: "Tips kedua sisihkan tabungan di awal bulan." },
 ];
-const seen = { audio: [], moments: 0, status: 0 };
+const seen = { audio: [], moments: 0, status: 0, captions: 0, ytMomentLines: 0 };
+/** Captions of a 100 s video, a line every 5 s. */
+const CAPTIONS = Array.from({ length: 20 }, (_, i) => ({ start: i * 5, end: i * 5 + 4, text: `Kalimat ke ${i} tentang topik penting.` }));
+const pastedText = CAPTIONS.map(l => `${Math.floor(l.start / 60)}:${String(l.start % 60).padStart(2, "0")}\n${l.text}`).join("\n");
 
 try {
   for (let i = 0; i < 60 && !(await fetch(BASE).then(() => true, () => false)); i++) await new Promise(r => setTimeout(r, 500));
@@ -45,6 +49,12 @@ try {
     const send = (status, body) => route.fulfill({ status, headers: cors, contentType: "application/json", body: JSON.stringify(body) });
     if (u.pathname === "/auth/v1/token") return send(200, { access_token: "AT", refresh_token: "RT", expires_in: 3600, user: { email: "saya@contoh.id" } });
     if (u.pathname.startsWith("/rest/v1/")) return send(200, []);
+    if (u.pathname === "/functions/v1/youtube") {
+      const body = JSON.parse(req.postData());
+      seen.captions++;
+      if (/BLOCKEDvid1/.test(body.url)) return send(502, { error: { status: "BLOCKED", message: "YouTube menolak" } });
+      return send(200, { videoId: "okvideo0001", title: "Video Uji YouTube", seconds: 100, language: "id", auto: true, lines: CAPTIONS });
+    }
     if (u.pathname !== "/functions/v1/gemini") return send(404, {});
     const m = JSON.parse(req.postData());
     if (m.action === "status") { seen.status++; return send(200, { hasKey: true, provider: "openai", baseUrl: "https://openrouter.ai/api/v1", model: "google/gemini-x" }); }
@@ -59,7 +69,11 @@ try {
         seen.audio.push({ format: audio.input_audio.format, bytes: raw.length, head: raw.subarray(0, 3).toString("latin1") });
         return answer({ lines: LINES });
       }
-      if (text.includes('"moments"')) { seen.moments++; return answer({ moments: [{ start: 1, end: 2, title: "Tiga tips keuangan", reason: "pembuka kuat" }, { start: 3, end: 3, title: "Sisihkan tabungan dulu", reason: "tips praktis" }] }); }
+      if (text.includes('"moments"')) {
+        const lines = JSON.parse(text.split("\n").at(-1));
+        if (lines.length > 6) { seen.ytMomentLines = lines.length; return answer({ moments: [{ start: 1, end: 4, title: "Bagian awal penting", reason: "dari teks YouTube" }, { start: 6, end: 9, title: "Bagian akhir penting", reason: "dari teks YouTube" }] }); }
+        seen.moments++; return answer({ moments: [{ start: 1, end: 2, title: "Tiga tips keuangan", reason: "pembuka kuat" }, { start: 3, end: 3, title: "Sisihkan tabungan dulu", reason: "tips praktis" }] });
+      }
       return answer({ lines: [] });
     }
     return send(400, {});
@@ -118,6 +132,54 @@ try {
     assert(seconds > 36 && seconds < 42, "the video is the cut clip (about 40 s): " + seconds);
     await page.reload();
     assert((await page.getByTestId("handoff-note").count()) === 0, "the hand-off is used once");
+  });
+
+  await step("from a YouTube link: captions are refused, the pasted transcript works, AI suggests, and the wrong file is refused", async () => {
+    const p = await ctx.newPage();
+    p.on("pageerror", e => pageErrors.push(e.message));
+    await p.goto(BASE);
+    await p.getByTestId("yt-url").fill("https://youtu.be/BLOCKEDvid1");
+    assert(await p.getByTestId("yt-panel").evaluate(d => d.open), "the YouTube panel is open before a file is chosen");
+    await p.getByTestId("yt-fetch").click();
+    await p.getByTestId("yt-error").waitFor({ timeout: 10000 });
+    assert(/Tempel transkripnya/.test(await p.getByTestId("yt-error").innerText()), "a refused server points to pasting: " + await p.getByTestId("yt-error").innerText());
+    await p.getByText("Atau tempel transkrip dari YouTube").click();
+    await p.getByTestId("yt-paste").fill(pastedText);
+    await p.getByTestId("yt-use-paste").click();
+    await p.getByTestId("yt-source").waitFor({ timeout: 5000 });
+    assert(/transkrip tempelan/.test(await p.getByTestId("yt-source").innerText()), "pasted text is used: " + await p.getByTestId("yt-source").innerText());
+    // The server path, on a link it answers: the video's title and automatic captions.
+    await p.getByTestId("yt-url").fill("https://youtu.be/okvideo0001");
+    await p.getByTestId("yt-fetch").click();
+    await p.getByText("Video Uji YouTube").waitFor({ timeout: 10000 });
+    assert(/teks otomatis YouTube/.test(await p.getByTestId("yt-source").innerText()), "says the captions are automatic");
+    await p.getByTestId("yt-suggest").click();
+    await p.getByTestId("flow-item").first().waitFor({ timeout: 20000 });
+    assert(seen.ytMomentLines > 6 && seen.ytMomentLines <= 12, "captions were merged into sentence-sized lines before asking: " + seen.ytMomentLines);
+    assert((await p.getByTestId("flow-item").count()) === 2, "two clips suggested");
+    const href = await p.getByTestId("yt-open").first().getAttribute("href");
+    assert(/^https:\/\/youtu\.be\/okvideo0001\?t=\d+$/.test(href), "opens YouTube at the start: " + href);
+    assert(!(await p.content()).match(/benar-sekali/), "no password on the page");
+
+    // Approving asks for the file; a file of the wrong length is refused and the clips keep waiting.
+    const chooser = p.waitForEvent("filechooser");
+    await p.getByTestId("yt-continue").click();
+    await (await chooser).setFiles(shortVideo);
+    await p.getByText("File ini berdurasi").waitFor({ timeout: 20000 });
+    assert((await p.locator(".clip-row").count()) === 0, "no clips from a file of the wrong length");
+    await p.getByTestId("file-input").setInputFiles(video);
+    await p.locator(".clip-row").first().waitFor({ timeout: 30000 });
+    const rows = await p.locator(".clip-row").allInnerTexts();
+    assert(rows.length === 2 && /Bagian awal penting/.test(rows[0]) && /Bagian akhir penting/.test(rows[1]), "the approved clips were added once the right file came: " + rows.join(" | "));
+    assert((await p.getByTestId("yt-pending").count()) === 0, "nothing is left waiting");
+
+    // The clip carries the YouTube captions of its own stretch to the motion studio.
+    await p.locator(".clip-row").first().getByTestId("clip-motion").click();
+    await p.waitForURL("**/motion", { timeout: 180000 });
+    await p.getByTestId("handoff-note").waitFor({ timeout: 20000 });
+    const script = await p.getByTestId("script").inputValue();
+    assert(/Kalimat ke \d+ tentang topik penting/.test(script), "captions of the clip became its script: " + script.slice(0, 80));
+    await p.close();
   });
 
   await step("no uncaught page errors", async () => { assert(pageErrors.length === 0, pageErrors.join(" | ")); });
