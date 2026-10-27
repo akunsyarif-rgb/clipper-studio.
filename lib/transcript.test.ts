@@ -3,7 +3,7 @@ import { audioArgs } from "./clip";
 import { autoCuts, detectVisual } from "./visuals";
 import { activeWordIndex, buildTimeline, FPS, phraseChunks, phraseLine, splitScript } from "./script";
 import {
-  activeAt, alignWords, allWords, editSegment, explainTranscribeError, formatSrtTime, groupSegments, mergeSubwords, parseHandoff, parseWords, shiftWords,
+  activeAt, alignWords, allWords, asrChunkCount, asrEta, asrSlowHint, asrTimingSummary, editSegment, explainTranscribeError, formatSrtTime, groupSegments, mergeSubwords, parseHandoff, parseWords, shiftWords,
   sceneTimings, serializeHandoff, spreadWords, toSrt, transcriptFromSegments, transcriptFromWords, transcriptText, validateTranscribeRange,
   type RawChunk,
 } from "./transcript";
@@ -289,5 +289,40 @@ describe("alignWords / edited scripts (fuzzy timing)", () => {
     expect(r.seconds.reduce((a, b) => a + b, 0)).toBeCloseTo(5, 5);
     expect(r.wordStarts[1][0]).toBe(0);
     expect(sceneTimings(splitScript("Jangan tunggu semangat datang.\nMulailah sekarang"), allWords(t), FPS, 5)!.aligned).toBe(false);
+  });
+});
+
+describe("ASR progress helpers", () => {
+  it("counts the audio windows like Transformers.js does (30 s windows, 5 s overlap on each side)", () => {
+    const sr = 16000;
+    expect(asrChunkCount(0)).toBe(1);
+    expect(asrChunkCount(10 * sr)).toBe(1);
+    expect(asrChunkCount(30 * sr)).toBe(1);
+    expect(asrChunkCount(30 * sr + 1)).toBe(2);
+    // each window after the first advances 20 s
+    expect(asrChunkCount(50 * sr)).toBe(2);
+    expect(asrChunkCount(50 * sr + 1)).toBe(3);
+    expect(asrChunkCount(180 * sr)).toBe(9); // windows start at 0, 20, … 160 s
+  });
+
+  it("estimates the time left from the windows already done", () => {
+    expect(asrEta(0, 4, 10)).toBe("");
+    expect(asrEta(4, 4, 80)).toBe("");
+    expect(asrEta(1, 4, 20)).toBe("sekitar 1 mnt 0 dtk lagi");
+    expect(asrEta(3, 4, 30)).toBe("sekitar 10 dtk lagi");
+    expect(asrEta(7, 8, 70)).toBe("sekitar 10 dtk lagi");
+    expect(asrEta(7, 8, 14)).toBe("kurang dari 5 dtk lagi");
+  });
+
+  it("reports where the time went", () => {
+    expect(asrTimingSummary({ loadSeconds: 41.4, reused: false, inferSeconds: 63, audioSeconds: 45 })).toBe("model dimuat 41 dtk; transkripsi 63 dtk untuk 45 dtk audio (1.4× durasi)");
+    expect(asrTimingSummary({ loadSeconds: 0, reused: true, inferSeconds: 20, audioSeconds: 40 })).toContain("dipakai ulang");
+  });
+
+  it("suggests the faster model only when the heavy one was slower than the audio", () => {
+    const slow = { loadSeconds: 1, reused: false, inferSeconds: 90, audioSeconds: 60 };
+    expect(asrSlowHint("Xenova/whisper-small", slow)).toMatch(/base/);
+    expect(asrSlowHint("Xenova/whisper-small", { ...slow, inferSeconds: 30 })).toBe("");
+    expect(asrSlowHint("Xenova/whisper-base", slow)).toBe("");
   });
 });

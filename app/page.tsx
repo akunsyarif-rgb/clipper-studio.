@@ -7,6 +7,7 @@ import {
   parseTime, parseYouTube, validateFile, validateRange, type Aspect, type Fit, type Quality, type YouTubeRef,
 } from "@/lib/clip";
 import TranscriptPanel from "./TranscriptPanel";
+import { releaseAsr } from "@/lib/asr/client";
 import { ExportCancelled, exportClip, isEngineLoaded, terminateEngine } from "@/lib/engine";
 
 type Clip = { id: number; start: number; end: number };
@@ -92,6 +93,8 @@ export default function Home() {
   async function runExport(job: Job) {
     if (!file) return;
     cancelled.current = false;
+    // The speech model is not needed while exporting; free its memory for the encoder.
+    releaseAsr();
     setLastJob(job); setErrorDetail(""); setResult(null); setProgress(0);
     setPhase(isEngineLoaded() ? "encoding" : "loading");
     say(isEngineLoaded() ? "Memproses video…" : "Menyiapkan mesin video lokal (±32 MB, sekali per sesi)…");

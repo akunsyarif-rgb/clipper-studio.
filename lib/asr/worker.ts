@@ -1,13 +1,15 @@
 // Web Worker: runs Whisper (Transformers.js + onnxruntime-web, WebAssembly) off the main thread.
 // The model is downloaded once from the Hugging Face Hub (free, no key) and kept in the browser cache.
 /// <reference lib="webworker" />
-import type { RawChunk } from "../transcript";
+import { ASR_CHUNK_SECONDS, ASR_STRIDE_SECONDS, asrChunkCount, type RawChunk } from "../transcript";
 
 export type AsrRequest = { audio: Float32Array; model: string; language: string };
 export type AsrMessage =
   | { type: "progress"; loaded: number; total: number; file: string }
-  | { type: "ready" }
-  | { type: "result"; granularity: "word" | "segment"; chunks: RawChunk[] }
+  | { type: "ready"; loadSeconds: number; reused: boolean }
+  /** `done` of `total` audio windows are finished. */
+  | { type: "chunk"; done: number; total: number }
+  | { type: "result"; granularity: "word" | "segment"; chunks: RawChunk[]; inferSeconds: number }
   | { type: "error"; detail: string };
 
 const post = (m: AsrMessage) => (self as unknown as Worker).postMessage(m);
@@ -29,7 +31,14 @@ self.onmessage = async (e: MessageEvent<AsrRequest>) => {
       env.backends.onnx.wasm.wasmPaths = { mjs: `/ort-asr/ort-wasm-simd-threaded${suffix}.mjs`, wasm: `/ort-asr/ort-wasm-simd-threaded${suffix}.wasm` };
       env.backends.onnx.wasm.numThreads = 1;
     }
-    if (!loaded || loaded.model !== model) {
+    const loadStart = performance.now();
+    const reused = !!loaded && loaded.model === model;
+    if (loaded && loaded.model !== model) {
+      // A different model replaces the old one; free its memory first (matters on small devices).
+      try { await loaded.pipe.dispose?.(); } catch { /* best effort */ }
+      loaded = null;
+    }
+    if (!loaded) {
       const files = new Map<string, { loaded: number; total: number }>();
       const pipe = await pipeline("automatic-speech-recognition", model, {
         device: "wasm",
@@ -44,16 +53,23 @@ self.onmessage = async (e: MessageEvent<AsrRequest>) => {
       });
       loaded = { model, pipe };
     }
-    post({ type: "ready" });
-    const opts = { language, task: "transcribe", chunk_length_s: 30, stride_length_s: 5 };
+    post({ type: "ready", loadSeconds: (performance.now() - loadStart) / 1000, reused });
+    // generate() calls streamer.end() once per audio window, which gives real progress for a long recording.
+    const total = asrChunkCount(audio.length);
+    const options = (extra: object) => {
+      let done = 0;
+      post({ type: "chunk", done, total });
+      return { language, task: "transcribe", chunk_length_s: ASR_CHUNK_SECONDS, stride_length_s: ASR_STRIDE_SECONDS, ...extra, streamer: { put() { /* tokens are not shown */ }, end() { done++; post({ type: "chunk", done: Math.min(done, total), total }); } } };
+    };
+    const inferStart = performance.now();
     try {
-      const out = await loaded.pipe(audio, { ...opts, return_timestamps: "word" });
-      post({ type: "result", granularity: "word", chunks: (Array.isArray(out) ? out[0] : out).chunks });
+      const out = await loaded.pipe(audio, options({ return_timestamps: "word" }));
+      post({ type: "result", granularity: "word", chunks: (Array.isArray(out) ? out[0] : out).chunks, inferSeconds: (performance.now() - inferStart) / 1000 });
     } catch (wordErr) {
       // Not every model export carries the alignment heads needed for word timestamps: fall back to segments.
       if (!/alignment|cross.?attention|timestamp/i.test(String((wordErr as Error)?.message ?? wordErr))) throw wordErr;
-      const out = await loaded.pipe(audio, { ...opts, return_timestamps: true });
-      post({ type: "result", granularity: "segment", chunks: (Array.isArray(out) ? out[0] : out).chunks });
+      const out = await loaded.pipe(audio, options({ return_timestamps: true }));
+      post({ type: "result", granularity: "segment", chunks: (Array.isArray(out) ? out[0] : out).chunks, inferSeconds: (performance.now() - inferStart) / 1000 });
     }
   } catch (err) {
     post({ type: "error", detail: err instanceof Error ? `${err.name}: ${err.message}\n${(err.stack ?? "").split("\n").slice(0, 4).join("\n")}` : String(err) });

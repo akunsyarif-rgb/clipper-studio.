@@ -18,6 +18,7 @@ import { allWords, shiftWords, HANDOFF_KEY, parseHandoff, sceneTimings, transcri
 import { autoCuts, ICONS, resolveVisual, type Cut, stripMarks, TEMPLATES, type Template, type VisualOverride } from "@/lib/visuals";
 import { chooseFamily, FAMILY_LABELS } from "@/lib/composition";
 import { planNarrative } from "@/lib/narrative";
+import { releaseAsr } from "@/lib/asr/client";
 import { scenesToSrt } from "@/lib/srt";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
 import TranscriptPanel from "../TranscriptPanel";
@@ -345,6 +346,8 @@ export default function MotionStudio() {
       if (!g) return;
       renderProps = { ...props, music: { src: g.url, volume: musicVolume / 100, duck, loop: false } };
     }
+    // The speech model is no longer needed; its memory goes to the renderer.
+    releaseAsr();
     const support = await checkBrowserRender(!renderProps.audioSrc && !renderProps.music && !renderProps.video).catch(e => String(e));
     if (support) { setRenderError(support); return; }
     player.current?.pause();

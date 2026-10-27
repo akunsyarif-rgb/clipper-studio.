@@ -175,3 +175,10 @@ In a source-video edit each scene can show the speaker, a graphic, or **another 
 - A dark gradient behind the caption band keeps captions readable on any footage. The cut fades in and out over 5 frames.
 - Projects keep `cut: "clip"` and `clipFrom` (seconds) per scene; older projects are unaffected. Replacing the source video clears the cuts and clip starts.
 - Verified with a CLI render of a synthetic source (a different colour every 3 s): the clip scene shows the chosen part, a start too close to the end is clamped, and the audio stays the speaker's single track. Not yet verified on Safari/iPad: two simultaneous decodes of one file can be heavy on small devices; if a render fails there, report the technical details shown by the studio.
+
+## Transcription speed and progress
+
+- **The speech model stays ready between transcriptions.** One worker is shared, so a second transcription in the same session skips loading the model (the slowest step on a tablet). It is released after 2 minutes idle, when a run is cancelled or fails, when leaving the page, and before an MP4 render or clip export, so its memory goes to the encoder instead.
+- **Real progress**: the bar follows finished 30-second windows of audio ("bagian 2 dari 5") with a time estimate. Before that the panel says whether it is loading, downloading (only the first time) or preparing the model.
+- **Where the time went** is shown after each run, e.g. "model dimuat 41 dtk; transkripsi 63 dtk untuk 45 dtk audio (1.4× durasi)". If the *small* model ran slower than the audio, the panel suggests *base*.
+- On devices without SharedArrayBuffer (iPad Safari) the model runs on one WebAssembly thread, so *small* with word timestamps is slow by nature; *base* is the practical choice there.

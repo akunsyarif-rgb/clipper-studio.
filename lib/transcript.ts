@@ -344,3 +344,42 @@ export function explainTranscribeError(detail: string): string {
   if (/Invalid data|moov atom|Decoder|does not contain any stream|codec/i.test(detail)) return "Audio video tidak dapat dibaca. Coba ekspor ulang video sebagai MP4 (H.264/AAC).";
   return "Transkripsi gagal. Coba lagi, pilih bagian lebih pendek, atau pakai model Cepat.";
 }
+
+/** Whisper window and overlap used by the studio (seconds). */
+export const ASR_CHUNK_SECONDS = 30;
+export const ASR_STRIDE_SECONDS = 5;
+
+/**
+ * How many windows the speech model will process for `samples` at `sampleRate`; mirrors the loop in
+ * Transformers.js (each window advances by chunk - 2 × stride), so progress can be shown as "n of total".
+ */
+export function asrChunkCount(samples: number, sampleRate = TRANSCRIBE_SAMPLE_RATE, chunk = ASR_CHUNK_SECONDS, stride = ASR_STRIDE_SECONDS): number {
+  const window = sampleRate * chunk, jump = window - 2 * sampleRate * stride;
+  if (samples <= 0 || jump <= 0) return 1;
+  let n = 1;
+  for (let offset = 0; offset + window < samples; offset += jump) n++;
+  return n;
+}
+
+/** "kira-kira 1 mnt 20 dtk" from the time per finished window; empty until a window has finished. */
+export function asrEta(done: number, total: number, elapsedSeconds: number): string {
+  if (done <= 0 || done >= total || elapsedSeconds <= 0) return "";
+  const left = Math.round((elapsedSeconds / done) * (total - done));
+  if (left < 5) return "kurang dari 5 dtk lagi";
+  return left >= 60 ? `sekitar ${Math.floor(left / 60)} mnt ${left % 60} dtk lagi` : `sekitar ${left} dtk lagi`;
+}
+
+export type AsrTimings = { loadSeconds: number; reused: boolean; inferSeconds: number; audioSeconds: number };
+
+/** One line for the creator (and for bug reports): where the time went. */
+export function asrTimingSummary(t: AsrTimings): string {
+  const speed = t.audioSeconds > 0 ? t.inferSeconds / t.audioSeconds : 0;
+  const load = t.reused ? "model sudah siap (dipakai ulang)" : `model dimuat ${t.loadSeconds.toFixed(0)} dtk`;
+  return `${load}; transkripsi ${t.inferSeconds.toFixed(0)} dtk untuk ${t.audioSeconds.toFixed(0)} dtk audio (${speed.toFixed(1)}× durasi)`;
+}
+
+/** Suggests a faster model when the heavy one ran slower than the audio itself; empty otherwise. */
+export function asrSlowHint(model: string, t: AsrTimings): string {
+  if (!/small/i.test(model) || t.audioSeconds <= 0) return "";
+  return t.inferSeconds / t.audioSeconds > 1 ? "Terasa lambat? Model \"Akurat (base)\" biasanya beberapa kali lebih cepat di perangkat ini, dengan hasil yang masih baik untuk bahasa Indonesia." : "";
+}

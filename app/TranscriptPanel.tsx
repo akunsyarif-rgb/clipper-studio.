@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { formatBytes, formatTime } from "@/lib/clip";
 import { extractAudio, loadEngine } from "@/lib/engine";
-import { MODELS, transcribe, TranscribeCancelled, type AsrHandle, type ModelId } from "@/lib/asr/client";
+import { MODELS, releaseAsr, transcribe, TranscribeCancelled, type AsrHandle, type ModelId } from "@/lib/asr/client";
 import {
-  activeAt, editSegment, explainTranscribeError, HANDOFF_KEY, LANGUAGES, serializeHandoff, toSrt, transcriptText, validateTranscribeRange,
+  activeAt, asrEta, asrSlowHint, asrTimingSummary, editSegment, explainTranscribeError, HANDOFF_KEY, LANGUAGES, serializeHandoff, toSrt, transcriptText, validateTranscribeRange,
   type LanguageId, type Transcript,
 } from "@/lib/transcript";
 
@@ -31,6 +31,9 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
   const [language, setLanguage] = useState<LanguageId>("indonesian");
   const [phase, setPhase] = useState<Phase>("idle");
   const [download, setDownload] = useState({ loaded: 0, total: 0 });
+  // Windows of audio finished so far, for a real progress bar and a time estimate while the model runs.
+  const [chunk, setChunk] = useState({ done: 0, total: 0, eta: "" });
+  const runStart = useRef(0);
   const [transcript, setTranscript] = useState<{ value: Transcript; range: Range } | null>(null);
   const [error, setError] = useState("");
   const [detail, setDetail] = useState("");
@@ -40,7 +43,8 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
   const cancelled = useRef(false);
   const working = phase !== "idle";
 
-  useEffect(() => () => handle.current?.cancel(), []);
+  // Leaving the page frees the model's memory; a cancelled run already did.
+  useEffect(() => () => { handle.current?.cancel(); releaseAsr(); }, []);
 
   // Live caption: follow the original audio of the player using requestAnimationFrame while it plays.
   useEffect(() => {
@@ -69,17 +73,18 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
       await loadEngine();
       const audio = await extractAudio(file, range);
       if (cancelled.current) throw new TranscribeCancelled();
-      setPhase("download");
+      setPhase("download"); setDownload({ loaded: 0, total: 0 }); setChunk({ done: 0, total: 0, eta: "" });
       const h = transcribe(audio, model, language, Math.min(range.duration, audio.length / 16000), {
         onDownload: (loaded, total) => setDownload({ loaded, total }),
-        onRunning: () => setPhase("running"),
+        onRunning: () => { runStart.current = Date.now(); setPhase("running"); },
+        onChunk: (done, total) => setChunk({ done, total, eta: asrEta(done, total, (Date.now() - runStart.current) / 1000) }),
       });
       handle.current = h;
-      const value = await h.result;
+      const { transcript: value, timings } = await h.result;
       setTranscript({ value, range });
-      setInfo(value.granularity === "word"
+      setInfo([value.granularity === "word"
         ? `${value.segments.length} segmen siap. Waktu tiap kata dari audio asli.`
-        : `${value.segments.length} segmen siap. Model ini hanya memberi waktu per segmen; waktu kata diperkirakan merata.`);
+        : `${value.segments.length} segmen siap. Model ini hanya memberi waktu per segmen; waktu kata diperkirakan merata.`, `Waktu: ${asrTimingSummary(timings)}.`, asrSlowHint(model, timings)].filter(Boolean).join(" "));
     } catch (err) {
       if (cancelled.current || err instanceof TranscribeCancelled) setInfo("Transkripsi dibatalkan.");
       else {
@@ -117,9 +122,11 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
     </div>
     <button className="secondary-button" disabled={working || locked || !range} onClick={run} data-testid="asr-run"><span>✎</span> {working ? "Sedang membuat transkrip…" : transcript ? "Buat ulang transkrip bagian terpilih" : "Buat transkrip bagian terpilih"}<small>maks. 3 menit</small></button>
     {working && <div className="progress-wrap" data-testid="asr-progress">
-      <div className="progress-label"><span>{phase === "audio" ? "Mengambil audio asli dari video…" : phase === "download" ? "Mengunduh model ucapan (sekali, lalu disimpan)…" : "Mengubah ucapan menjadi teks…"}</span>
-        <strong>{phase === "download" && download.total ? `${formatBytes(download.loaded)} / ${formatBytes(download.total)}` : "…"}</strong></div>
-      <div className="progress-track"><span style={{ width: (phase === "download" && download.total ? Math.round((download.loaded / download.total) * 100) : phase === "running" ? 100 : 4) + "%" }} /></div>
+      <div className="progress-label"><span>{phase === "audio" ? "Mengambil audio asli dari video…"
+        : phase === "download" ? (download.total === 0 ? "Memuat model ucapan…" : download.loaded < download.total ? "Mengunduh model ucapan (sekali, lalu disimpan)…" : "Menyiapkan model (bisa beberapa menit di perangkat kecil)…")
+        : chunk.total > 1 ? `Mengubah ucapan menjadi teks… bagian ${Math.min(chunk.done + 1, chunk.total)} dari ${chunk.total}` : "Mengubah ucapan menjadi teks…"}</span>
+        <strong>{phase === "download" && download.total ? `${formatBytes(download.loaded)} / ${formatBytes(download.total)}` : phase === "running" && chunk.eta ? chunk.eta : "…"}</strong></div>
+      <div className="progress-track"><span style={{ width: (phase === "download" && download.total ? Math.round((download.loaded / download.total) * 100) : phase === "running" ? Math.max(6, chunk.total ? Math.round((chunk.done / chunk.total) * 100) : 6) : 4) + "%" }} /></div>
       <small>Jangan tutup atau pindah tab. Pada iPad, bagian pendek dan model Cepat lebih aman untuk memori.</small>
       {phase !== "audio" && <button className="cancel-button" onClick={cancel} data-testid="asr-cancel">Batalkan transkripsi</button>}
     </div>}
