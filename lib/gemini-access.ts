@@ -20,7 +20,14 @@ export type Access = {
 /** What the creator typed in the setup form, before anything is saved. */
 export type Setup = { key: string; provider: Provider; baseUrl: string };
 
+export const OPENROUTER_URL = "https://openrouter.ai/api/v1";
 export const FLATKEY_URL = "https://router.flatkey.ai/v1";
+/** Ready-made addresses for OpenAI-format routers; "other" lets the creator type one. */
+export const ROUTER_PRESETS = [
+  { id: "openrouter", label: "OpenRouter (openrouter.ai)", url: OPENROUTER_URL, modelHint: "google/gemini-2.5-flash-lite" },
+  { id: "flatkey", label: "Flatkey", url: FLATKEY_URL, modelHint: "google/gemini-…" },
+  { id: "other", label: "Lainnya (ketik alamat sendiri)", url: "", modelHint: "nama model dari layanan Anda" },
+] as const;
 
 const serverTransport = (model: string): Transport => (payload, o) => cloud.fn("gemini", { action: "generate", model, body: payload }, o);
 

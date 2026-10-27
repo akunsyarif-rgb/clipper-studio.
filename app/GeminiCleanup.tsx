@@ -5,7 +5,7 @@ import {
   applyCleanup, changedLines, cleanKey, cleanupLines, clearGeminiSettings, DEFAULT_GEMINI_MODEL, GeminiError, maskKey, saveGeminiSettings, wavPart,
   type LineChange,
 } from "@/lib/gemini";
-import { chooseModel, FLATKEY_URL, forgetOnServer, getAccess, listAvailableModels, saveToServer, type Access, type Provider } from "@/lib/gemini-access";
+import { chooseModel, forgetOnServer, getAccess, listAvailableModels, OPENROUTER_URL, ROUTER_PRESETS, saveToServer, type Access, type Provider } from "@/lib/gemini-access";
 import { cloud } from "@/lib/cloud";
 import type { Transcript } from "@/lib/transcript";
 
@@ -31,7 +31,8 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
   const [stage, setStage] = useState("");
   const [models, setModels] = useState<string[] | null>(null);
   const [provider, setProvider] = useState<Provider>("google");
-  const [baseUrl, setBaseUrl] = useState(FLATKEY_URL);
+  const [baseUrl, setBaseUrl] = useState<string>(OPENROUTER_URL);
+  const [preset, setPreset] = useState<string>("openrouter");
   const [typedModel, setTypedModel] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
@@ -150,9 +151,15 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
       {signedIn && <label>Layanan
         <select value={provider} onChange={e => { const p = e.target.value as Provider; setProvider(p); setModels(null); setModel(p === "openai" ? "" : DEFAULT_GEMINI_MODEL); }} data-testid="gemini-provider">
           <option value="google">Google Gemini (kunci dari Google AI Studio)</option>
-          <option value="openai">Flatkey atau layanan lain berformat OpenAI</option>
+          <option value="openai">Router berformat OpenAI (OpenRouter, Flatkey, dll.)</option>
         </select></label>}
-      {signedIn && provider === "openai" && <label>Alamat dasar API<input value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder={FLATKEY_URL} autoCapitalize="none" autoCorrect="off" data-testid="gemini-baseurl" /><small>Lihat di dokumentasi layanan Anda. Harus alamat https publik.</small></label>}
+      {signedIn && provider === "openai" && <>
+        <label>Router
+          <select value={preset} onChange={e => { setPreset(e.target.value); const p = ROUTER_PRESETS.find(x => x.id === e.target.value); if (p?.url) setBaseUrl(p.url); setModels(null); }} data-testid="gemini-preset">
+            {ROUTER_PRESETS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select></label>
+        <label>Alamat dasar API<input value={baseUrl} onChange={e => { setBaseUrl(e.target.value); setPreset(ROUTER_PRESETS.find(x => x.url === e.target.value.trim())?.id ?? "other"); }} placeholder={OPENROUTER_URL} autoCapitalize="none" autoCorrect="off" data-testid="gemini-baseurl" /><small>Lihat di dokumentasi layanan Anda. Harus alamat https publik.</small></label>
+      </>}
       <label>Kunci API<input type="password" autoComplete="off" value={keyInput} onChange={e => setKeyInput(e.target.value)} data-testid="gemini-key" /></label>
       <label>Model<input value={model} onChange={e => setModel(e.target.value)} data-testid="gemini-model" list="gemini-models" /></label>
       {models && <datalist id="gemini-models">{models.map(m => <option key={m} value={m} />)}</datalist>}
@@ -161,7 +168,7 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
       <button onClick={() => void save()} disabled={busy} data-testid="gemini-save">{signedIn ? "Simpan di akun (server)" : "Simpan di perangkat ini"}</button>
     </div> : <div className="gemini-ready">
       <p data-testid="gemini-where"><small>{saved.where === "server" ? "Kunci tersimpan di akun (server), tidak ada di browser" : `Kunci ${maskKey(saved.apiKey)} di perangkat ini`} · {saved.provider === "openai" ? `layanan ${saved.baseUrl ?? ""}` : "Google Gemini"} · model {saved.model || "(belum dipilih)"}</small></p>
-      {saved.provider === "openai" && <div className="range-tools"><input value={typedModel} onChange={e => setTypedModel(e.target.value)} placeholder="nama model, mis. google/gemini-…" autoCapitalize="none" autoCorrect="off" data-testid="gemini-model-manual" /><button onClick={() => void pickModel(typedModel.trim())} disabled={busy || !typedModel.trim()} data-testid="gemini-model-use">Pakai model ini</button></div>}
+      {saved.provider === "openai" && <div className="range-tools"><input value={typedModel} onChange={e => setTypedModel(e.target.value)} placeholder={`nama model, mis. ${ROUTER_PRESETS.find(p => p.url === saved.baseUrl)?.modelHint ?? "nama dari layanan Anda"}`} autoCapitalize="none" autoCorrect="off" data-testid="gemini-model-manual" /><button onClick={() => void pickModel(typedModel.trim())} disabled={busy || !typedModel.trim()} data-testid="gemini-model-use">Pakai model ini</button></div>}
       {saved.where === "device" && signedIn && <div className="range-tools"><button onClick={() => void moveToServer()} disabled={busy} data-testid="gemini-move">Pindahkan kunci ke akun (server)</button></div>}
       {getAudio && <label className="gemini-consent"><input type="checkbox" checked={audioOk} onChange={e => setAudioOk(e.target.checked)} data-testid="gemini-audio-consent" /> Izinkan AI mendengarkan audio bagian ini (audio dikirim ke layanan AI; maksimal 6 menit; tidak semua router mendukung audio). Lebih akurat untuk nama, istilah, dan angka.</label>}
       <div className="range-tools">

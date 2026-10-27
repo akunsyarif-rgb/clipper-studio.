@@ -276,15 +276,15 @@ try {
 
     // A router with OpenAI-format answers (such as Flatkey): its own address and model, same screens.
     await p.getByTestId("gemini-provider").selectOption("openai");
-    assert((await p.getByTestId("gemini-baseurl").inputValue()) === "https://router.flatkey.ai/v1", "the router address is suggested");
+    assert((await p.getByTestId("gemini-baseurl").inputValue()) === "https://openrouter.ai/api/v1", "OpenRouter is suggested first");
     await p.getByTestId("gemini-key").fill("sk-router-key-0123456789abcdef");
     await p.getByTestId("gemini-save").click();
     await p.getByTestId("gemini-error").waitFor({ timeout: 3000 }); // a model name is needed for a router
     await p.getByTestId("gemini-model").fill("google/gemini-x");
     await p.getByTestId("gemini-save").click();
     await p.getByTestId("gemini-run").waitFor({ timeout: 5000 });
-    assert(srv.provider === "openai" && srv.baseUrl === "https://router.flatkey.ai/v1" && srv.model === "google/gemini-x", "provider, address and model reached the server");
-    assert(/router\.flatkey\.ai/.test(await p.getByTestId("gemini-where").innerText()), "panel shows the router");
+    assert(srv.provider === "openai" && srv.baseUrl === "https://openrouter.ai/api/v1" && srv.model === "google/gemini-x", "provider, address and model reached the server");
+    assert(/openrouter\.ai/.test(await p.getByTestId("gemini-where").innerText()), "panel shows the router");
     await p.getByTestId("gemini-run").click();
     await p.getByTestId("gemini-change").first().waitFor({ timeout: 10000 });
     assert(srv.lastBody?.messages?.[0]?.role === "user" && srv.lastBody.response_format?.type === "json_object", "the request used the OpenAI format");
