@@ -65,6 +65,25 @@ export async function handle(req: Request, env: Env, fetchImpl: typeof fetch = f
       return reply(200, { ok: true, model });
     }
 
+    if (msg.action === "set-model") {
+      if (!validModel(msg.model)) return fail(400, "BAD_MODEL", "Nama model tidak valid.");
+      const res = await db(`user_secrets?user_id=eq.${uid}`, { method: "PATCH", headers: { prefer: "return=minimal" }, body: JSON.stringify({ gemini_model: msg.model }) });
+      if (!res.ok) return fail(500, "DB_ERROR", "Model gagal disimpan.");
+      return reply(200, { ok: true, model: msg.model });
+    }
+
+    if (msg.action === "list-models") {
+      // The models this key may use. A key that is only being tried (not saved yet) can be passed in; it is not stored.
+      const typed = typeof msg.apiKey === "string" ? msg.apiKey.trim() : "";
+      const key = typed || (await load())?.gemini_key || "";
+      if (!key) return fail(400, "NO_KEY", "Belum ada kunci Gemini di akun Anda.");
+      let google: Response;
+      try {
+        google = await fetchImpl(`${GOOGLE}?pageSize=200`, { headers: { "x-goog-api-key": key }, signal: AbortSignal.timeout(30_000) });
+      } catch { return fail(504, "UPSTREAM_UNREACHABLE", "Gemini tidak terjangkau dari server."); }
+      return new Response(await google.text(), { status: google.status, headers: { ...CORS, "content-type": "application/json" } });
+    }
+
     if (msg.action === "forget") {
       const res = await db(`user_secrets?user_id=eq.${uid}`, { method: "DELETE", headers: { prefer: "return=minimal" } });
       if (!res.ok) return fail(500, "DB_ERROR", "Kunci gagal dihapus.");

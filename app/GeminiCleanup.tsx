@@ -5,7 +5,7 @@ import {
   applyCleanup, changedLines, cleanKey, cleanupLines, clearGeminiSettings, DEFAULT_GEMINI_MODEL, GeminiError, maskKey, saveGeminiSettings, wavPart,
   type LineChange,
 } from "@/lib/gemini";
-import { forgetOnServer, getAccess, saveToServer, type Access } from "@/lib/gemini-access";
+import { chooseModel, forgetOnServer, getAccess, listAvailableModels, saveToServer, type Access } from "@/lib/gemini-access";
 import { cloud } from "@/lib/cloud";
 import type { Transcript } from "@/lib/transcript";
 
@@ -29,6 +29,8 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
   const [busy, setBusy] = useState(false);
   const [audioOk, setAudioOk] = useState(false);
   const [stage, setStage] = useState("");
+  const [models, setModels] = useState<string[] | null>(null);
+  const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [changes, setChanges] = useState<LineChange[] | null>(null);
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
@@ -61,6 +63,28 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
       setKeyInput("");
       setSaved(await getAccess());
     } catch (e) { setError(e instanceof GeminiError ? e.message : "Kunci gagal disimpan."); }
+    finally { setBusy(false); }
+  }
+  /** Asks Google which models this key can use; if the chosen one is not among them, the best available one is taken. */
+  async function findModels(auto = false) {
+    setBusy(true);
+    if (!auto) { setError(""); setNote(""); }
+    try {
+      const list = await listAvailableModels(saved, saved ? undefined : keyInput);
+      if (list.length === 0) { setError("Tidak ada model Gemini yang bisa dipakai untuk kunci ini."); return; }
+      setModels(list);
+      if (saved) {
+        if (!list.includes(saved.model)) { await chooseModel(saved, list[0]); setSaved(await getAccess()); setNote(`Model diganti ke ${list[0]} karena ${saved.model} tidak tersedia untuk kunci ini. Coba lagi.`); }
+        else if (!auto) setNote(`Model ${saved.model} tersedia. ${list.length} model bisa dipilih.`);
+      } else if (!list.includes(model)) { setModel(list[0]); setNote(`Model diisi ${list[0]}.`); }
+    } catch (e) { if (!auto) setError(e instanceof GeminiError ? e.message : "Daftar model gagal diambil."); }
+    finally { setBusy(false); }
+  }
+  async function pickModel(name: string) {
+    if (!saved || name === saved.model) return;
+    setBusy(true); setError(""); setNote("");
+    try { await chooseModel(saved, name); setSaved(await getAccess()); setNote(`Model dipakai: ${name}.`); }
+    catch (e) { setError(e instanceof GeminiError ? e.message : "Model gagal disimpan."); }
     finally { setBusy(false); }
   }
   /** Moves a key kept in this browser to the account's server, then removes it from the browser. */
@@ -100,6 +124,8 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
       setAccepted(new Set(list.filter(c => !c.large).map(c => c.index)));
     } catch (e) {
       setError(e instanceof GeminiError ? e.message : "Gagal menghubungi Gemini.");
+      // A model that no longer exists is the common cause: look up the ones that do, so the creator can pick or accept one.
+      if (e instanceof GeminiError && e.kind === "model") await findModels(true);
     } finally { setBusy(false); setStage(""); }
   }
 
@@ -115,7 +141,9 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
     {!saved ? <div className="gemini-setup">
       <p><small>Secara bawaan hanya teks transkrip yang dikirim ke Google; audio dikirim hanya jika Anda memilih opsi &quot;dengarkan audio&quot; di bawah, dan video tidak pernah. {signedIn ? "Kunci disimpan di server akun Anda, bukan di browser, jadi berlaku di semua perangkat." : "Kunci disimpan di browser perangkat ini saja; masuk ke akun untuk menyimpannya di server."} Gunakan kunci yang dibatasi/berkuota rendah, dan jangan menempelkannya di obrolan.</small></p>
       <label>Kunci API Gemini<input type="password" autoComplete="off" value={keyInput} onChange={e => setKeyInput(e.target.value)} data-testid="gemini-key" /></label>
-      <label>Model<input value={model} onChange={e => setModel(e.target.value)} data-testid="gemini-model" /></label>
+      <label>Model<input value={model} onChange={e => setModel(e.target.value)} data-testid="gemini-model" list="gemini-models" /></label>
+      {models && <datalist id="gemini-models">{models.map(m => <option key={m} value={m} />)}</datalist>}
+      <button type="button" onClick={() => void findModels()} disabled={busy || !cleanKey(keyInput)} data-testid="gemini-find">Cari model yang tersedia untuk kunci ini</button>
       <label className="gemini-consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} data-testid="gemini-consent" /> Saya setuju teks transkrip dikirim ke Google Gemini.</label>
       <button onClick={() => void save()} disabled={busy} data-testid="gemini-save">{signedIn ? "Simpan di akun (server)" : "Simpan di perangkat ini"}</button>
     </div> : <div className="gemini-ready">
@@ -126,9 +154,15 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
         <button onClick={() => void run(false)} disabled={busy || disabled} data-testid="gemini-run">{busy ? (stage || "Merapikan…") : "Rapikan dengan Gemini"}</button>
         {getAudio && <button onClick={() => void run(true)} disabled={busy || disabled || !audioOk} data-testid="gemini-run-audio">Rapikan sambil mendengarkan audio</button>}
         {busy && <button onClick={() => abort.current?.abort()}>Batal</button>}
+        <button onClick={() => void findModels()} disabled={busy} data-testid="gemini-find">Cari model yang tersedia</button>
         <button onClick={() => void forget()} disabled={busy} data-testid="gemini-forget">Hapus kunci</button>
       </div>
     </div>}
+    {saved && models && <label>Model yang tersedia<select value={models.includes(saved.model) ? saved.model : ""} onChange={e => void pickModel(e.target.value)} disabled={busy} data-testid="gemini-model-select">
+      {!models.includes(saved.model) && <option value="">Pilih model…</option>}
+      {models.map(m => <option key={m} value={m}>{m}</option>)}
+    </select></label>}
+    {note && <div className="notice" role="status" data-testid="gemini-note">{note}</div>}
     {error && <div className="notice notice-error" role="alert" data-testid="gemini-error">{error}</div>}
     {changes && (changes.length === 0
       ? <div className="notice" role="status" data-testid="gemini-nochange">Gemini tidak menemukan yang perlu diubah.</div>

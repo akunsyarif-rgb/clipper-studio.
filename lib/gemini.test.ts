@@ -313,3 +313,34 @@ describe("through the owner's server", () => {
     await expect(cleanupLines(["a"], { ...opts(fakeFetch().fn), apiKey: "", transport: async () => null })).rejects.toMatchObject({ kind: "key", message: expect.stringContaining("Masuk lagi") });
   });
 });
+
+import { listModelsDirect, parseModelList } from "./gemini";
+
+describe("which models the key can use", () => {
+  const m = (name: string, methods: string[] = ["generateContent"]) => ({ name: `models/${name}`, supportedGenerationMethods: methods });
+  const list = { models: [
+    m("gemini-2.5-flash"), m("gemini-3.5-flash"), m("gemini-3.5-pro"), m("gemini-3.1-flash-lite"), m("gemini-3.6-flash-preview"),
+    m("gemini-3.5-flash-image"), m("gemini-embedding-001", ["embedContent"]), m("gemini-live-3.5-flash"), m("gemma-3-27b-it"), m("gemini-3.5-flash-tts"), m("imagen-4"), m("gemini-2.5-flash", ["generateContent"]),
+  ] };
+  it("keeps only the Gemini models that write text, best first (stable before preview, flash first, newest first)", () => {
+    const out = parseModelList(list);
+    expect(out).toEqual(["gemini-3.5-flash", "gemini-2.5-flash", "gemini-3.5-pro", "gemini-3.1-flash-lite", "gemini-3.6-flash-preview"]);
+    for (const bad of ["image", "embedding", "live", "gemma", "tts", "imagen"]) expect(out.some(n => n.includes(bad))).toBe(false);
+    expect(new Set(out).size).toBe(out.length);
+  });
+  it("refuses an answer that is not a model list", () => {
+    expect(() => parseModelList({})).toThrow(GeminiError);
+    expect(parseModelList({ models: [] })).toEqual([]);
+  });
+  it("asks Google with the key in a header", async () => {
+    const { fn, calls } = fakeFetch(ok(list));
+    expect((await listModelsDirect(KEY, { fetchImpl: fn }))[0]).toBe("gemini-3.5-flash");
+    expect(calls[0].url).toBe(`${GEMINI_ENDPOINT}?pageSize=200`);
+    expect(calls[0].url).not.toContain(KEY);
+    expect((calls[0].init.headers as Record<string, string>)["x-goog-api-key"]).toBe(KEY);
+  });
+  it("explains a refused key and a lost connection", async () => {
+    await expect(listModelsDirect(KEY, { fetchImpl: fakeFetch(fail(403, { status: "PERMISSION_DENIED", message: "x" })).fn })).rejects.toMatchObject({ kind: "key" });
+    await expect(listModelsDirect(KEY, { fetchImpl: fakeFetch(new TypeError("offline")).fn })).rejects.toMatchObject({ kind: "network" });
+  });
+});

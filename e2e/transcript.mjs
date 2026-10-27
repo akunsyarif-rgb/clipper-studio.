@@ -231,6 +231,8 @@ try {
       if (m.action === "status") return send(200, { hasKey: !!srv.key, model: srv.model || "gemini-2.5-flash" });
       if (m.action === "save-key") { srv.key = m.apiKey; srv.model = m.model; return send(200, { ok: true, model: m.model }); }
       if (m.action === "forget") { srv.key = null; return send(200, { ok: true }); }
+      if (m.action === "set-model") { srv.model = m.model; return send(200, { ok: true, model: m.model }); }
+      if (m.action === "list-models") return send(200, { models: [{ name: "models/gemini-3.5-flash", supportedGenerationMethods: ["generateContent"] }, { name: "models/gemini-3.5-flash-tts", supportedGenerationMethods: ["generateContent"] }, { name: "models/gemini-embedding-001", supportedGenerationMethods: ["embedContent"] }] });
       if (m.action === "generate") {
         srv.generated++;
         const lines = JSON.parse(m.body.contents.at(-1).parts.at(-1).text.split("\n").at(-1));
@@ -254,6 +256,12 @@ try {
     assert((await p.evaluate(() => localStorage.getItem("clipper:gemini:v1"))) === null, "the key is not kept in this browser");
     assert(/server/.test(await p.getByTestId("gemini-where").innerText()), "panel says the key is on the server");
     assert(!(await p.content()).includes(KEY), "the key is not on the page");
+    // The saved model name does not exist for this key: looking it up picks one that does.
+    await p.getByTestId("gemini-find").click();
+    await p.getByTestId("gemini-note").waitFor({ timeout: 5000 });
+    assert(/gemini-3\.5-flash/.test(await p.getByTestId("gemini-note").innerText()) && srv.model === "gemini-3.5-flash", "the available model was chosen: " + srv.model);
+    const modelOptions = await p.getByTestId("gemini-model-select").locator("option").allInnerTexts();
+    assert(modelOptions.length === 1 && modelOptions[0] === "gemini-3.5-flash", "only text models are offered: " + modelOptions.join(","));
     await p.getByTestId("gemini-run").click();
     await p.getByTestId("gemini-change").first().waitFor({ timeout: 10000 });
     assert(srv.generated === 1 && sent.length === directBefore, "the call went through the server, not straight to Google");

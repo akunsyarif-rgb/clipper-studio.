@@ -5,7 +5,7 @@ import { alignWords, spreadWords, type Transcript, type Word } from "./transcrip
 
 export const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 /** A sensible starting model; the creator can change it because model names come and go. */
-export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+export const DEFAULT_GEMINI_MODEL = "gemini-flash-latest";
 const TIMEOUT_MS = 60_000;
 
 export type GeminiErrorKind = "key" | "model" | "quota" | "blocked" | "network" | "timeout" | "server" | "format";
@@ -142,6 +142,34 @@ export async function cleanupLines(lines: string[], o: CleanupOptions & { audio?
   const text = o.audio ? audioCleanupPrompt(lines, o.starts ?? [], o.language) : cleanupPrompt(lines, o.language);
   const parts: unknown[] = [...(o.audio ? [{ inlineData: { mimeType: o.audio.mimeType, data: o.audio.data } }] : []), { text }];
   return ask(o, parts, LINES_SCHEMA, json => parseLines(json, lines.length));
+}
+
+// ---- which models this key can use -------------------------------------------------------------------------------
+// Model names come and go (older ones are switched off), so the app asks Google instead of trusting a fixed name.
+
+const NOT_TEXT = /image|tts|embedding|live|aqa|imagen|veo|robotics|computer-use|native-audio|audio-dialog|learnlm|gemma/i;
+
+/** The Gemini models in a model-list answer that can write text from text and audio, best first: stable before preview, flash before pro/lite, newer first. */
+export function parseModelList(json: unknown): string[] {
+  const list = (json as { models?: { name?: string; supportedGenerationMethods?: string[] }[] } | null)?.models;
+  if (!Array.isArray(list)) throw new GeminiError("format", "Daftar model dari Google tidak terbaca. Coba lagi.");
+  const names = list
+    .filter(m => typeof m?.name === "string" && /^models\/gemini-/.test(m.name) && (m.supportedGenerationMethods ?? []).includes("generateContent") && !NOT_TEXT.test(m.name))
+    .map(m => m.name!.replace(/^models\//, ""));
+  const version = (n: string) => Number(/gemini-(\d+(?:\.\d+)?)/.exec(n)?.[1] ?? 0);
+  const rank = (n: string) => (/preview|exp/i.test(n) ? 100 : 0) + (/lite/i.test(n) ? 20 : /pro/i.test(n) ? 10 : /flash/i.test(n) ? 0 : 30);
+  return [...new Set(names)].sort((a, b) => rank(a) - rank(b) || version(b) - version(a) || a.localeCompare(b));
+}
+
+/** Asks Google which models a key can use (straight from the browser). */
+export async function listModelsDirect(apiKey: string, o: { fetchImpl?: Fetch; signal?: AbortSignal } = {}): Promise<string[]> {
+  let res: Response;
+  try { res = await (o.fetchImpl ?? fetch)(`${GEMINI_ENDPOINT}?pageSize=200`, { headers: { "x-goog-api-key": apiKey }, signal: o.signal }); }
+  catch { throw new GeminiError("network", "Tidak bisa terhubung ke Gemini. Periksa koneksi internet (atau pemblokir iklan)."); }
+  let json: unknown = null;
+  try { json = await res.json(); } catch { /* an error page */ }
+  if (!res.ok) throw explain(res.status, json);
+  return parseModelList(json);
 }
 
 // ---- listening to the speech (the creator opts in each time) -----------------------------------------------------

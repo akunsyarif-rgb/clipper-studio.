@@ -143,3 +143,35 @@ describe("generate", () => {
     }
   });
 });
+
+describe("choosing a model", () => {
+  const models = { models: [{ name: "models/gemini-3.5-flash", supportedGenerationMethods: ["generateContent"] }] };
+  it("lists the models of the saved key, passing Google's answer through", async () => {
+    const w = world({ row: { gemini_key: KEY, gemini_model: null }, google: new Response(JSON.stringify(models), { status: 200 }) });
+    const r = await run(w, { action: "list-models" });
+    expect(r.json).toEqual(models);
+    const g = w.calls.find(c => c.url.includes("googleapis"))!;
+    expect(g.url).toBe("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200");
+    expect((g.init.headers as Record<string, string>)["x-goog-api-key"]).toBe(KEY);
+  });
+  it("can try a typed key without saving it", async () => {
+    const w = world({ google: new Response(JSON.stringify(models), { status: 200 }) });
+    const r = await run(w, { action: "list-models", apiKey: KEY });
+    expect(r.status).toBe(200);
+    expect(w.state.saved).toBeNull();
+    expect(w.calls.some(c => c.url.includes("user_secrets") && c.init.method === "POST")).toBe(false);
+  });
+  it("tells when there is no key to ask with, and passes Google's refusal on", async () => {
+    expect((await run(world(), { action: "list-models" })).json.error.status).toBe("NO_KEY");
+    const denied = new Response(JSON.stringify({ error: { status: "PERMISSION_DENIED", message: "x" } }), { status: 403 });
+    expect((await run(world({ row: { gemini_key: KEY, gemini_model: null }, google: denied }), { action: "list-models" })).status).toBe(403);
+  });
+  it("remembers the chosen model, and refuses a name that is not a name", async () => {
+    const w = world({ row: { gemini_key: KEY, gemini_model: null } });
+    expect((await run(w, { action: "set-model", model: "gemini-3.5-flash" })).json).toEqual({ ok: true, model: "gemini-3.5-flash" });
+    const patch = w.calls.find(c => c.init.method === "PATCH")!;
+    expect(patch.url).toContain("user_id=eq.u1");
+    expect(JSON.parse(patch.init.body as string)).toEqual({ gemini_model: "gemini-3.5-flash" });
+    expect((await run(world(), { action: "set-model", model: "a/b?c" })).json.error.status).toBe("BAD_MODEL");
+  });
+});
