@@ -1,7 +1,7 @@
 // Popular names (apps, platforms, shops) get their own icon, ahead of the generic concept icons: "YouTube" shows a
 // play badge, not a "video" camera. The glyphs are simple line drawings made for this studio on the same 24-unit grid
 // as the other icons; they hint at each service (they are not its official logo) and use no third-party artwork.
-import { Car, Podcast, ShoppingBag, Sparkles, type IconNode } from "lucide";
+import { Car, Cloud, FileText, Gamepad2, Ghost, GitBranch, Mail, Palette, Pin, Podcast, QrCode, Scissors, ShoppingBag, Sparkles, Video, Wallet, type IconNode } from "lucide";
 import { stripMarks, wordKey } from "./text";
 
 export type Brand = { id: string; label: string; icon: IconNode; words: string[] };
@@ -24,6 +24,19 @@ export const BRANDS: Brand[] = [
   { id: "podcast", label: "Podcast", words: ["podcast", "podcasts", "podcaster"], icon: Podcast },
   { id: "marketplace", label: "Marketplace", words: ["shopee", "tokopedia", "lazada", "bukalapak", "amazon", "ebay", "blibli"], icon: ShoppingBag },
   { id: "ride", label: "Transportasi online", words: ["gojek", "gofood", "grabfood", "grabcar", "grabbike", "naik grab", "pesan grab", "driver grab", "ojek grab", "uber"], icon: Car },
+  { id: "capcut", label: "CapCut", words: ["capcut", "cap cut"], icon: Scissors },
+  { id: "canva", label: "Canva", words: ["canva"], icon: Palette },
+  { id: "meeting", label: "Rapat online", words: ["zoom meeting", "zoom call", "google meet", "ms teams", "microsoft teams", "video call", "vidcall"], icon: Video },
+  { id: "discord", label: "Discord", words: ["discord"], icon: Gamepad2 },
+  { id: "pinterest", label: "Pinterest", words: ["pinterest"], icon: Pin },
+  { id: "snapchat", label: "Snapchat", words: ["snapchat", "snap chat"], icon: Ghost },
+  { id: "github", label: "GitHub", words: ["github", "gitlab"], icon: GitBranch },
+  { id: "gmail", label: "Gmail", words: ["gmail"], icon: Mail },
+  { id: "drive", label: "Cloud drive", words: ["google drive", "gdrive", "dropbox", "onedrive", "icloud"], icon: Cloud },
+  { id: "office", label: "Dokumen kantor", words: ["excel", "powerpoint", "microsoft word", "ms word", "google docs", "google sheets"], icon: FileText },
+  { id: "ewallet", label: "Dompet digital", words: ["gopay", "ovo", "shopeepay", "qris", "linkaja"], icon: QrCode },
+  { id: "bank", label: "Perbankan digital", words: ["mbanking", "m-banking", "internet banking", "paypal", "wise"], icon: Wallet },
+  { id: "games", label: "Game populer", words: ["pubg", "free fire", "roblox", "minecraft", "fortnite", "valorant", "genshin", "mobile legends"], icon: Gamepad2 },
   { id: "chatai", label: "Asisten AI", words: ["chatgpt", "chat gpt", "openai", "gemini", "copilot", "deepseek", "claude"], icon: Sparkles },
 ];
 
@@ -41,18 +54,24 @@ function matches(token: string, word: string): boolean {
 export function matchBrands(text: string): BrandMention[] {
   const tokens = stripMarks(text).split(/\s+/).filter(Boolean).map(wordKey);
   const found: BrandMention[] = [];
+  // Every place a multi-word name occurs, whether or not it is the first mention of that name.
+  const claims: { id: string; from: number; to: number }[] = [];
   for (const b of BRANDS) {
     let best: BrandMention | null = null;
     for (const w of b.words) {
       const parts = w.split(" ");
       for (let i = 0; i + parts.length <= tokens.length; i++) {
-        if (parts.every((p, k) => tokens[i + k] === p || (parts.length === 1 && matches(tokens[i], p)))) {
-          if (!best || i < best.index) best = { id: b.id, word: tokens[i], index: i };
-          break;
-        }
+        if (!parts.every((p, k) => tokens[i + k] === p || (parts.length === 1 && matches(tokens[i], p)))) continue;
+        if (parts.length > 1) claims.push({ id: b.id, from: i, to: i + parts.length });
+        if (!best || i < best.index) best = { id: b.id, word: tokens[i], index: i };
+        if (parts.length === 1) break;
       }
     }
     if (best) found.push(best);
   }
-  return found.sort((a, b) => a.index - b.index).slice(0, 3);
+  // A phrase claims its words: "Google Drive" is the drive, not Google plus a drive.
+  return found
+    .filter(m => !claims.some(c => c.id !== m.id && m.index >= c.from && m.index < c.to))
+    .sort((a, b) => a.index - b.index)
+    .slice(0, 3);
 }

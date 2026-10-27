@@ -4,29 +4,40 @@ import React from "react";
 import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { CONTENT_WIDTH, fitText, MOTION, SAFE, TYPE } from "../lib/layout";
 import { BRANDS } from "../lib/brands";
+import { brandStyle } from "../lib/brand-style";
 import { beatFrame, overlayAnchors, overlayBand, overlayColors, overlayKeyword, type OverlayPosition } from "../lib/overlay";
 import type { Scene } from "../lib/script";
 import { ICONS, type SceneVisual } from "../lib/visuals";
+import { BrandStage, STAGE_H, STAGE_W } from "./BrandStage";
 import { CompareCard, Headline, measureFor, formatNumber, type Colors } from "./Families";
 import { LineIcon } from "./SceneVisuals";
 
 const TILE = 140;
 
 /** A popular name: its icon pops in when the name is spoken, with the name under it. */
-function BrandTile({ id, label, delay, width, color, text, scene }: { id: string; label: string; delay: number; width: number; color: string; text: string; scene: Scene }) {
+function BrandTile({ id, label, delay, width, text, scene }: { id: string; label: string; delay: number; width: number; text: string; scene: Scene }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const p = Math.min(1, spring({ frame: frame - delay, fps, config: MOTION.springFirm }));
   const brand = BRANDS.find(b => b.id === id);
   if (!brand) return null;
+  const color = brandStyle(id).color;
   return (
     <div data-brand={id} style={{ width, display: "flex", flexDirection: "column", alignItems: "center", gap: 10, opacity: p, transform: `translateY(${(1 - p) * 18}px) scale(${0.85 + 0.15 * p})` }}>
-      <div style={{ width: TILE, height: TILE, borderRadius: 34, border: `3px solid ${color}`, background: "#00000066", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ width: TILE, height: TILE, borderRadius: 34, border: `3px solid ${color}`, background: "#00000066", boxShadow: `0 0 36px ${color}40`, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <LineIcon node={brand.icon} size={88} color={color} delay={delay + 2} strokeWidth={1.9} />
       </div>
       <Headline text={label} width={width} height={50} maxSize={36} minSize={20} lineHeight={1.05} align="center" colors={{ accent: color, text, bg1: "#101010", bg2: "#101010" }} focus={new Set()} font={TYPE.sans} weight={800} letterSpacing={0.04} reveal="none" scene={scene} />
     </div>
   );
+}
+
+/** The animated scene of a name, running from the moment it is said. */
+function StageAt({ id, delay }: { id: string; delay: number }) {
+  const frame = useCurrentFrame();
+  const brand = BRANDS.find(b => b.id === id);
+  if (!brand) return null;
+  return <BrandStage id={id} node={brand.icon} f={frame - delay} />;
 }
 
 export function VideoOverlay({ scene, visual, colors, position, length, offset }: { scene: Scene; visual: SceneVisual; colors: Colors; position: OverlayPosition; length: number; offset: number }) {
@@ -44,9 +55,21 @@ export function VideoOverlay({ scene, visual, colors, position, length, offset }
   const anchors = overlayAnchors(scene.text, visual);
   // Names show up in a row, each when it is said (the first one as the animation starts).
   const itemWidth = brands.length ? Math.min(260, (CONTENT_WIDTH - 36 * (brands.length - 1)) / brands.length) : 0;
-  const brandRow = brands.length ? (
+  const tileFor = (b: (typeof brands)[number], width: number) => <BrandTile key={b.id} id={b.id} label={b.word.toUpperCase()} delay={beatFrame(scene, b.index, offset)} width={width} text={oc.text} scene={scene} />;
+  const STAGE_SCALE = 0.9;
+  // One name gets its own animated scene next to its icon; several names share the row as icons, each popping in when said.
+  const brandRow = brands.length === 1 ? (
+    <div data-visual={"brand-" + brands[0].id} style={{ display: "flex", alignItems: "center", gap: 24 }}>
+      {tileFor(brands[0], 190)}
+      <div style={{ width: STAGE_W * STAGE_SCALE, height: STAGE_H * STAGE_SCALE }}>
+        <div style={{ width: STAGE_W, height: STAGE_H, transform: `scale(${STAGE_SCALE})`, transformOrigin: "left top" }}>
+          <StageAt id={brands[0].id} delay={beatFrame(scene, brands[0].index, offset) + 2} />
+        </div>
+      </div>
+    </div>
+  ) : brands.length ? (
     <div data-visual={"brand-" + brands.map(b => b.id).join("-")} style={{ display: "flex", gap: 36, alignItems: "flex-start" }}>
-      {brands.map(b => <BrandTile key={b.id} id={b.id} label={b.word.toUpperCase()} delay={Math.max(0, beatFrame(scene, b.index, offset) - 0)} width={itemWidth} color={oc.accent} text={oc.text} scene={scene} />)}
+      {brands.map(b => tileFor(b, itemWidth))}
     </div>
   ) : null;
 

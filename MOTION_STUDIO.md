@@ -246,9 +246,31 @@ Browser storage belongs to **one web address**. The speech model (in Cache Stora
 
 ## Popular names (YouTube, TikTok, …)
 
-When a sentence names a popular service it gets that service's icon, ahead of every generic icon (`lib/brands.ts`): YouTube (also *YT*, *Shorts*), TikTok (*FYP*), Instagram (*IG*, *reels*), Facebook (*FB*), WhatsApp (*WA*), X/Twitter, Telegram, LinkedIn, Spotify, Google, Netflix, Twitch, podcasts, online shops (Shopee, Tokopedia, Lazada, Bukalapak, Amazon, …), ride apps (Gojek, Grab as "naik Grab", Uber) and AI assistants (ChatGPT, Gemini, Copilot, …).
+When a sentence names a popular service it gets that service's icon, **and its own small animated scene**, ahead of every generic icon (`lib/brands.ts`, `lib/brand-style.ts`, `remotion/BrandStage.tsx`). Each scene runs from the moment the name is said, in the service's own colour (kept light enough to read on the dark veil):
 
-- Up to three names in a sentence are shown side by side, each popping in **when it is said**, with the name under it.
+| Name | Scene |
+|---|---|
+| YouTube | a player with a growing progress bar, then a SUBSCRIBE button that is pressed and rings the bell |
+| TikTok | an equalizer with floating music notes |
+| Instagram | a heart that pops with a burst of rings, sparkles and small hearts floating away |
+| Facebook | a thumbs-up, then reactions (heart, smile, flame) bouncing in |
+| WhatsApp | a message arrives, a reply with double ticks, the other person typing |
+| Telegram | a paper plane flying along a curve with a dotted trail, then "TERKIRIM" |
+| Google | a search bar typed into, then suggestions |
+| Netflix | the N drawing itself, then a row of thumbnails sliding in |
+| Spotify | an equalizer with a progress bar |
+| Podcast | a microphone with sound rings and a waveform |
+| Shopee, Tokopedia, Lazada, … | a shopping bag bouncing with tags and sparkles |
+| Gojek, Uber, "naik Grab" | a car driving in along the road, a pin dropping at the destination |
+| ChatGPT, Gemini, Copilot, … | twinkling sparkles and an answer being typed |
+| LinkedIn, GitHub | nodes connecting into a network |
+| Twitch, online meetings | a LIVE badge, viewers and chat lines scrolling up |
+| X / Twitter | the X drawn stroke by stroke, then posts with hearts |
+| CapCut, Canva, Discord, Pinterest, Snapchat, Gmail, drives, office files, e-wallets (GoPay, OVO, QRIS, …), banking apps, popular games | the icon with rings and small copies floating away |
+
+- **Names recognised** include YouTube (*YT*, *Shorts*), TikTok (*FYP*), Instagram (*IG*, *reels*), Facebook (*FB*), WhatsApp (*WA*), X/Twitter, Telegram, LinkedIn, Spotify, Google, Netflix, Twitch, podcasts, online shops, ride apps, AI assistants, CapCut, Canva, Zoom meetings and Google Meet, Discord, Pinterest, Snapchat, GitHub/GitLab, Gmail, Google Drive/Dropbox/iCloud, Excel/PowerPoint/Word, e-wallets and games such as Roblox, Minecraft, Free Fire and PUBG.
+- **One name** gets its icon, its label and its scene; **two or three names** are shown side by side as icons, each popping in when it is said.
+- Ordinary words are not taken for names: "grab attention" stays a verb ("naik Grab" is the ride app), "zoom in" is not a meeting, "dana" is still a word for funds. A phrase claims its words: "Google Drive" is the drive, not Google as well.
 - The glyphs are simple line drawings made for this studio (a play badge, a note, a camera, …): they hint at the service and are not its official logo.
-- Short names match whole words only, and "grab" only in phrases such as "naik Grab", so "grab attention" stays a verb.
 - A call to action ("subscribe ke YouTube") keeps its button and shows the name above it. Choosing an icon by hand replaces the detected names.
+- Everything is a function of the frame number, so preview and render match. Adding a name is one entry in `BRANDS` plus one in `BRAND_STYLE`; tests check that every name has an icon, a colour readable on the veil and a kind of scene.
