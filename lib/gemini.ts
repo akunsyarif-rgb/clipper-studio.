@@ -65,7 +65,7 @@ export function cleanupPrompt(lines: string[], language: string): string {
 type Fetch = typeof fetch;
 /** Sends the request body somewhere other than straight to Google (the owner's server, which holds the key). Null when signed out. */
 export type Transport = (payload: object, opts: { signal: AbortSignal; timeoutMs: number }) => Promise<Response | null>;
-export type CleanupOptions = { apiKey: string; model: string; language: string; fetchImpl?: Fetch; signal?: AbortSignal; timeoutMs?: number; transport?: Transport };
+export type CleanupOptions = { apiKey: string; model: string; language: string; fetchImpl?: Fetch; signal?: AbortSignal; timeoutMs?: number; transport?: Transport; /** Waits (ms) before each retry of a busy or failing service; empty = no retries. */ retryDelaysMs?: number[] };
 
 function explain(status: number, body: unknown): GeminiError {
   const err = (body as { error?: { status?: string; message?: string } } | null)?.error;
@@ -78,6 +78,7 @@ function explain(status: number, body: unknown): GeminiError {
   if (status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(text)) return new GeminiError("quota", "Batas pemakaian Gemini habis (kuota atau laju). Tunggu sebentar atau periksa kuota key Anda.");
   if (status === 404 || /NOT_FOUND|not found for API/i.test(text)) return new GeminiError("model", "Model tidak ditemukan. Periksa nama model di pengaturan Gemini.");
   if (status === 401 || status === 403 || /API_KEY_INVALID|API key not valid|PERMISSION_DENIED|UNAUTHENTICATED|referer/i.test(text)) return new GeminiError("key", "Key ditolak Google. Periksa key, izin API, atau batasan alamat situs pada key itu.");
+  if (status === 503 || /UNAVAILABLE|overloaded|high demand/i.test(text)) return new GeminiError("server", "Model sedang penuh permintaan di Google. Sudah dicoba ulang otomatis; coba lagi sebentar lagi atau pilih model lain di \"Model yang tersedia\".");
   if (status >= 500) return new GeminiError("server", "Layanan Gemini sedang bermasalah. Coba lagi sebentar lagi.");
   return new GeminiError("format", "Permintaan ditolak oleh Gemini. Coba lagi, atau periksa nama model.");
 }
@@ -130,8 +131,22 @@ async function ask<T>(o: CleanupOptions, parts: unknown[], schema: object, parse
       throw new GeminiError("network", "Tidak bisa terhubung ke Gemini. Periksa koneksi internet (atau pemblokir iklan).");
     } finally { clearTimeout(timer); o.signal?.removeEventListener("abort", onAbort); }
   };
-  try { return await once(); }
-  catch (e) { if (e instanceof GeminiError && e.kind === "format") return once(); throw e; }
+  // A malformed answer gets one more try; a busy or failing service (5xx) gets the retries below, after a short wait.
+  const delays = o.retryDelaysMs ?? [1500, 4000];
+  let formatRetried = false, waited = 0;
+  for (;;) {
+    try { return await once(); }
+    catch (e) {
+      if (!(e instanceof GeminiError)) throw e;
+      if (e.kind === "format" && !formatRetried) { formatRetried = true; continue; }
+      if (e.kind === "server" && waited < delays.length && !o.signal?.aborted) {
+        await new Promise<void>(resolve => { const t = setTimeout(resolve, delays[waited++]); o.signal?.addEventListener("abort", () => { clearTimeout(t); resolve(); }, { once: true }); });
+        if (o.signal?.aborted) throw new GeminiError("timeout", "Dibatalkan.");
+        continue;
+      }
+      throw e;
+    }
+  }
 }
 
 const LINES_SCHEMA = { type: "OBJECT", properties: { lines: { type: "ARRAY", items: { type: "STRING" } } }, required: ["lines"] };

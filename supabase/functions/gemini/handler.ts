@@ -106,7 +106,9 @@ export async function handle(req: Request, env: Env, fetchImpl: typeof fetch = f
         });
       } catch { return fail(504, "UPSTREAM_UNREACHABLE", "Gemini tidak terjangkau dari server."); }
       // Google's answer and status pass through as they are, so the app explains them the same way as a direct call.
-      return new Response(await google.text(), { status: google.status, headers: { ...CORS, "content-type": "application/json" } });
+      const text = await google.text();
+      if (!google.ok) console.error("gemini upstream", google.status, model, text.slice(0, 300)); // the answer, never the key
+      return new Response(text, { status: google.status, headers: { ...CORS, "content-type": "application/json" } });
     }
   } catch { return fail(500, "SERVER_ERROR", "Kesalahan di server."); }
 

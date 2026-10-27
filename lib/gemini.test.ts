@@ -21,7 +21,7 @@ const fakeFetch = (...responses: (Response | Error)[]) => {
   }) as unknown as typeof fetch;
   return { fn, calls };
 };
-const opts = (fn: typeof fetch) => ({ apiKey: KEY, model: "gemini-test", language: "id", fetchImpl: fn });
+const opts = (fn: typeof fetch) => ({ apiKey: KEY, model: "gemini-test", language: "id", fetchImpl: fn, retryDelaysMs: [] as number[] });
 
 describe("settings stay on this device", () => {
   const store = () => { const m = new Map<string, string>(); return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k), m }; };
@@ -342,5 +342,28 @@ describe("which models the key can use", () => {
   it("explains a refused key and a lost connection", async () => {
     await expect(listModelsDirect(KEY, { fetchImpl: fakeFetch(fail(403, { status: "PERMISSION_DENIED", message: "x" })).fn })).rejects.toMatchObject({ kind: "key" });
     await expect(listModelsDirect(KEY, { fetchImpl: fakeFetch(new TypeError("offline")).fn })).rejects.toMatchObject({ kind: "network" });
+  });
+});
+
+describe("a busy service", () => {
+  const busy = () => fail(503, { code: 503, status: "UNAVAILABLE", message: "The model is overloaded. Please try again later." });
+  it("is retried after a short wait, and the answer that comes is used", async () => {
+    const { fn, calls } = fakeFetch(busy(), busy(), ok(reply(["B"])));
+    expect(await cleanupLines(["a"], { ...opts(fn), retryDelaysMs: [0, 0] })).toEqual(["B"]);
+    expect(calls).toHaveLength(3);
+  });
+  it("gives up with a clear message after the retries", async () => {
+    const { fn, calls } = fakeFetch(busy(), busy(), busy());
+    await expect(cleanupLines(["a"], { ...opts(fn), retryDelaysMs: [0, 0] })).rejects.toMatchObject({ kind: "server", message: expect.stringContaining("penuh permintaan") });
+    expect(calls).toHaveLength(3);
+  });
+  it("is not retried for a wrong key, and a cancel stops the waiting", async () => {
+    const wrongKey = fakeFetch(fail(403, { status: "PERMISSION_DENIED", message: "x" }));
+    await expect(cleanupLines(["a"], { ...opts(wrongKey.fn), retryDelaysMs: [0, 0] })).rejects.toMatchObject({ kind: "key" });
+    expect(wrongKey.calls).toHaveLength(1);
+    const ctl = new AbortController();
+    const p = cleanupLines(["a"], { ...opts(fakeFetch(busy(), busy()).fn), retryDelaysMs: [60_000], signal: ctl.signal });
+    setTimeout(() => ctl.abort(), 10);
+    await expect(p).rejects.toMatchObject({ kind: "timeout", message: "Dibatalkan." });
   });
 });
