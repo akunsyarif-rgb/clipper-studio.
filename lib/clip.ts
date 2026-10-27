@@ -122,6 +122,68 @@ export function ffmpegArgs(input: string, range: { start: number; duration: numb
   ];
 }
 
+export const AUDIO_OUTPUT_NAME = "clipper-audio.pcm";
+
+/** Decodes just the audio of a range to raw 16 kHz mono signed 16-bit PCM, the input format of the speech model. */
+export function audioArgs(input: string, range: { start: number; duration: number }): string[] {
+  return [
+    "-ss", range.start.toFixed(3),
+    "-i", input,
+    "-t", range.duration.toFixed(3),
+    "-vn", "-map", "0:a:0",
+    "-ac", "1", "-ar", "16000",
+    "-f", "s16le", "-acodec", "pcm_s16le",
+    "-y", AUDIO_OUTPUT_NAME,
+  ];
+}
+
+export type VideoProbe = { ok: boolean; /** Plain facts for the creator (and for finding the cause): size, type and the player's own error. */ detail: string };
+
+/** Can this browser read the video's header and play it? A browser that never answers is given the benefit of the doubt. */
+export function probeVideo(blob: Blob, timeoutMs = 10_000): Promise<VideoProbe> {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(blob);
+    const v = document.createElement("video");
+    const facts = () => `${(blob.size / 1048576).toFixed(1)} MB, ${blob.type || "tanpa tipe"}, ${v.error ? `kode galat pemutar ${v.error.code}${v.error.message ? ` (${v.error.message})` : ""}` : "pemutar tanpa galat"}`;
+    const done = (ok: boolean, why = "") => { clearTimeout(timer); const detail = `${why}${facts()}`; v.onerror = null; v.removeAttribute("src"); URL.revokeObjectURL(url); resolve({ ok, detail }); };
+    const timer = setTimeout(() => done(true, "tidak ada jawaban dari pemutar (dianggap baik); "), timeoutMs);
+    v.preload = "metadata"; v.muted = true; v.playsInline = true;
+    v.onloadedmetadata = () => done(Number.isFinite(v.duration) && v.duration > 0, `durasi ${v.duration}; `);
+    v.onerror = () => done(false);
+    v.src = url;
+  });
+}
+
+/**
+ * Checks a cut clip before it is handed on. If the browser cannot play it as it is, the bytes are copied into a fresh blob
+ * and tried again (a blob that is backed by odd memory is the usual culprit); the copy is returned when it plays.
+ */
+export async function checkedVideo(blob: Blob): Promise<{ blob: Blob; probe: VideoProbe; copied: boolean }> {
+  const first = await probeVideo(blob);
+  if (first.ok) return { blob, probe: first, copied: false };
+  try {
+    const copy = new Blob([await blob.arrayBuffer()], { type: "video/mp4" });
+    const second = await probeVideo(copy);
+    if (second.ok) return { blob: copy, probe: second, copied: true };
+  } catch { /* the copy itself failed: report the first result */ }
+  return { blob, probe: first, copied: false };
+}
+
+export const MP3_OUTPUT_NAME = "clipper-audio.mp3";
+
+/** A range of the audio as a small mono MP3 (32 kbps, about 1 MB for four minutes) to send to an AI service that listens. */
+export function mp3Args(input: string, range: { start: number; duration: number }): string[] {
+  return [
+    "-ss", range.start.toFixed(3),
+    "-i", input,
+    "-t", range.duration.toFixed(3),
+    "-vn", "-map", "0:a:0",
+    "-ac", "1", "-ar", "16000",
+    "-c:a", "libmp3lame", "-b:a", "32k", "-f", "mp3",
+    "-y", MP3_OUTPUT_NAME,
+  ];
+}
+
 /** Reads "time=00:00:05.12" from an FFmpeg log line; returns seconds or NaN. */
 export function logTime(message: string): number {
   const m = /time=\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)/.exec(message);

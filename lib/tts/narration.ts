@@ -22,10 +22,11 @@ export function sceneSecondsFor(clipSamples: number, sampleRate: number): number
 
 /**
  * Places each clip at the start of its scene (plus the lead-in) on one track whose length equals the
- * timeline, using the same frame rounding as buildTimeline's "scenes" mode.
+ * timeline, using the same frame rounding as buildTimeline's "scenes" mode. `pauses` are extra seconds of silence per scene.
  */
-export function assembleNarration(clips: Float32Array[], sampleRate: number, fps = FPS): { samples: Float32Array; sceneSeconds: number[] } {
-  const sceneSeconds = clips.map(c => sceneSecondsFor(c.length, sampleRate));
+export function assembleNarration(clips: Float32Array[], sampleRate: number, fps = FPS, pauses: number[] = []): { samples: Float32Array; sceneSeconds: number[] } {
+  // A [jeda] tag adds silence after the scene's tail.
+  const sceneSeconds = clips.map((c, i) => sceneSecondsFor(c.length, sampleRate) + (pauses[i] ?? 0));
   const frames = sceneSeconds.map(s => sceneFrames(s, fps));
   const total = Math.round((frames.reduce((a, b) => a + b, 0) / fps) * sampleRate);
   const samples = new Float32Array(total);

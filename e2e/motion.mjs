@@ -1,7 +1,7 @@
 // End-to-end check of /motion: production server + Chromium + @remotion/web-renderer.
 // Needs `npm run build` first, plus ffmpeg/ffprobe on PATH to create the narration fixture and verify the MP4.
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -71,6 +71,14 @@ try {
     const [download] = await Promise.all([page.waitForEvent("download"), page.getByTestId("download").click()]);
     const out = join(dir, label + ".mp4");
     await download.saveAs(out);
+    // Captions are on by default, so a subtitle file must come with the MP4 and match its length.
+    const [srtDownload] = await Promise.all([page.waitForEvent("download"), page.getByTestId("download-srt").click()]);
+    const srtPath = join(dir, label + ".srt");
+    await srtDownload.saveAs(srtPath);
+    const srt = readFileSync(srtPath, "utf8");
+    assert(/^1\n\d\d:\d\d:\d\d,\d{3} --> /.test(srt), `srt header: ${srt.slice(0, 40)}`);
+    const lastEnd = [...srt.matchAll(/--> (\d\d):(\d\d):(\d\d),(\d{3})/g)].map(m => +m[1] * 3600 + +m[2] * 60 + +m[3] + +m[4] / 1000).at(-1);
+    assert(lastEnd > 0 && lastEnd <= expectedSeconds + 0.2, `srt ends at ${lastEnd}s, video is ${expectedSeconds}s`);
     const p = probe(out);
     assert(p.video === "h264" && p.width === 1080 && p.height === 1920, `video ${p.video} ${p.width}x${p.height}`);
     assert(p.fps === "30/1", `fps ${p.fps}`);
@@ -337,12 +345,23 @@ try {
     return `auto ${autos.length} templates ok, override applied, ${info}`;
   });
 
+  await step("a [jeda] tag adds silence without being shown, spoken or captioned", async () => {
+    await page.getByTestId("voice-none").click();
+    await page.getByTestId("music-none").click();
+    await page.getByTestId("script").fill("Satu dua tiga empat. [jeda 2s]\nLima enam tujuh delapan.");
+    await page.getByTestId("duration").selectOption("15");
+    const rows = await page.getByTestId("scenes").locator(".scene-info > b").allTextContents();
+    assert(rows.length === 2 && rows.every(r => !/jeda|\[|\]/i.test(r)), `scene texts: ${JSON.stringify(rows)}`);
+    const info = await renderAndCheck("pause", false, 15);
+    return `2 scenes, tag hidden, ${info}`;
+  });
+
   await step("numbers with thousands separators stay in one scene and one line", async () => {
     await page.getByTestId("voice-none").click();
     await page.getByTestId("music-none").click();
     await page.getByTestId("script").fill("Negeri ini berdiri di atas lebih dari 17.000 pulau.\nAda lebih dari 1.300 suku dan 700 bahasa daerah.\nMerdeka pada tahun 1945.");
     await page.getByTestId("duration").selectOption("15");
-    const rows = await page.getByTestId("scenes").locator(".scene-info b").allTextContents();
+    const rows = await page.getByTestId("scenes").locator(".scene-info > b").allTextContents();
     assert(rows.length === 3, `3 scenes expected, got ${rows.length}: ${JSON.stringify(rows)}`);
     assert(rows[0].includes("17.000") && rows[1].includes("1.300"), `numbers kept whole: ${JSON.stringify(rows)}`);
     const player = page.locator(".player-wrap");

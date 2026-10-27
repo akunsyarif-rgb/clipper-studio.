@@ -10,6 +10,8 @@ import {
   ShieldCheck, ShoppingCart, Smartphone, Sparkles, Sprout, Star, Stethoscope, Sun, Tag, Target, TrendingDown, TrendingUp, TriangleAlert,
   ThumbsUp, Trophy, Truck, Umbrella, Users, Utensils, Video, Wallet, Wrench, Zap, type IconNode,
 } from "lucide";
+import { BRANDS, matchBrands, type BrandMention } from "./brands";
+import { ambiguousMask, isCallToAction, WEAK_WORDS } from "./sense";
 
 export type Template = "statement" | "list" | "question" | "number" | "compare" | "cta" | "quote";
 
@@ -23,7 +25,8 @@ export const TEMPLATES: { id: Template; label: string }[] = [
   { id: "quote", label: "Kutipan" },
 ];
 
-type Concept = { id: string; label: string; icon: IconNode; words: string[]; weight?: number };
+/** `soft` words count half: a content word elsewhere in the sentence ("coffee" in "do you like coffee") wins over them. */
+type Concept = { id: string; label: string; icon: IconNode; words: string[]; weight?: number; soft?: string[] };
 
 /**
  * Concepts with Indonesian and English keywords. Keywords of 4+ letters also match inside longer words
@@ -36,7 +39,7 @@ export const CONCEPTS: Concept[] = [
   { id: "habit", label: "Ulang (kebiasaan)", icon: Repeat, words: ["kebiasaan", "rutin", "rutinitas", "ulangi", "setiap hari", "habit", "routine", "repeat", "daily", "every day"] },
   { id: "forever", label: "Tak terbatas", icon: InfinityIcon, words: ["selalu", "selamanya", "konsisten", "terus", "always", "forever", "consistent", "consistency", "never stop"] },
   { id: "money", label: "Koin (uang)", icon: Coins, words: ["uang", "rupiah", "biaya", "harga", "gaji", "penghasilan", "cuan", "money", "cash", "cost", "price", "salary", "income", "earn", "profit"] },
-  { id: "wallet", label: "Dompet (tabungan)", icon: Wallet, words: ["dompet", "tabung", "tabungan", "hemat", "investasi", "wallet", "saving", "budget", "invest"] },
+  { id: "wallet", label: "Dompet (tabungan)", icon: Wallet, words: ["save money", "save up", "save cash", "hemat uang", "dompet", "tabung", "tabungan", "hemat", "investasi", "wallet", "saving", "budget", "invest"] },
   { id: "growth", label: "Grafik naik", icon: TrendingUp, words: ["tumbuh", "naik", "meningkat", "berkembang", "pertumbuhan", "progres", "kemajuan", "growth", "grow", "increase", "rise", "improve", "progress"] },
   { id: "decline", label: "Grafik turun", icon: TrendingDown, words: ["turun", "menurun", "rugi", "merosot", "decline", "decrease", "drop", "loss", "lose", "worse"] },
   { id: "data", label: "Diagram (data)", icon: ChartColumn, words: ["data", "statistik", "analisis", "laporan", "riset", "penelitian", "statistic", "analytics", "analysis", "report", "research", "survey"] },
@@ -57,8 +60,8 @@ export const CONCEPTS: Concept[] = [
   { id: "heart", label: "Hati", icon: Heart, words: ["cinta", "sayang", "peduli", "kasih", "love", "care", "kind"] },
   { id: "health", label: "Detak jantung (sehat)", icon: HeartPulse, words: ["sehat", "kesehatan", "jantung", "health", "healthy", "heart rate"] },
   { id: "exercise", label: "Dumbel (olahraga)", icon: Dumbbell, words: ["olahraga", "latihan", "gym", "otot", "exercise", "workout", "training", "muscle", "fitness"] },
-  { id: "sleep", label: "Bulan (tidur)", icon: Moon, words: ["tidur", "malam", "istirahat", "sleep", "night", "rest"] },
-  { id: "morning", label: "Matahari (pagi)", icon: Sun, words: ["pagi", "matahari", "siang", "morning", "sunrise", "sun"] },
+  { id: "sleep", label: "Bulan (tidur)", icon: Moon, words: ["selamat malam", "good night", "tidur", "malam", "istirahat", "sleep", "night", "rest"] },
+  { id: "morning", label: "Matahari (pagi)", icon: Sun, words: ["selamat pagi", "good morning", "good afternoon", "selamat siang", "pagi", "matahari", "siang", "morning", "sunrise", "sun"] },
   { id: "food", label: "Alat makan", icon: Utensils, words: ["makan", "makanan", "sarapan", "masak", "resep", "food", "eat", "meal", "breakfast", "cook", "recipe"] },
   { id: "water", label: "Tetes air", icon: Droplets, words: ["minum", "hidrasi", "drink", "water", "hydrat"] },
   { id: "coffee", label: "Kopi (santai)", icon: Coffee, words: ["kopi", "santai", "rehat", "coffee", "relax", "break"] },
@@ -121,13 +124,14 @@ export const CONCEPTS: Concept[] = [
   { id: "notify", label: "Lonceng", icon: Bell, words: ["notifikasi", "pengingat", "ingatkan", "notification", "reminder", "remind"] },
   { id: "share", label: "Bagikan", icon: Share2, words: ["bagikan", "sebarkan", "share"] },
   { id: "save", label: "Penanda (simpan)", icon: Bookmark, words: ["simpan", "save", "bookmark"] },
-  { id: "like", label: "Jempol", icon: ThumbsUp, words: ["suka", "setuju", "bagus", "like", "agree", "good"] },
+  { id: "like", label: "Jempol", icon: ThumbsUp, words: ["suka", "setuju", "bagus", "like", "agree", "good job", "great job", "well done", "nice work", "good work", "kerja bagus", "bagus sekali"], soft: ["like", "suka", "agree", "setuju"] },
   { id: "new", label: "Kilau (baru)", icon: Sparkles, words: ["baru", "keren", "ajaib", "menakjubkan", "new", "amazing", "magic", "wow"] },
   { id: "next", label: "Panah kanan", icon: ArrowRight, words: ["lanjut", "berikutnya", "selanjutnya", "next", "continue"] },
 ];
 
 export const ICONS: Record<string, { label: string; icon: IconNode }> = Object.fromEntries([
   ...CONCEPTS.map(c => [c.id, { label: c.label, icon: c.icon }] as const),
+  ...BRANDS.map(b => [b.id, { label: b.label, icon: b.icon }] as const),
   ["question", { label: "Tanda tanya", icon: CircleQuestionMark }],
   ["cta", { label: "Kursor klik", icon: MousePointerClick }],
   ["quote", { label: "Tanda kutip", icon: Quote }],
@@ -148,53 +152,92 @@ export type SceneVisual = {
   number?: NumberInfo;
   compare?: CompareInfo;
   cta?: string;
+  /** Popular names found in the sentence (YouTube, TikTok, …) in the order they are said; they come before generic icons. */
+  brands?: BrandMention[];
+  /** The creator picked the icon by hand; quiet layouts that normally omit icons still show it. */
+  iconPinned?: boolean;
 };
 
 export type VisualOverride = { template?: Template; icon?: string | "none" };
 
-/** Removes the *emphasis* markers for display and speech. */
-export function stripMarks(text: string): string {
-  return text.replace(/\*([^*]+)\*/g, "$1").replace(/\*/g, "");
-}
-
-/** Lower-cased word without accents or surrounding punctuation, for keyword and emphasis matching. */
-export const wordKey = (w: string) => w.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/^[^\p{L}\p{N}']+|[^\p{L}\p{N}']+$/gu, "");
+export { stripMarks, wordKey } from "./text";
+import { stripMarks, wordKey } from "./text";
 
 /** Endings allowed after a 4-letter keyword ("main" → "mainkan", "play" → "playing", but not "idea" → "ideal"). */
 const SUFFIX = /^(|s|es|ed|d|ing|er|ers|ly|kan|an|i|nya|lah|kah|mu|ku)$/;
-const ID_PREFIX = /^(meng|meny|mem|men|me|ber|be|di|ter|per|peng|pem|pen|pe|ke|se)/;
+const ID_PREFIXES = ["meng", "meny", "mem", "men", "me", "ber", "be", "di", "ter", "per", "peng", "peny", "pem", "pen", "pe", "ke", "se"];
+
+/**
+ * The word as it may have looked without an Indonesian prefix: every prefix that fits is tried, and the first letter
+ * that the prefix swallowed ("menulis" → "tulis", "membaca" → "baca", "memulai" → "mulai") is put back.
+ */
+function stems(token: string): string[] {
+  const out = [token];
+  for (const p of ID_PREFIXES) {
+    if (!token.startsWith(p) || token.length - p.length < 3) continue;
+    const rest = token.slice(p.length);
+    out.push(rest);
+    if (/^(meng|meny|mem|men|peng|peny|pem|pen)$/.test(p)) for (const c of "kstp") out.push(c + rest);
+  }
+  return out;
+}
 
 function wordMatches(token: string, keyword: string): boolean {
   if (keyword.includes(" ")) return false;
   if (token === keyword) return true;
   // Up to 3 letters: whole words only ("ai", "ide", "jam"). 4 letters: start of the word or after an
-  // Indonesian prefix ("main" → "bermain", not "remain"). 5+: anywhere ("mulai" → "memulai", "dimulai").
+  // Indonesian prefix ("main" → "bermain", not "remain"). 5+: also at the start or after a prefix, with anything
+  // after it ("mulai" → "memulai", "dimulai", "mulailah"), but not in the middle ("tanya" is not in "ceritanya").
   if (keyword.length <= 3) return false;
-  if (keyword.length === 4) return [token, token.replace(ID_PREFIX, "")].some(t => t.startsWith(keyword) && SUFFIX.test(t.slice(keyword.length)));
-  return token.includes(keyword);
+  if (keyword.length === 4) return token.split("-").some(part => stems(part).some(t => t.startsWith(keyword) && SUFFIX.test(t.slice(keyword.length))));
+  // Parts of a hyphenated word count on their own ("uang-uang").
+  return token.split("-").some(part => stems(part).some(t => t.startsWith(keyword)));
 }
 
-/** Best matching concept for the text, with the words that triggered it. */
-export function matchConcept(text: string): { id: string; words: string[] } | null {
+type ConceptHit = { id: string; words: string[]; score: number; pos: number };
+
+function scoreConcepts(text: string, topics?: ReadonlySet<string>): ConceptHit[] {
   const plain = stripMarks(text);
   const tokens = plain.split(/\s+/).map(wordKey).filter(Boolean);
+  const masked = ambiguousMask(tokens);
   const lower = " " + tokens.join(" ") + " ";
-  let best: { id: string; words: string[]; score: number; pos: number } | null = null;
+  const hits: ConceptHit[] = [];
   for (const c of CONCEPTS) {
-    let score = 0, pos = Infinity;
-    const words: string[] = [];
+    let score = 0, pos = Infinity, weakScore = 0, weakPos = Infinity;
+    const words: string[] = [], weakWords: string[] = [];
     for (const k of c.words) {
       if (k.includes(" ")) {
         const i = lower.indexOf(" " + k + " ");
         if (i >= 0) { score += 1.5; pos = Math.min(pos, i); words.push(...k.split(" ")); }
         continue;
       }
-      tokens.forEach((t, i) => { if (wordMatches(t, k)) { score += 1; pos = Math.min(pos, i * 10); words.push(t); } });
+      tokens.forEach((t, i) => {
+        if (masked.has(i) || !wordMatches(t, k)) return;
+        if (WEAK_WORDS.has(k)) { weakScore += 1; weakPos = Math.min(weakPos, i * 10); weakWords.push(t); }
+        else { score += c.soft?.includes(k) ? 0.5 : 1; pos = Math.min(pos, i * 10); words.push(t); }
+      });
     }
+    // Generic words stand on their own only when the surrounding script is about the same thing.
+    if (weakScore > 0 && topics?.has(c.id)) { score += weakScore; pos = Math.min(pos, weakPos); words.push(...weakWords); }
     score *= c.weight ?? 1;
-    if (score > 0 && (!best || score > best.score || (score === best.score && pos < best.pos))) best = { id: c.id, words, score, pos };
+    if (score > 0) hits.push({ id: c.id, words: [...new Set(words)], score, pos });
   }
-  return best ? { id: best.id, words: [...new Set(best.words)] } : null;
+  return hits.sort((a, b) => b.score - a.score || a.pos - b.pos);
+}
+
+/**
+ * Best matching concept for the text, with the words that triggered it.
+ * `topics` are the concepts the neighbouring scenes are about: a generic word ("move", "see", "day") counts only when
+ * its concept is one of them, and a word used in another sense ("looks like", "so, like,") never counts.
+ */
+export function matchConcept(text: string, topics?: ReadonlySet<string>): { id: string; words: string[] } | null {
+  const best = scoreConcepts(text, topics)[0];
+  return best ? { id: best.id, words: best.words } : null;
+}
+
+/** Every concept the text is about, strongest first (a sentence that lists "uang, energi dan waktu" names three). */
+export function matchConcepts(text: string, topics?: ReadonlySet<string>): string[] {
+  return scoreConcepts(text, topics).map(h => h.id);
 }
 
 const ORDINALS: [RegExp, number | null, string][] = [
@@ -209,6 +252,15 @@ const NUMBER_WORDS: Record<string, number> = {
 const STOPWORDS = new Set(["setiap", "per", "di", "dan", "untuk", "yang", "dari", "ke", "dalam", "kali", "lebih", "hanya", "sampai", "of", "in", "per", "and", "for", "to", "a", "the", "every", "more", "only", "than", "out", "on", "at"]);
 const COUNTABLE = /^(tips?|cara|langkah|hal|alasan|kesalahan|kebiasaan|rahasia|aturan|trik|ways?|steps?|things?|reasons?|mistakes?|habits?|secrets?|rules?|tricks?|ideas?|ide)$/i;
 const CTA = /\b(follow|ikuti|subscribe|share|bagikan|klik|click|tap|ketuk|coba|try|download|unduh|daftar|sign up|join|gabung|komentar|comment|like|save|simpan|order|pesan sekarang|beli sekarang|buy now|kunjungi|visit|link in bio|cek|check out|mulai sekarang|start now|start today|mulai hari ini)\b/i;
+
+/** The call-to-action word of a sentence ("FOLLOW", "START NOW"), or null; "like", "save" or "try" count only when they ask something of the viewer. */
+function findCta(plain: string): string | null {
+  for (const m of plain.matchAll(new RegExp(CTA.source, "gi"))) {
+    const at = m.index ?? 0;
+    if (isCallToAction(m[1], plain.slice(0, at), plain.slice(at + m[0].length))) return m[1].toUpperCase();
+  }
+  return null;
+}
 
 function trimPhrase(s: string): string {
   return s.replace(/^[\s,;:—–-]+|[\s,.;:!?—–-]+$/g, "").replace(/^(dan|and|tapi|but|yang|that)\s+/i, "").slice(0, 42).trim();
@@ -231,13 +283,14 @@ export function detectCompare(text: string): CompareInfo | null {
 
 export function detectNumber(text: string): NumberInfo | null {
   const t = stripMarks(text);
-  const m = /(rp\.?\s?|\$)?(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)(?:\s*(%|persen\b|percent\b|x\b|kali\b|times\b|jt\b|juta\b|million\b|rb\b|ribu\b|k\b|thousand\b))?(?:\s+([\p{L}]+))?/iu.exec(t);
+  const m = /(rp\.?\s?|\$)?(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)(?:\s*(%|persen\b|percent\b|x\b|kali\b|times\b|jt\b|jutaan\b|juta\b|million\b|miliar\b|milyar\b|triliun\b|billion\b|rb\b|ribuan\b|ribu\b|k\b|thousand\b))?(?:\s+([\p{L}]+))?/iu.exec(t);
   if (m) {
     const raw = m[2];
     const grouped = /^\d{1,3}([.,]\d{3})+$/.test(raw);
     const value = grouped ? Number(raw.replace(/[.,]/g, "")) : Number(raw.replace(",", "."));
     const decimals = grouped || !/[.,]/.test(raw) ? 0 : raw.split(/[.,]/)[1].length;
-    const unit = (m[3] ?? "").toLowerCase();
+    // "5 jutaan" is about five million: the "-an" only says "roughly", so it is shown as the base unit.
+    const unit = (m[3] ?? "").toLowerCase().replace(/^(juta|ribu)an$/, "$1");
     const suffix = unit === "%" || unit === "persen" || unit === "percent" ? "%" : unit === "x" || unit === "kali" || unit === "times" ? "×" : unit ? " " + unit : "";
     const prefix = !m[1] ? "" : m[1].trim().startsWith("$") ? "$" : "Rp";
     const next = (m[4] ?? "").toLowerCase();
@@ -257,51 +310,96 @@ export function detectNumber(text: string): NumberInfo | null {
   return null;
 }
 
+/** Strong, bilingual phrase matching used by the visual detector before generic concept matching. */
+export function detectSemanticConcept(text: string): string | null {
+  const t = stripMarks(text).toLocaleLowerCase("id");
+  const rules: [string, RegExp][] = [
+    ["book", /\b(al[- ]?qur.?an|qur.?an|quran|ayat|surah|surat)\b/i],
+    ["home", /\b(masjid|mushola|musala|mosque)\b/i],
+    ["calm", /\b(doa|berdoa|pray|prayer|dzikir|zikir|dhikr|shalat|salat|ibadah|worship)\b/i],
+    ["heart", /\b(iman|takwa|taqwa|ikhlas|sabar|syukur|tawakal|tawakkul|faith|gratitude|sincerity)\b/i],
+    ["work", /\b(bisnis|usaha|penghasilan|pendapatan|profit|revenue|business|entrepreneur|wirausaha|pelanggan|customer)\b/i],
+    ["ai", /\b(ai|kecerdasan buatan|artificial intelligence|machine learning|otomatisasi|automation|teknologi|technology|software|coding|programming|aplikasi|app|digital)\b/i],
+    ["data", /\b(data|statistik|analitik|analytics|dashboard|riset|research|laporan|report)\b/i],
+    ["book", /\b(belajar|pembelajaran|pendidikan|pelajaran|mengajar|guru|siswa|murid|education|learning|teach|teacher|student|study|lesson)\b/i],
+    ["heart", /\b(cinta|kasih sayang|peduli|compassion|love|kindness|empathy)\b/i],
+    ["growth", /\b(berkembang|pertumbuhan|kemajuan|progres|growth|progress|improve|improvement)\b/i],
+    ["challenge", /\b(masalah|tantangan|hambatan|rintangan|problem|challenge|obstacle|struggle)\b/i],
+    ["solution", /\b(solusi|pemecahan|jawaban|solution|resolve|fix|answer)\b/i],
+    ["video", /\b(video|konten|reels|shorts|tiktok|youtube|creator|kreator|editing|editing video)\b/i],
+  ];
+  for (const [id, pattern] of rules) if (pattern.test(t)) return id;
+  return null;
+}
+
 /** Automatic visual for one scene. */
-export function detectVisual(text: string): SceneVisual {
+/** `topics`: concepts of the neighbouring scenes (see sceneTopics); without them generic words stay silent. */
+export function detectVisual(text: string, topics?: ReadonlySet<string>): SceneVisual {
   const plain = stripMarks(text).trim();
   const manual = [...text.matchAll(/\*([^*]+)\*/g)].flatMap(m => m[1].split(/\s+/).map(wordKey)).filter(Boolean);
-  const concept = matchConcept(text);
-  const icon = concept?.id ?? null;
-  const emphasis = new Set<string>([...manual, ...(manual.length ? [] : concept?.words ?? [])]);
+  // A popular name ("YouTube") is the most specific thing a sentence can say, so it comes before everything else.
+  const brands = matchBrands(text);
+  const semanticId = detectSemanticConcept(text);
+  const concept = matchConcept(text, topics);
+  const icon = brands.length ? brands[0].id : semanticId && ICONS[semanticId] ? semanticId : concept?.id ?? null;
+  const emphasis = new Set<string>([...manual, ...(manual.length ? [] : brands.length ? brands.map(b => b.word) : concept?.words ?? [])]);
+  const withBrands = <T extends object>(v: T): T & { brands?: BrandMention[] } => (brands.length ? { ...v, brands } : v);
 
   for (const [re, index] of ORDINALS) {
     const m = re.exec(plain);
-    if (m) return { template: "list", icon, emphasis: [...emphasis], listIndex: index, listLabel: m[1] };
+    if (m) return withBrands({ template: "list", icon, emphasis: [...emphasis], listIndex: index, listLabel: m[1] });
   }
   const step = /^(?:langkah|step|tip|tips|cara|no\.?)\s*(\d+)\b|^(\d+)[.)]\s/i.exec(plain);
-  if (step) return { template: "list", icon, emphasis: [...emphasis], listIndex: Number(step[1] ?? step[2]), listLabel: "" };
+  if (step) return withBrands({ template: "list", icon, emphasis: [...emphasis], listIndex: Number(step[1] ?? step[2]), listLabel: "" });
 
   const compare = detectCompare(plain);
-  if (compare) return { template: "compare", icon, emphasis: [...emphasis], compare };
-  if (/\?\s*$/.test(plain)) return { template: "question", icon: icon === "problem" ? null : icon, emphasis: [...emphasis] };
+  if (compare) return withBrands({ template: "compare", icon, emphasis: [...emphasis], compare });
+  if (/\?\s*$/.test(plain)) return withBrands({ template: "question", icon: icon === "problem" ? null : icon, emphasis: [...emphasis] });
   const number = detectNumber(plain);
   if (number) {
     emphasis.add(wordKey(number.raw));
-    return { template: "number", icon, emphasis: [...emphasis], number };
+    return withBrands({ template: "number", icon, emphasis: [...emphasis], number });
   }
-  const cta = CTA.exec(plain);
-  if (cta) return { template: "cta", icon, emphasis: [...emphasis], cta: cta[1].toUpperCase() };
-  if (/^["“].+["”][.!]?$/.test(plain)) return { template: "quote", icon, emphasis: [...emphasis] };
-  return { template: "statement", icon, emphasis: [...emphasis] };
+  const cta = findCta(plain);
+  if (cta) return withBrands({ template: "cta", icon, emphasis: [...emphasis], cta });
+  if (/^["“].+["”][.!]?$/.test(plain)) return withBrands({ template: "quote", icon, emphasis: [...emphasis] });
+  return withBrands({ template: "statement", icon, emphasis: [...emphasis] });
+}
+
+/**
+ * What each scene's neighbours (two scenes either side) are about, as concept ids. This is the "whole script" context
+ * that lets a generic word count when the script is clearly on that subject, and keeps it silent otherwise.
+ */
+export function sceneTopics(texts: string[]): Set<string>[] {
+  const own = texts.map(t => detectSemanticConcept(t) ?? matchConcept(t)?.id ?? null);
+  return texts.map((_, i) => new Set(own.filter((id, j) => id !== null && j !== i && Math.abs(j - i) <= 2) as string[]));
 }
 
 /** Applies a user override; data the forced template needs is filled in when the text allows it. */
-export function resolveVisual(text: string, override?: VisualOverride): SceneVisual {
-  const auto = detectVisual(text);
+export function resolveVisual(text: string, override?: VisualOverride, topics?: ReadonlySet<string>): SceneVisual {
+  const auto = detectVisual(text, topics);
   if (!override) return auto;
   const v: SceneVisual = { ...auto };
   if (override.template && override.template !== auto.template) {
     v.template = override.template;
     if (v.template === "number") v.number = detectNumber(text) ?? undefined;
     if (v.template === "compare") v.compare = detectCompare(text) ?? undefined;
-    if (v.template === "cta") v.cta = CTA.exec(stripMarks(text))?.[1].toUpperCase() ?? (/\b(the|you|your)\b/i.test(text) ? "START NOW" : "MULAI");
+    if (v.template === "cta") v.cta = findCta(stripMarks(text)) ?? (/\b(the|you|your)\b/i.test(text) ? "START NOW" : "MULAI");
     if (v.template === "list" && v.listIndex === undefined) v.listIndex = null;
   }
   if (override.icon) v.icon = override.icon === "none" ? null : override.icon in ICONS ? override.icon : v.icon;
+  if (override.icon) delete v.brands; // an icon chosen by hand replaces the detected names
+  if (override.icon && v.icon) v.iconPinned = true;
   return v;
 }
 
 export function templateLabel(t: Template): string {
   return TEMPLATES.find(x => x.id === t)?.label ?? t;
 }
+
+/**
+ * What a source-video scene shows: the speaker alone, the speaker with an animation drawn over the picture ("overlay"),
+ * a full-screen graphic ("graphic"), or another part of the same video ("clip"). The speaker's audio never changes.
+ */
+export type Cut = "video" | "overlay" | "graphic" | "clip";
+

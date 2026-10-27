@@ -6,6 +6,7 @@
 /out/
 /public/ffmpeg/
 /public/ort/
+/public/ort-asr/
 /public/supertonic/
 next-env.d.ts
 *.tsbuildinfo

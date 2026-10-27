@@ -7,18 +7,45 @@ import { DEFAULT_MUSIC_VOLUME, encodeWav, MAX_RECORDING_SECONDS, MOODS, moodForS
 import { analyseNarration, decodeToMono, explainMicError, NarrationRecorder, recordingSupported, type Narration } from "@/lib/recorder";
 import { checkBrowserRender, environmentReport, RenderFailure, renderMp4 } from "@/lib/render";
 import {
-  buildTimeline, explainRenderError, FPS, HEIGHT, MAX_SECONDS, PALETTES, slug, splitScript, STYLES, validateAudioFile, validateTitle, WIDTH,
-  type DurationMode, type PaletteId, type StyleId, type VideoProps,
+  buildTimeline, CONTENT_PRESETS, explainRenderError, FPS, HEIGHT, MAX_SECONDS, MIN_SCENE_SECONDS, PALETTES, slug, splitScript, splitScriptWithPauses, STYLES, validateAudioFile, validateTitle, WIDTH,
+  type ContentPresetId, type DurationMode, type PaletteId, type StyleId, type VideoProps,
 } from "@/lib/script";
 import { explainVoiceError, loadVoiceEngine, MODEL_BYTES, VOICES } from "@/lib/tts/browser";
 import { assembleNarration, clipKey, SPEEDS } from "@/lib/tts/narration";
 import { spokenText } from "@/lib/tts/numbers";
 import { TTS_LANGS, type TtsLang } from "@/lib/tts/supertonic";
-import { ICONS, resolveVisual, stripMarks, TEMPLATES, type Template, type VisualOverride } from "@/lib/visuals";
+import { allWords, shiftWords, HANDOFF_KEY, parseHandoff, sceneTimings, transcriptText, type Transcript } from "@/lib/transcript";
+import { ICONS, resolveVisual, sceneTopics, type Cut, stripMarks, TEMPLATES, type Template, type VisualOverride } from "@/lib/visuals";
+import { chooseFamily, FAMILY_LABELS } from "@/lib/composition";
+import { planNarrative } from "@/lib/narrative";
+import { releaseAsr } from "@/lib/asr/client";
+import { DENSITIES, explainScene, planAnimations, type Density } from "@/lib/importance";
+import type { BrandMotion, OverlayPosition } from "@/lib/overlay";
+import { isPristine, SESSION_VERSION, type SessionData } from "@/lib/session";
+import { clearSession, deleteSource, loadSession, loadSource, saveSession, saveSource, takeClipHandoff, type ClipHandoff } from "@/lib/session-store";
+import { scenesToSrt } from "@/lib/srt";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
+import TranscriptPanel from "../TranscriptPanel";
+import GeminiJudge from "../GeminiJudge";
+import CloudAccount from "../CloudAccount";
+import { cloud } from "@/lib/cloud";
+import type { SceneScore } from "@/lib/gemini";
+import { probeVideo, validateFile } from "@/lib/clip";
 import "./motion.css";
 
 const SAMPLE = "Jangan tunggu semangat datang.\nMulailah, meski langkahmu kecil.\nDisiplin membuatmu tetap bergerak.\nSatu langkah hari ini lebih baik dari rencana sempurna.\nMulai sekarang.";
+
+const NARRATIVE_ROLE_LABELS: Record<string, string> = {
+  hook: "Pembuka", tension: "Konflik", explanation: "Penjelasan", reveal: "Insight",
+  application: "Penerapan", resolution: "Kesimpulan", continuation: "Lanjutan",
+};
+const VISUAL_STRATEGY_LABELS: Record<string, string> = {
+  typography: "Tipografi", comparison: "Perbandingan", diagram: "Diagram",
+  metaphor: "Metafora", footage: "Footage", minimal: "Minimal",
+};
+const MOTION_INTENSITY_LABELS: Record<string, string> = {
+  quiet: "Tenang", emphasis: "Penekanan", impact: "Dampak kuat",
+};
 
 type Track = { file: File; url: string; seconds: number };
 type Generated = Track & { mood: Mood; seed: number };
@@ -52,6 +79,7 @@ export default function MotionStudio() {
   const [title, setTitle] = useState("Sebuah pengingat");
   const [style, setStyle] = useState<StyleId>("hybrid");
   const [palette, setPalette] = useState<PaletteId>("violet");
+  const [contentPreset, setContentPreset] = useState<ContentPresetId | "custom">("custom");
   const [target, setTarget] = useState("auto");
   const [captions, setCaptions] = useState(true);
   const [manualNarration, setNarration] = useState<Narration | null>(null);
@@ -83,6 +111,84 @@ export default function MotionStudio() {
   const [errorDetail, setErrorDetail] = useState("");
   /** Manual visual corrections, keyed by scene text so they survive edits to other sentences. */
   const [overrides, setOverrides] = useState<Record<string, VisualOverride>>({});
+  // Transcript handed over from the clipper: `offer` is waiting in sessionStorage, `imported` was applied to the script.
+  const [offer, setOffer] = useState<{ source: string; transcript: Transcript } | null>(null);
+  const [imported, setImported] = useState<Transcript | null>(null);
+  // Source video for automatic transcript (uploaded right here); its own audio becomes the narration so captions match.
+  const sourceVideo = useRef<HTMLVideoElement>(null);
+  const [source, setSource] = useState<{ file: File; url: string; seconds: number } | null>(null);
+  const [sourceError, setSourceError] = useState("");
+  const [asrBusy, setAsrBusy] = useState(false);
+  // Edit mode: the uploaded video is the base layer (with its own audio); scenes become captions or cutaway graphics.
+  const [videoEdit, setVideoEdit] = useState(false);
+  const [captionOffset, setCaptionOffset] = useState(0);
+  // Where animations drawn over the speaker sit: the empty space above the head, or just above the captions.
+  const [overlayPos, setOverlayPos] = useState<OverlayPosition>("top");
+  // How many scenes get an animation, and how elaborate a popular name's animation is.
+  const [density, setDensity] = useState<Density>("balanced");
+  // Gemini's opinion per sentence (by its text); optional, kept for this visit only.
+  const [aiScores, setAiScores] = useState<Record<string, SceneScore>>({});
+  const [brandMotion, setBrandMotion] = useState<BrandMotion>("simple");
+  const [cutOverrides, setCutOverrides] = useState<Record<string, Cut>>({});
+  // Where in the source video a "clip" scene starts (seconds), per scene text.
+  const [clipStarts, setClipStarts] = useState<Record<string, number>>({});
+
+  // What this device remembers (never leaves it): offered after a refresh, saved automatically while editing.
+  const [saved, setSaved] = useState<SessionData | null>(null);
+  const [savedSource, setSavedSource] = useState<{ name: string; seconds: number } | null>(null);
+  const [autosave, setAutosave] = useState(false);
+  const [cloudUser, setCloudUser] = useState<string | null>(null);
+  const [savedCloud, setSavedCloud] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      // A clip sent from the clipper comes first: it is the work in hand, so no older session is offered over it.
+      const handed = await takeClipHandoff();
+      if (!alive) return;
+      if (handed) { applyClipHandoff(handed); setAutosave(true); return; }
+      const [s, src] = await Promise.all([loadSession(), loadSource()]);
+      if (!alive) return;
+      if (s && !isPristine(s, SAMPLE, !!src)) { setSaved(s); setSavedSource(src ? { name: src.name, seconds: src.seconds } : null); }
+      else setAutosave(true);
+    })();
+    return () => { alive = false; };
+  }, []);
+  useEffect(() => { if (!source) return; const url = source.url; return () => URL.revokeObjectURL(url); }, [source]);
+  /** The clip arrives as the base video with its subtitles, ready to edit (same state as "use the transcript" after uploading here). */
+  const [handoffNote, setHandoffNote] = useState("");
+  function applyClipHandoff(h: ClipHandoff) {
+    const file = new File([h.blob], h.name, { type: h.type || "video/mp4" });
+    setSource({ file, url: URL.createObjectURL(file), seconds: h.seconds });
+    // A clip the browser cannot read is reported at once, instead of showing a black player.
+    void probeVideo(file).then(p => { if (!p.ok) { setSource(null); setVideoEdit(false); setHandoffNote(`Klip yang diterima tidak bisa diputar di browser ini. Kembali ke Clipper lalu ekspor ulang klipnya, atau pilih video langsung di sini. (Detail: ${p.detail})`); } });
+    if (h.title) setTitle(h.title.slice(0, 48).trim());
+    if (h.transcript && h.transcript.segments.length > 0) {
+      setScript(transcriptText(h.transcript)); setImported(h.transcript);
+      setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptionOffset(0); setPalette("pearl"); setContentPreset("custom"); setOffer(null);
+      setHandoffNote(h.transcript.granularity === "word"
+        ? "Klip dari Clipper dimuat dengan subtitlenya."
+        : "Klip dari Clipper dimuat. Subtitle berasal dari AI dengan waktu per kalimat; untuk waktu kata yang lebih pas, buat ulang transkrip di panel Transkrip (di perangkat) lalu pilih Pakai transkrip.");
+    } else setHandoffNote("Klip dari Clipper dimuat. Belum ada subtitle: buat transkrip di panel Transkrip, atau tulis naskah.");
+  }
+  function onSourceVideo(e: ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    const check = validateFile(f);
+    if (!check.ok) return setSourceError(check.error);
+    setSourceError("");
+    const url = URL.createObjectURL(f);
+    const probe = document.createElement("video");
+    probe.preload = "metadata";
+    probe.onloadedmetadata = () => {
+      if (!Number.isFinite(probe.duration) || probe.duration <= 0) { URL.revokeObjectURL(url); return setSourceError("Durasi video tidak dapat dibaca. Coba MP4 (H.264)."); }
+      if (probe.duration > MAX_SECONDS) { URL.revokeObjectURL(url); return setSourceError(`Video ${Math.round(probe.duration)} detik melebihi batas ${MAX_SECONDS} detik (3 menit). Potong dulu di Clipper Studio.`); }
+      setSource({ file: f, url, seconds: probe.duration });
+    };
+    probe.onerror = () => { URL.revokeObjectURL(url); setSourceError("Browser tidak dapat memutar video ini. Coba MP4 (H.264)."); };
+    probe.src = url;
+  }
+  useEffect(() => { try { setOffer(parseHandoff(sessionStorage.getItem(HANDOFF_KEY))); } catch { /* storage blocked: no offer */ } }, []);
 
   useEffect(() => { if (!manualNarration) return; const url = manualNarration.url; return () => URL.revokeObjectURL(url); }, [manualNarration]);
   useEffect(() => { if (!aiNarration) return; const url = aiNarration.narration.url; return () => URL.revokeObjectURL(url); }, [aiNarration]);
@@ -94,14 +200,18 @@ export default function MotionStudio() {
   useEffect(() => { if (!moodTouched) setMood(moodForStyle(style)); }, [style, moodTouched]);
 
   // Automatic voice over is valid only for the exact sentences, language, voice and speed it was made from.
-  const voiceKey = useMemo(() => JSON.stringify([splitScript(script), ttsLang, ttsVoice, ttsSpeed]), [script, ttsLang, ttsVoice, ttsSpeed]);
+  const voiceKey = useMemo(() => JSON.stringify([splitScriptWithPauses(script), ttsLang, ttsVoice, ttsSpeed]), [script, ttsLang, ttsVoice, ttsSpeed]);
   const aiFresh = voiceMode === "ai" && aiNarration?.key === voiceKey ? aiNarration : null;
   const narration = voiceMode === "ai" ? aiFresh?.narration ?? null : voiceMode === "manual" ? manualNarration : null;
+  // Transcript timing applies while the script still matches the transcript words and the narration is the original audio.
+  const timings = useMemo(() => imported ? sceneTimings(splitScript(script), shiftWords(allWords(imported), captionOffset), FPS, imported.duration) : null, [imported, script, captionOffset]);
+  const timed = voiceMode !== "ai" && timings && (!narration || Math.abs(narration.seconds - imported!.duration) <= 1) ? timings : null;
   const mode: DurationMode = aiFresh ? { kind: "scenes", seconds: aiFresh.sceneSeconds }
+    : timed ? { kind: "scenes", seconds: timed.seconds }
     : narration ? { kind: "audio", seconds: narration.seconds }
     : target === "auto" || voiceMode === "ai" ? { kind: "auto" } : { kind: "target", seconds: Number(target) };
   const voiceBusy = voiceProgress !== null;
-  const timeline = useMemo(() => buildTimeline(script, mode, FPS), [script, mode.kind, aiFresh, narration?.seconds, target]); // eslint-disable-line react-hooks/exhaustive-deps
+  const timeline = useMemo(() => buildTimeline(script, mode, FPS), [script, mode.kind, aiFresh, narration?.seconds, target, timed]); // eslint-disable-line react-hooks/exhaustive-deps
   const videoSeconds = timeline.ok ? timeline.seconds : 0;
   const titleError = validateTitle(title);
   const recording = recordingSeconds !== null;
@@ -110,15 +220,74 @@ export default function MotionStudio() {
   const musicTrack: Track | null = musicMode === "auto" ? generatedFresh : musicMode === "upload" ? uploadedMusic : null;
   const music: Music | null = musicTrack ? { src: musicTrack.url, volume: musicVolume / 100, duck, loop: musicMode === "upload" } : null;
 
+  const sceneContext = timeline.ok ? sceneTopics(timeline.scenes.map(sc => sc.text)) : [];
+  const sceneVisuals = timeline.ok ? timeline.scenes.map((sc, i) => resolveVisual(sc.text, overrides[sc.text], sceneContext[i])) : [];
+  const narrativePlan = timeline.ok ? planNarrative(timeline.scenes.map(sc => sc.text)) : [];
+  // Which scenes deserve an animation: judged on what they say, not on whether an icon exists for a word.
+  const animationPlan = timeline.ok
+    ? planAnimations(timeline.scenes.map((sc, i) => ({ text: sc.text, visual: sceneVisuals[i], seconds: sc.durationInFrames / FPS })), density, timeline.scenes.map(sc => aiScores[sc.text]))
+    : { cuts: [], judgements: [] };
+  const planned = animationPlan.cuts;
+  const sceneList = timeline.ok ? timeline.scenes.map((sc, i) => ({
+    ...sc, visual: sceneVisuals[i], narrative: narrativePlan[i], ...(timed && !aiFresh ? { wordStarts: timed.wordStarts[i], wordEnds: timed.wordEnds[i], pauseFrames: undefined } : {}),
+    ...(videoEdit && source ? { cut: cutOverrides[sc.text] ?? planned[i], ...(cutOverrides[sc.text] === "clip" ? { clipFrom: clipStarts[sc.text] ?? 0 } : {}) } : {}),
+  })) : [];
   const props: VideoProps | null = timeline.ok ? {
-    title: title.trim(), scenes: timeline.scenes.map(sc => ({ ...sc, visual: resolveVisual(sc.text, overrides[sc.text]) })), style, palette, audioSrc: narration?.url ?? null, captions,
+    title: title.trim(), scenes: sceneList, style, palette, audioSrc: narration?.url ?? null, captions, video: videoEdit && source ? { src: source.url, seconds: source.seconds } : null, overlay: overlayPos, brandMotion,
     music, speech: narration?.speech ?? null,
   } : null;
+  const snapshot = useMemo<SessionData>(() => ({
+    v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlay: overlayPos, density, brandMotion, imported,
+    voiceMode: voiceMode === "ai" ? "ai" : "none", ttsLang, ttsVoice, ttsSpeed,
+  }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlayPos, density, brandMotion, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed]);
+  useEffect(() => {
+    if (!autosave || isPristine(snapshot, SAMPLE, !!source)) return;
+    const t = setTimeout(() => { const s = { ...snapshot, savedAt: Date.now() }; void saveSession(s); void cloud.pushSession(s); }, 1000);
+    return () => clearTimeout(t);
+  }, [autosave, snapshot, source]);
+  // Signed in: a session saved from another device that is newer than this one is offered like a local one.
+  useEffect(() => {
+    if (!cloudUser) return;
+    let alive = true;
+    void (async () => {
+      const [remote, local] = await Promise.all([cloud.pullSession(), loadSession()]);
+      if (!alive || !remote || isPristine(remote, SAMPLE, false)) return;
+      if (remote.savedAt <= (local?.savedAt ?? 0)) return;
+      setSaved(remote); setSavedCloud(true); setSavedSource(null);
+    })();
+    return () => { alive = false; };
+  }, [cloudUser]);
+  useEffect(() => {
+    // Writing a large video to storage competes for memory with transcription and rendering; wait until they are done.
+    if (!autosave || asrBusy || rendering) return;
+    if (!source) { void deleteSource(); return; }
+    void saveSource({ blob: source.file, name: source.file.name, type: source.file.type, lastModified: source.file.lastModified, seconds: source.seconds });
+  }, [autosave, source, asrBusy, rendering]);
+  async function restoreSession() {
+    const s = saved;
+    if (!s) return;
+    setScript(s.script); setTitle(s.title); setStyle(s.style); setPalette(s.palette); setContentPreset(s.contentPreset); setTarget(s.target); setCaptions(s.captions);
+    setOverrides(s.overrides); setCutOverrides(s.cutOverrides); setClipStarts(s.clipStarts); setCaptionOffset(s.captionOffset); setOverlayPos(s.overlay ?? "top"); setDensity(s.density ?? "balanced"); setBrandMotion(s.brandMotion ?? "simple"); setImported(s.imported);
+    setVoiceMode(s.voiceMode); setTtsLang(s.ttsLang); setTtsVoice(s.ttsVoice); setTtsSpeed(s.ttsSpeed);
+    const rec = savedSource ? await loadSource() : null;
+    if (rec) {
+      const file = rec.blob instanceof File ? rec.blob : new File([rec.blob], rec.name, { type: rec.type, lastModified: rec.lastModified });
+      setSource({ file, url: URL.createObjectURL(file), seconds: rec.seconds });
+      setVideoEdit(s.videoEdit);
+    } else setVideoEdit(false); // editing over the video needs the video itself
+    setSaved(null); setSavedCloud(false); setAutosave(true);
+  }
+  async function discardSession() { await clearSession(); setSavedCloud(false); setSaved(null); setSavedSource(null); setAutosave(true); }
+
   const blocker = !timeline.ok ? timeline.error : titleError
     ?? (recording ? "Selesaikan perekaman narasi terlebih dahulu." : null)
     ?? (voiceMode === "ai" && !aiFresh ? (aiNarration ? "Naskah, bahasa, suara, atau kecepatan berubah. Ketuk “Buat suara otomatis” lagi." : "Ketuk “Buat suara otomatis” untuk membuat voice over dari naskah.") : null);
 
   // Inputs changed after a render: the downloaded file no longer matches the preview.
+  // Subtitle file for the current script, offered once an MP4 exists; revoked when the script changes.
+  const srtText = result && timeline.ok && captions && !videoEdit ? scenesToSrt(sceneList) : null;
+  const srtUrl = useMemo(() => srtText ? URL.createObjectURL(new Blob([srtText], { type: "text/plain;charset=utf-8" })) : null, [srtText]);
+  useEffect(() => () => { if (srtUrl) URL.revokeObjectURL(srtUrl); }, [srtUrl]);
   useEffect(() => { setResult(null); }, [script, title, style, palette, target, captions, narration, musicMode, musicTrack, musicVolume, duck]);
 
   const generate = useCallback(async (seconds: number, m: Mood, s: number): Promise<Generated | null> => {
@@ -167,7 +336,7 @@ export default function MotionStudio() {
 
   async function generateVoice() {
     if (voiceBusy) return;
-    const texts = splitScript(script);
+    const { texts, pauses } = splitScriptWithPauses(script);
     const check = buildTimeline(script, { kind: "auto" }, FPS);
     if (!check.ok) return setVoiceError(check.error);
     setVoiceError(""); voiceCancel.current = false;
@@ -197,7 +366,7 @@ export default function MotionStudio() {
         }
         clips.push(clip);
       }
-      const { samples, sceneSeconds } = assembleNarration(clips, engine.sampleRate, FPS);
+      const { samples, sceneSeconds } = assembleNarration(clips, engine.sampleRate, FPS, pauses);
       normalize(samples, 0.9, 3);
       const file = new File([encodeWav([samples], engine.sampleRate)], `suara-otomatis-${ttsLang}.wav`, { type: "audio/wav" });
       setAiNarration({
@@ -277,7 +446,9 @@ export default function MotionStudio() {
       if (!g) return;
       renderProps = { ...props, music: { src: g.url, volume: musicVolume / 100, duck, loop: false } };
     }
-    const support = await checkBrowserRender(!renderProps.audioSrc && !renderProps.music).catch(e => String(e));
+    // The speech model is no longer needed; its memory goes to the renderer.
+    releaseAsr();
+    const support = await checkBrowserRender(!renderProps.audioSrc && !renderProps.music && !renderProps.video).catch(e => String(e));
     if (support) { setRenderError(support); return; }
     player.current?.pause();
     const controller = new AbortController();
@@ -352,16 +523,78 @@ export default function MotionStudio() {
 
       <div className="studio-grid">
         <section className="studio-panel">
-          <div className="panel-heading"><div><small>01 / NASKAH & AUDIO</small><h2>Atur video</h2></div><span className="local-tag">Lokal · tanpa server</span></div>
+          <div className="panel-heading"><div><small>01 / NASKAH & AUDIO</small><h2>Atur video</h2></div><span className="local-tag">{cloudUser ? "Tersinkron · tanpa media" : "Lokal · tanpa server"}</span></div>
+          <CloudAccount onUser={setCloudUser} />
+          {handoffNote && <div className="notice" role="status" data-testid="handoff-note">{handoffNote}</div>}
+          {saved && <div className="notice" data-testid="restore-offer">
+            Sesi terakhir ditemukan: <strong>{saved.title || "tanpa judul"}</strong> · {splitScript(saved.script).length} scene{savedSource ? ` · video ${savedSource.name}` : ""}. {savedCloud ? "Dari akun Anda (perangkat lain); pilih lagi videonya setelah Lanjutkan." : "Disimpan di perangkat ini saja."}{" "}
+            <button className="text-button" data-testid="restore-session" onClick={() => void restoreSession()}>Lanjutkan</button>{" "}
+            <button className="text-button" data-testid="restore-discard" onClick={() => void discardSession()}>Mulai baru</button>
+          </div>}
+          {offer && !imported && <div className="notice" data-testid="transcript-offer">
+            Transkrip dari Clipper tersedia: <strong>{offer.source}</strong> ({allWords(offer.transcript).length} kata, {Math.round(offer.transcript.duration)} dtk).{" "}
+            <button className="text-button" data-testid="transcript-import" onClick={() => { setScript(transcriptText(offer.transcript)); setImported(offer.transcript); setVoiceMode("manual"); setOffer(null); }}>Impor ke naskah</button>
+          </div>}
+          {imported && <div className="notice" data-testid="transcript-status">
+            {timed ? (videoEdit ? "Mode edit video: video asli (dengan suaranya) jadi dasar; subtitle mengikuti waktu kata, dan scene dengan kata kunci/angka berganti ke grafis. Atur per scene lewat \"Layar\"." : "Subtitle mengikuti waktu kata dari transkrip. Unggah audio asli video pada Voice over → Rekam / unggah agar suara dan subtitle sama.")
+              : timings ? "Audio yang dipilih tidak sama panjang dengan transkrip, jadi waktu dibagi otomatis. Unggah audio asli klip yang sama."
+              : "Naskah sudah diubah dari transkrip, jadi waktu kata tidak dipakai lagi. Subtitle dibagi otomatis."}
+          </div>}
+          {imported && videoEdit && <label className="field-label">Geser waktu subtitle: {captionOffset > 0 ? "+" : ""}{captionOffset.toFixed(1)} dtk <span className="field-hint">kurangi jika teks muncul terlambat, tambah jika terlalu cepat</span>
+            <input type="range" min={-1} max={1} step={0.1} value={captionOffset} onChange={e => setCaptionOffset(Number(e.target.value))} data-testid="caption-offset" />
+          </label>}
+          {videoEdit && <label className="field-label" htmlFor="overlay-position">Posisi animasi di atas video <span className="field-hint">atas = di ruang kosong di atas kepala; bawah = tepat di atas subtitle</span>
+            <select id="overlay-position" value={overlayPos} onChange={e => setOverlayPos(e.target.value as OverlayPosition)} data-testid="overlay-position">
+              <option value="top">Atas (di atas kepala)</option>
+              <option value="lower">Bawah (di atas subtitle)</option>
+            </select>
+          </label>}
+          {videoEdit && <label className="field-label" htmlFor="animation-density">Berapa banyak animasi <span className="field-hint">{DENSITIES.find(d => d.id === density)?.hint}</span>
+            <select id="animation-density" value={density} onChange={e => setDensity(e.target.value as Density)} data-testid="animation-density">
+              {DENSITIES.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+            </select>
+          </label>}
+          {videoEdit && timeline.ok && <GeminiJudge scenes={timeline.scenes.map(sc => ({ text: sc.text, seconds: sc.durationInFrames / FPS }))} language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"}
+            active={timeline.scenes.filter(sc => aiScores[sc.text]).length} onScores={setAiScores} onClear={() => setAiScores({})} />}
+          {videoEdit && <label className="field-label" htmlFor="brand-motion">Gaya animasi istilah populer <span className="field-hint">sederhana = ikon dan nama dengan satu denyut halus; lengkap = adegan kecil khas tiap layanan</span>
+            <select id="brand-motion" value={brandMotion} onChange={e => setBrandMotion(e.target.value as BrandMotion)} data-testid="brand-motion">
+              <option value="simple">Sederhana (elegan)</option>
+              <option value="full">Lengkap (meriah)</option>
+            </select>
+          </label>}
+          {timed && timed.aligned && <div className="notice" data-testid="aligned-notice">Naskah sudah diedit setelah transkripsi; kata-katanya diselaraskan dengan ucapan asli, jadi waktu caption mungkin bergeser sedikit di bagian yang diubah.</div>}
+          {timed && timed.tooShort > 0 && <div className="notice notice-error" data-testid="short-warning">{timed.tooShort} scene lebih pendek dari {MIN_SCENE_SECONDS} dtk, sehingga akan diperpanjang dan membuat subtitle sesudahnya bergeser. Gabungkan barisnya di kolom Naskah, tetapi pertahankan kata-katanya.</div>}
+          <div className="field-label">Video sumber <span className="field-hint">opsional · unggah video, ucapannya jadi naskah &amp; subtitle otomatis (maks. 3 menit)</span></div>
+          {!source
+            ? <label className="upload-source"><input type="file" accept="video/*,.mp4,.mov,.m4v,.webm" onChange={onSourceVideo} data-testid="source-video" /></label>
+            : <>
+              <video ref={sourceVideo} src={source.url} controls playsInline preload="metadata" style={{ width: "100%", maxHeight: 220, borderRadius: 10, background: "#000" }} />
+              <button className="text-button" disabled={asrBusy} onClick={() => { setSource(null); setImported(null); setVideoEdit(false); setCutOverrides({}); setClipStarts({}); }}>Ganti video ({source.file.name})</button>
+              <TranscriptPanel key={source.url} file={source.file} video={sourceVideo} range={{ start: 0, duration: source.seconds }} locked={false} onWorking={setAsrBusy} onCopy={setScript}
+                onUse={t => { setScript(transcriptText(t)); setImported(t); setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptionOffset(0); setPalette("pearl"); setContentPreset("custom"); setOffer(null); }} />
+            </>}
+          {sourceError && <p className="field-error" role="alert">{sourceError}</p>}
           <label className="field-label" htmlFor="motion-script">Naskah <span className="field-hint">satu baris/kalimat = satu scene · *kata* untuk menonjolkan</span></label>
           <textarea id="motion-script" data-testid="script" value={script} onChange={e => setScript(e.target.value)} rows={7} placeholder="Tulis naskah video…" />
           <div className="char-count">{script.length} / 3000</div>
+          <small className="field-hint" data-testid="pause-hint">Jeda: tulis <code>[jeda 1s]</code> setelah kalimat (0,1–10 dtk). Tidak dibacakan dan tidak tampil.</small>
           <label className="field-label" htmlFor="motion-title">Judul / teks pembuka</label>
           <input id="motion-title" data-testid="title" value={title} onChange={e => setTitle(e.target.value)} maxLength={60} />
           {titleError && <p className="field-error">{titleError}</p>}
+          <label className="field-label" htmlFor="motion-preset">Template konten</label>
+          <select id="motion-preset" data-testid="content-preset" value={contentPreset} onChange={e => {
+            const id = e.target.value as ContentPresetId | "custom";
+            setContentPreset(id);
+            const preset = CONTENT_PRESETS.find(p => p.id === id);
+            if (preset) { setStyle(preset.style); setPalette(preset.palette); }
+          }}>
+            <option value="custom">Kustom · atur sendiri</option>
+            {CONTENT_PRESETS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
+          <p className="field-hint preset-hint">{CONTENT_PRESETS.find(p => p.id === contentPreset)?.description ?? "Pilih gaya animasi dan palet warna secara manual."}</p>
           <div className="field-row">
-            <div><label className="field-label" htmlFor="motion-style">Gaya animasi</label><select id="motion-style" data-testid="style" value={style} onChange={e => setStyle(e.target.value as StyleId)}>{STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></div>
-            <div><label className="field-label" htmlFor="motion-palette">Palet warna</label><select id="motion-palette" data-testid="palette" value={palette} onChange={e => setPalette(e.target.value as PaletteId)}>{(Object.keys(PALETTES) as PaletteId[]).map(p => <option key={p} value={p}>{PALETTES[p].label}</option>)}</select></div>
+            <div><label className="field-label" htmlFor="motion-style">Gaya animasi</label><select id="motion-style" data-testid="style" value={style} onChange={e => { setStyle(e.target.value as StyleId); setContentPreset("custom"); }}>{STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></div>
+            <div><label className="field-label" htmlFor="motion-palette">Palet warna</label><select id="motion-palette" data-testid="palette" value={palette} onChange={e => { setPalette(e.target.value as PaletteId); setContentPreset("custom"); }}>{(Object.keys(PALETTES) as PaletteId[]).map(p => <option key={p} value={p}>{PALETTES[p].label}</option>)}</select></div>
           </div>
 
           <label className="field-label">Voice over / narasi</label>
@@ -469,7 +702,7 @@ export default function MotionStudio() {
           {rendering && <div className="render-progress" data-testid="progress"><div><span>Merender di browser…</span><b>{progress}%</b></div><i><em style={{ width: progress + "%" }} /></i></div>}
           {renderError && <p className="field-error" role="alert" data-testid="render-error">{renderError}</p>}
           {errorDetail && <details className="error-details" open><summary>Detail teknis (kirimkan saat melapor)</summary><code data-testid="error-detail">{errorDetail}</code><button className="text-link" onClick={() => navigator.clipboard?.writeText(errorDetail).then(() => setStatus("Detail teknis disalin."), () => setStatus("Salin manual teks di atas."))}>Salin detail teknis</button></details>}
-          {result && <div className="render-result" data-testid="result"><b>✓ MP4 siap</b><small>{WIDTH}×{HEIGHT} · {videoSeconds.toFixed(1)} dtk · {(result.size / 1024 ** 2).toFixed(1)} MB</small><a className="motion-primary" href={result.url} download={result.name} data-testid="download">Simpan MP4 ↓</a></div>}
+          {result && <div className="render-result" data-testid="result"><b>✓ MP4 siap</b><small>{WIDTH}×{HEIGHT} · {videoSeconds.toFixed(1)} dtk · {(result.size / 1024 ** 2).toFixed(1)} MB</small><a className="motion-primary" href={result.url} download={result.name} data-testid="download">Simpan MP4 ↓</a>{srtUrl && <a className="text-link" href={srtUrl} download={result.name.replace(/\.mp4$/i, "") + ".srt"} data-testid="download-srt">Unduh subtitle (.srt)</a>}</div>}
           {status && <p className="motion-status" role="status" data-testid="status">{status}</p>}
         </section>
 
@@ -485,10 +718,17 @@ export default function MotionStudio() {
             <div className="scene-item" key={i} data-testid="scene-item">
               <button className="scene-row" onClick={() => player.current?.seekTo(from)}>
                 <span className="scene-index">{String(i + 1).padStart(2, "0")}</span>
-                <div className="scene-info"><b>{stripMarks(s.text)}</b></div>
+                <div className="scene-info"><b>{stripMarks(s.text)}</b><small className="narrative-hint">{NARRATIVE_ROLE_LABELS[narrativePlan[i]?.role ?? ""] ?? "Lanjutan"} · {VISUAL_STRATEGY_LABELS[narrativePlan[i]?.strategy ?? ""] ?? "Minimal"} · {MOTION_INTENSITY_LABELS[narrativePlan[i]?.intensity ?? ""] ?? "Tenang"}{!(videoEdit && source) && sceneVisuals[i] ? <> · <span className="scene-family" data-testid="scene-family">{FAMILY_LABELS[chooseFamily(sceneVisuals[i], narrativePlan[i])]}</span></> : null}</small><small className="narrative-reason">{narrativePlan[i]?.reason}</small>{videoEdit && source && animationPlan.judgements[i] ? <small className="narrative-reason" data-testid="scene-importance">{cutOverrides[s.text] ? "Diatur manual" : explainScene(animationPlan.judgements[i], planned[i] === "overlay")}</small> : null}<small className="narrative-continuity"><b>Penghubung:</b> {narrativePlan[i]?.continuityCue}</small></div>
                 <div className="scene-meta"><b>{(from / FPS).toFixed(1)}–{(t / FPS).toFixed(1)}s</b><small>{(s.durationInFrames / FPS).toFixed(1)} dtk</small></div>
               </button>
-              <SceneVisualControls text={s.text} override={overrides[s.text]} disabled={rendering}
+              <SceneVisualControls text={s.text} topics={sceneContext[i]} override={overrides[s.text]} disabled={rendering} cut={videoEdit ? { value: cutOverrides[s.text], auto: planned[i], clipFrom: clipStarts[s.text] } : undefined}
+                onCut={c => {
+                  setCutOverrides(prev => { const next = { ...prev }; if (c) next[s.text] = c; else delete next[s.text]; return next; });
+                  // Choosing "other footage" starts at wherever the source player is now.
+                  if (c === "clip" && clipStarts[s.text] === undefined) setClipStarts(prev => ({ ...prev, [s.text]: Math.min(sourceVideo.current?.currentTime ?? 0, source?.seconds ?? 0) }));
+                }}
+                onClipHere={() => setClipStarts(prev => ({ ...prev, [s.text]: Math.min(sourceVideo.current?.currentTime ?? 0, source?.seconds ?? 0) }))}
+                onClipSeek={t => { if (sourceVideo.current) { sourceVideo.current.currentTime = t; } }}
                 onChange={o => setOverrides(prev => { const next = { ...prev }; if (o.template || o.icon) next[s.text] = o; else delete next[s.text]; return next; })} />
             </div>); }); })()}</div>
         </section>
@@ -500,13 +740,34 @@ export default function MotionStudio() {
   );
 }
 
+/** 83.4 → "1:23.4" */
+function formatClock(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  return `${m}:${(seconds - m * 60).toFixed(1).padStart(4, "0")}`;
+}
+
 /** Per-scene visual correction: template and icon, each "Otomatis" unless the user picks one. */
-function SceneVisualControls({ text, override, disabled, onChange }: { text: string; override?: VisualOverride; disabled: boolean; onChange: (o: VisualOverride) => void }) {
-  const auto = resolveVisual(text);
-  const current = resolveVisual(text, override);
+function SceneVisualControls({ text, topics, override, disabled, onChange, cut, onCut, onClipHere, onClipSeek }: { text: string; topics?: ReadonlySet<string>; override?: VisualOverride; disabled: boolean; onChange: (o: VisualOverride) => void; cut?: { value?: Cut; auto: Cut; clipFrom?: number }; onCut: (c: Cut | undefined) => void; onClipHere: () => void; onClipSeek: (seconds: number) => void }) {
+  const auto = resolveVisual(text, undefined, topics);
+  const current = resolveVisual(text, override, topics);
   const autoIcon = auto.icon ? ICONS[auto.icon]?.label : "tanpa ikon";
   return (
     <div className="scene-visual">
+      {cut && <label>
+        <span>Layar</span>
+        <select value={cut.value ?? ""} disabled={disabled} data-testid="scene-cut" onChange={e => onCut((e.target.value || undefined) as Cut | undefined)}>
+          <option value="">Otomatis · {cut.auto === "graphic" ? "Grafis penuh" : cut.auto === "overlay" ? "Video + animasi" : "Video + subtitle"}</option>
+          <option value="video">Video + subtitle</option>
+          <option value="overlay">Video + animasi</option>
+          <option value="graphic">Grafis penuh (ganti layar)</option>
+          <option value="clip">Potongan lain dari video</option>
+        </select>
+      </label>}
+      {cut && cut.value === "clip" && <div className="clip-pick" data-testid="clip-pick">
+        <span>Mulai di <b data-testid="clip-from">{formatClock(cut.clipFrom ?? 0)}</b> (maks. 4 dtk, tanpa suara)</span>
+        <button type="button" className="text-link" disabled={disabled} onClick={() => onClipSeek(cut.clipFrom ?? 0)} data-testid="clip-seek">Lihat</button>
+        <button type="button" className="text-link" disabled={disabled} onClick={onClipHere} data-testid="clip-here">Pakai posisi pemutar</button>
+      </div>}
       <label>
         <span>Tampilan</span>
         <select value={override?.template ?? ""} disabled={disabled} data-testid="scene-template"

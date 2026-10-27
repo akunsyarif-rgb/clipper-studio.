@@ -1,16 +1,89 @@
 import React from "react";
-import { Audio } from "@remotion/media";
+import { Audio, Video } from "@remotion/media";
 import { AbsoluteFill, interpolate, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig, type CalculateMetadataFunction } from "remotion";
 import { musicGain } from "../lib/audio";
-import { activeWordIndex, captionLine, PALETTES, totalFrames, type Scene, type StyleId, type VideoProps } from "../lib/script";
-import { detectVisual, stripMarks, wordKey } from "../lib/visuals";
+import { activeWordIndex, clipPlan, phraseLine, spokenFrames, PALETTES, totalFrames, type Scene, type StyleId, type VideoProps } from "../lib/script";
+import { chooseFamily } from "../lib/composition";
+import { contentBox, MOTION, SAFE } from "../lib/layout";
+import { detectVisual, stripMarks } from "../lib/visuals";
+import { overlayWindows } from "../lib/overlay";
+import { FamilyView } from "./Families";
+import { VideoOverlay } from "./Overlays";
 import { BottomVisual, TopVisual } from "./SceneVisuals";
-
-const FONT = "'Arial Black', 'Helvetica Neue', Arial, sans-serif";
 
 function resolveAudio(src: string): string {
   // Browser renders pass blob:/http(s):/data: URLs; CLI renders pass a file name inside public/.
   return /^(blob:|https?:|data:)/.test(src) ? src : staticFile(src);
+}
+
+type Colors = (typeof PALETTES)[keyof typeof PALETTES];
+
+/** What the caption shows at `frame`: the phrase chunk holding the spoken word, or nothing in a silent gap. */
+function captionState(scene: Scene, frame: number) {
+  const text = stripMarks(scene.text);
+  const starts = scene.wordStarts, ends = scene.wordEnds;
+  if (starts && ends && starts.length) {
+    // Silent gap: before the first word (minus a short lead-in) or well after the last one.
+    if (frame < starts[0] - 3 || frame > ends[ends.length - 1] + 12) return null;
+  }
+  const active = activeWordIndex(scene.text, frame, spokenFrames(scene), starts);
+  const line = phraseLine(text, active);
+  if (line.words.length === 0) return null;
+  // Frame at which this chunk appeared, for its entrance animation.
+  const since = frame - (starts ? starts[line.firstIndex] ?? 0 : 0);
+  return { line, since };
+}
+
+/** Caption over the speaker (source-video edits): short phrase, spoken word highlighted, stable layout. */
+function VideoCaption({ scene }: { scene: Scene }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const state = captionState(scene, frame);
+  if (!state) return null;
+  const pop = spring({ frame: state.since, fps, config: { damping: 16, stiffness: 220, mass: 0.5 } });
+  return (
+    <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", paddingBottom: 400 }}>
+      <div style={{ maxWidth: 880, textAlign: "center", fontFamily: "Arial, sans-serif", fontWeight: 800, fontSize: 76, lineHeight: 1.12, letterSpacing: -1, color: "#fff", textShadow: "0 4px 22px #000d, 0 0 3px #000c", opacity: Math.min(1, 0.2 + pop), transform: `translateY(${(1 - Math.min(1, pop)) * 18}px) scale(${0.94 + 0.06 * Math.min(1, pop)})` }}>
+        {state.line.words.map((w, i) => <span key={i} style={{ color: i === state.line.activeInLine ? "#ffe066" : "#fff" }}>{w}{i < state.line.words.length - 1 ? " " : ""}</span>)}
+      </div>
+    </AbsoluteFill>
+  );
+}
+
+/** Other footage from the same source video over the speaker. Muted: the speaker's own audio keeps playing underneath. */
+function ClipCutaway({ src, startFrame, length }: { src: string; startFrame: number; length: number }) {
+  const frame = useCurrentFrame();
+  const fade = Math.min(interpolate(frame, [0, 5], [0, 1], { extrapolateRight: "clamp" }), interpolate(frame, [length - 5, length], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }));
+  return (
+    <AbsoluteFill style={{ background: "#000", opacity: fade }}>
+      <Video src={resolveAudio(src)} trimBefore={startFrame} muted objectFit="cover" />
+      {/* Darkens the caption band so white captions stay readable on any footage. */}
+      <AbsoluteFill style={{ background: "linear-gradient(to top, #000000c0 0%, #00000070 22%, #0000 44%)" }} />
+    </AbsoluteFill>
+  );
+}
+
+/** Graphic cutaway over the speaker: centred visual for the scene's template/icon with the phrase caption beneath. */
+function Cutaway({ scene, colors, length }: { scene: Scene; colors: Colors; length: number }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const visual = scene.visual ?? detectVisual(scene.text);
+  const state = captionState(scene, frame);
+  const enter = spring({ frame, fps, config: { damping: 15, stiffness: 140, mass: 0.6 } });
+  const fade = Math.min(interpolate(frame, [0, 6], [0, 1], { extrapolateRight: "clamp" }), interpolate(frame, [length - 6, length], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }));
+  const bottom = visual.template === "compare" || visual.template === "cta" || (visual.template === "statement" && !!visual.icon);
+  return (
+    <AbsoluteFill style={{ background: `linear-gradient(145deg, ${colors.bg1} 0%, ${colors.bg2} 100%)`, opacity: fade }}>
+      <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", padding: "0 80px", color: colors.text, transform: `scale(${0.92 + 0.08 * Math.min(1, enter)})` }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", width: "100%" }}>
+          {bottom ? <div style={{ transform: "scale(1.35)", margin: "0 0 40px" }}><BottomVisual visual={{ ...visual, template: visual.template }} colors={colors} /></div> : <TopVisual visual={visual} colors={colors} sceneFrames={length} />}
+          <div style={{ minHeight: 190, display: "flex", alignItems: "center", justifyContent: "center", maxWidth: 880, fontFamily: "Arial, sans-serif", fontWeight: 800, fontSize: 72, lineHeight: 1.12, letterSpacing: -1, marginTop: bottom ? 30 : 10 }}>
+            {state?.line.words.map((w, i) => <span key={i} style={{ color: i === state.line.activeInLine ? colors.accent : colors.text }}>{w}{i < state.line.words.length - 1 ? "\u00a0" : ""}</span>)}
+          </div>
+        </div>
+      </AbsoluteFill>
+    </AbsoluteFill>
+  );
 }
 
 function SceneView({ scene, index, count, title, style, colors, captions }: {
@@ -20,57 +93,31 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const d = scene.durationInFrames;
-  const enter = spring({ frame, fps, config: style === "popup" ? { damping: 8, stiffness: 170, mass: 0.6 } : { damping: 14, stiffness: 110, mass: 0.7 } });
+  const intensity = scene.narrative?.intensity ?? "emphasis";
+  const calm = style === "editorial" || intensity === "quiet";
+  // Scene-level motion is the same for every family; presets only tune its amplitude.
   const fadeOut = interpolate(frame, [d - 8, d], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   // The first scene is visible from frame 0 so the video thumbnail is never blank.
-  const fadeIn = index === 0 ? 1 : interpolate(frame, [0, style === "cinematic" ? 14 : 6], [0, 1], { extrapolateRight: "clamp" });
-  const drift = interpolate(frame, [0, d], style === "cinematic" ? [40, -30] : [24, -6], { extrapolateRight: "clamp" });
-  const scale = style === "popup" ? interpolate(enter, [0, 1], [0.6, 1]) : interpolate(enter, [0, 1], [0.86, 1]);
-  const blur = style === "cinematic" && index > 0 ? interpolate(frame, [0, 14], [14, 0], { extrapolateRight: "clamp" }) : 0;
+  const fadeIn = index === 0 ? 1 : interpolate(frame, [0, calm ? 10 : style === "cinematic" ? 14 : 6], [0, 1], { extrapolateRight: "clamp" });
+  const drift = interpolate(frame, [0, d], calm ? [6, 0] : style === "cinematic" ? [24, -18] : [14, -4], { extrapolateRight: "clamp" });
+  const blur = style === "cinematic" && !calm && index > 0 ? interpolate(frame, [0, 14], [10, 0], { extrapolateRight: "clamp" }) : 0;
+  const popScale = style === "popup" && intensity === "impact" ? interpolate(spring({ frame, fps, config: MOTION.springFirm }), [0, 1], [0.94, 1]) : 1;
 
   const visual = scene.visual ?? detectVisual(scene.text);
-  const emphasis = new Set(visual.emphasis);
-  const all = stripMarks(scene.text).split(/\s+/).filter(Boolean);
-  const active = activeWordIndex(scene.text, frame, d);
-  // Kinetic/hybrid reveal the headline word by word in step with the narration; others show it at once.
-  const revealWords = style === "kinetic" || style === "hybrid";
-  const hasTop = ["list", "question", "number", "quote"].includes(visual.template) && (visual.template !== "number" || !!visual.number);
-  const baseSize = all.length <= 6 ? 108 : all.length <= 12 ? 86 : all.length <= 20 ? 68 : 54;
-  // Leave room for the large visual above the headline and the cards below it.
-  const big = Math.round(baseSize * (hasTop ? 0.82 : 1) * (visual.template === "compare" ? 0.85 : 1));
-  const line = captionLine(stripMarks(scene.text), active);
+  const role = scene.narrative?.role ?? (index === 0 ? "hook" : index === count - 1 ? "resolution" : "continuation");
+  const family = chooseFamily(visual, scene.narrative, role);
+  const box = contentBox(captions);
+  const line = phraseLine(stripMarks(scene.text), activeWordIndex(scene.text, frame, spokenFrames(scene), scene.wordStarts));
 
   return (
     <AbsoluteFill style={{ opacity: Math.min(fadeIn, fadeOut) }}>
-      <AbsoluteFill style={{ justifyContent: "center", padding: "0 92px", color: colors.text, transform: `translateY(${drift}px)`, filter: blur ? `blur(${blur}px)` : undefined }}>
-        <div style={{ fontFamily: "Arial, sans-serif", fontSize: 26, letterSpacing: 6, fontWeight: 700, color: colors.accent, marginBottom: 40, textTransform: "uppercase" }}>
-          {index === 0 && title ? title : `${String(index + 1).padStart(2, "0")} / ${String(count).padStart(2, "0")}`}
-        </div>
-        <TopVisual visual={visual} colors={colors} sceneFrames={d} />
-        <div style={{ fontFamily: FONT, fontSize: big, lineHeight: 1.04, letterSpacing: -2, fontWeight: 900, transform: `scale(${scale})`, transformOrigin: "left center", textShadow: "0 8px 40px #0004", overflowWrap: "break-word" }}>
-          {all.map((w, i) => {
-            const shown = !revealWords || i <= active;
-            const pop = revealWords ? spring({ frame: frame - Math.floor((i / all.length) * d * 0.9), fps, config: { damping: 12, stiffness: 200 } }) : 1;
-            const key = wordKey(w);
-            const emph = emphasis.has(key);
-            // Emphasised words turn accent-coloured and get an underline that grows once they are spoken.
-            const said = !revealWords || i <= active;
-            const sinceSaid = frame - Math.floor((i / all.length) * d * 0.9);
-            const underline = emph && said ? interpolate(revealWords ? sinceSaid : frame - 10, [0, 10], [0, 100], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 0;
-            return (
-              <span key={i} style={{ position: "relative", display: "inline-block", whiteSpace: "nowrap", marginRight: "0.25em", opacity: shown ? 1 : 0.14, transform: `translateY(${(1 - pop) * 30}px)`, color: emph || (revealWords && i === active) ? colors.accent : undefined }}>
-                {w}
-                {emph && <span style={{ position: "absolute", left: 0, bottom: "-0.08em", height: "0.09em", width: `${underline}%`, borderRadius: 6, background: colors.accent }} />}
-              </span>
-            );
-          })}
-        </div>
-        <div style={{ height: 8, width: interpolate(enter, [0, 1], [0, 125]), background: colors.accent, marginTop: 40, boxShadow: `0 0 24px ${colors.accent}` }} />
-        <BottomVisual visual={visual} colors={colors} />
-      </AbsoluteFill>
+      {/* Everything stays inside the platform safe area; the box shrinks when captions take the lower band. */}
+      <div data-family={family} style={{ position: "absolute", top: box.top, left: SAFE.side, width: box.width, height: box.height, display: "flex", flexDirection: "column", justifyContent: "center", color: colors.text, transform: `translateY(${drift}px) scale(${popScale})`, filter: blur ? `blur(${blur}px)` : undefined }}>
+        <FamilyView family={family} scene={scene} visual={visual} role={role} index={index} count={count} title={title} style={style} colors={colors} box={{ width: box.width, height: box.height - 12 }} />
+      </div>
       {captions && line.words.length > 0 && (
-        <div style={{ position: "absolute", left: 70, right: 70, bottom: 190, display: "flex", justifyContent: "center" }}>
-          <div style={{ background: "#000000a8", borderRadius: 18, padding: "18px 28px", fontFamily: "Arial, sans-serif", fontWeight: 800, fontSize: 46, lineHeight: 1.25, color: "#fff", textAlign: "center" }}>
+        <div style={{ position: "absolute", left: SAFE.side, right: SAFE.side, bottom: SAFE.bottom + 24, display: "flex", justifyContent: "center" }}>
+          <div style={{ background: "#000000b0", borderRadius: 16, padding: "16px 28px", fontFamily: "Arial, sans-serif", fontWeight: 800, fontSize: 46, lineHeight: 1.25, color: "#fff", textAlign: "center" }}>
             {line.words.map((w, i) => <span key={i} style={{ color: i === line.activeInLine ? "#ffe066" : "#fff" }}>{w}{i < line.words.length - 1 ? " " : ""}</span>)}
           </div>
         </div>
@@ -79,18 +126,31 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
   );
 }
 
-export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech }) => {
+export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech, video, overlay, brandMotion }) => {
   const frame = useCurrentFrame();
   const { durationInFrames, fps } = useVideoConfig();
   const colors = PALETTES[palette] ?? PALETTES.violet;
   const progress = interpolate(frame, [0, Math.max(1, durationInFrames - 1)], [0, 100], { extrapolateRight: "clamp" });
   const wash = interpolate(frame % 360, [0, 180, 359], [0.4, 1, 0.4]);
+  // Deterministic, lightweight ambient particles (cinematic only, never over the speaker): no image assets, randomness, or extra dependencies.
+  const quiet = style === "editorial";
+  const particles = style === "cinematic" && !video ? Array.from({ length: 16 }, (_, i) => {
+    const x = (i * 37 + 11) % 100;
+    const y = (i * 61 + 7) % 100;
+    const phase = (frame + i * 19) % 180;
+    const drift = interpolate(phase, [0, 179], [22, -22]);
+    const opacity = 0.12 + (Math.sin((frame + i * 23) / 18) + 1) * 0.09;
+    const size = i % 4 === 0 ? 4 : 2;
+    return { x, y, drift, opacity, size, key: i };
+  }) : [];
   let from = 0;
   return (
     <AbsoluteFill style={{ background: `linear-gradient(145deg, ${colors.bg1} 0%, ${colors.bg2} 100%)`, overflow: "hidden" }}>
-      <AbsoluteFill style={{ background: `radial-gradient(circle at 80% 20%, ${colors.accent}22 0%, transparent 38%)`, opacity: wash }} />
-      <div style={{ position: "absolute", width: 700, height: 700, border: `1px solid ${colors.accent}45`, borderRadius: "50%", right: -380, top: 250, transform: `rotate(${frame * 0.3}deg)` }} />
-      <div style={{ position: "absolute", left: 70, right: 70, top: 72, display: "flex", justifyContent: "space-between", color: `${colors.accent}cc`, font: "bold 18px monospace", letterSpacing: 3 }}><span>CLIPPER / MOTION</span><span>30 FPS</span></div>
+      {!quiet && <AbsoluteFill style={{ background: `radial-gradient(circle at 80% 20%, ${colors.accent}22 0%, transparent 38%)`, opacity: wash }} />}
+      {particles.map(p => <div key={p.key} aria-hidden="true" style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: p.size, height: p.size, borderRadius: "50%", background: colors.accent, opacity: p.opacity, transform: `translateY(${p.drift}px)`, pointerEvents: "none" }} />)}
+      {!quiet && <div style={{ position: "absolute", width: 700, height: 700, border: `1px solid ${colors.accent}45`, borderRadius: "50%", right: -380, top: 250, transform: `rotate(${frame * 0.3}deg)` }} />}
+      {!video && !quiet && <div style={{ position: "absolute", left: 70, right: 70, top: 72, display: "flex", justifyContent: "space-between", color: `${colors.accent}cc`, font: "bold 18px monospace", letterSpacing: 3 }}><span>CLIPPER / MOTION</span><span>30 FPS</span></div>}
+      {video ? <AbsoluteFill><Video src={resolveAudio(video.src)} objectFit="cover" /></AbsoluteFill> : null}
       {audioSrc ? <Audio src={resolveAudio(audioSrc)} /> : null}
       {music ? (
         <Audio
@@ -101,16 +161,31 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
           volume={f => musicGain(f, durationInFrames, fps, music, speech ?? (audioSrc ? [1] : null))}
         />
       ) : null}
+      {/* Animations over the speaker start when the word they are about is spoken, so they sit on the timeline of the whole
+          video (not inside one scene); scenes that take over the picture are drawn above them. */}
+      {video ? overlayWindows(scenes, scenes.map(sc => sc.visual ?? detectVisual(sc.text)), durationInFrames).map(w => (
+        <Sequence key={`overlay-${w.scene}`} from={w.from} durationInFrames={w.length} name={`Animasi ${w.scene + 1}`}>
+          <VideoOverlay scene={scenes[w.scene]} visual={scenes[w.scene].visual ?? detectVisual(scenes[w.scene].text)} colors={colors} position={overlay ?? "top"} length={w.length} offset={w.offset} brandMotion={brandMotion ?? "simple"} />
+        </Sequence>
+      )) : null}
       {scenes.map((scene, i) => {
         const start = from;
         from += scene.durationInFrames;
+        const clip = video ? clipPlan(scene, video.seconds, fps) : null;
         return (
           <Sequence key={i} from={start} durationInFrames={scene.durationInFrames} name={`Scene ${i + 1}`}>
-            <SceneView scene={scene} index={i} count={scenes.length} title={title} style={style} colors={colors} captions={captions} />
+            {video
+              ? <>
+                {clip && video ? <Sequence from={0} durationInFrames={clip.lengthFrames}><ClipCutaway src={video.src} startFrame={clip.startFrame} length={clip.lengthFrames} /></Sequence> : null}
+                {captions ? <VideoCaption scene={scene} /> : null}
+                {/* Cutaway: an opaque graphic over the speaker (at most 4 s); the video underneath keeps playing, so audio never breaks. */}
+                {scene.cut === "graphic" ? <Sequence from={0} durationInFrames={Math.min(scene.durationInFrames, 120)}><Cutaway scene={scene} colors={colors} length={Math.min(scene.durationInFrames, 120)} /></Sequence> : null}
+              </>
+              : <SceneView scene={scene} index={i} count={scenes.length} title={title} style={style} colors={colors} captions={captions} />}
           </Sequence>
         );
       })}
-      <div style={{ position: "absolute", bottom: 72, left: 70, right: 70, height: 4, background: `${colors.text}30` }}><div style={{ height: "100%", width: `${progress}%`, background: colors.accent }} /></div>
+      <div style={{ position: "absolute", bottom: 72, left: 70, right: 70, height: quiet ? 2 : 4, background: `${colors.text}30` }}><div style={{ height: "100%", width: `${progress}%`, background: colors.accent }} /></div>
     </AbsoluteFill>
   );
 };

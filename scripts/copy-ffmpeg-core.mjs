@@ -14,3 +14,14 @@ for (const name of ["ffmpeg-core.js", "ffmpeg-core.wasm"]) {
   if (!existsSync(to) || statSync(to).size !== statSync(from).size) copyFileSync(from, to);
 }
 console.log(`ffmpeg core copied to ${dest}`);
+
+// Self-host the onnxruntime-web WebAssembly runtime that Transformers.js (speech recognition) bundles,
+// (plain build for Safari < 26, asyncify build for the rest, as Transformers.js picks them) so no CDN is used at runtime. It is a different build from the one used by the voice-over (public/ort).
+const ortSrc = join(process.cwd(), "node_modules", "@huggingface", "transformers", "node_modules", "onnxruntime-web", "dist");
+const ortDest = join(process.cwd(), "public", "ort-asr");
+mkdirSync(ortDest, { recursive: true });
+for (const name of ["ort-wasm-simd-threaded.mjs", "ort-wasm-simd-threaded.wasm", "ort-wasm-simd-threaded.asyncify.mjs", "ort-wasm-simd-threaded.asyncify.wasm"]) {
+  const from = join(ortSrc, name), to = join(ortDest, name);
+  if (!existsSync(to) || statSync(to).size !== statSync(from).size) copyFileSync(from, to);
+}
+console.log(`speech runtime copied to ${ortDest}`);

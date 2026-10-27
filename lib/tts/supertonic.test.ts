@@ -78,6 +78,19 @@ describe("narration assembly", () => {
     const t = buildTimeline("Kalimat satu di sini.\nKalimat dua.", { kind: "scenes", seconds: sceneSeconds });
     expect(t.ok && t.totalFrames).toBe(frames[0] + frames[1]);
   });
+
+  it("adds the [jeda] silence after a scene and shifts the next clip by it", () => {
+    const clips = [new Float32Array(1000).fill(0.5), new Float32Array(1000).fill(-0.5)];
+    const { samples, sceneSeconds } = assembleNarration(clips, rate, FPS, [2, 0]);
+    expect(sceneSeconds[0]).toBeCloseTo(LEAD_SECONDS + 1 + TAIL_SECONDS + 2, 6);
+    const frames = sceneSeconds.map(s => sceneFrames(s));
+    const start2 = Math.round((frames[0] / FPS + LEAD_SECONDS) * rate);
+    // The 2 s gap is silent right up to the next scene's lead-in.
+    expect(samples.slice(Math.round((LEAD_SECONDS + 1) * rate) + 5, start2 - 5).every(v => v === 0)).toBe(true);
+    expect(samples[start2]).toBe(-0.5);
+    const t = buildTimeline("Kalimat satu di sini. [jeda 2s]\nKalimat dua.", { kind: "scenes", seconds: sceneSeconds });
+    expect(t.ok && t.scenes[0].pauseFrames).toBe(60);
+  });
   it("timeline rejects stale or oversized voice tracks", () => {
     expect(buildTimeline("Satu.\nDua kalimat.", { kind: "scenes", seconds: [2] })).toMatchObject({ ok: false });
     const r = buildTimeline("Satu kata ini.\nDua kata itu.", { kind: "scenes", seconds: [MAX_SECONDS, 5] });
