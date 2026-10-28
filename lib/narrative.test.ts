@@ -34,7 +34,7 @@ describe("planNarrative", () => {
     const plan = planNarrative([
       "Mengapa kebiasaan sulit berubah?",
       "Kebiasaan lama bertahan karena pemicunya selalu sama.",
-      "Pertama, jauhkan ponsel dari meja.",
+      "Pertama, ubah kebiasaan dengan menjauhkan ponsel dari meja.",
       "Ternyata, lingkungan adalah fondasi kebiasaan.",
       "Aku pernah gagal berkali-kali sebelum menemukan cara ini.",
       "Intinya, perubahan kecil lebih mudah dipertahankan.",
@@ -42,7 +42,7 @@ describe("planNarrative", () => {
     expect(plan.map(p => p.intent)).toEqual(["question", "cause-effect", "process", "insight", "story", "statement"]);
     expect(plan[1].strategy).toBe("diagram");
     expect(plan[2].strategy).toBe("diagram");
-    expect(plan[4].strategy).toBe("footage");
+    expect(plan[4].strategy).toBe("metaphor");
     expect(plan.every(p => p.visualCue.length > 20 && p.confidence.length > 0)).toBe(true);
     expect(plan[1].continuity).toEqual({ previousRelated: null, nextRelated: 2 });
   });
