@@ -123,15 +123,15 @@ function SceneView({ scene, index, count, title, style, colors }: {
   const visual = scene.visual ?? detectVisual(scene.text);
   const role = scene.narrative?.role ?? (index === 0 ? "hook" : index === count - 1 ? "resolution" : "continuation");
   const family = chooseFamily(visual, scene.narrative, role);
-  const box = contentBox(captions);
+  // Text scenes draw no karaoke caption (it would duplicate the headline), so no caption band is reserved.
+  const box = contentBox(false);
   return (
     <AbsoluteFill style={{ opacity: fadeIn }}>
       {scene.image ? <SceneImage src={scene.image} index={index} length={d} colors={colors} /> : null}
-      {/* Everything stays inside the platform safe area; the box shrinks when captions take the lower band. */}
+      {/* Everything stays inside the platform safe area; the full safe box is used because text scenes carry no caption band. */}
       <div data-family={family} style={{ position: "absolute", top: box.top, left: SAFE.side, width: box.width, height: box.height, display: "flex", flexDirection: "column", justifyContent: "center", color: colors.text, transform: `translateY(${drift}px) scale(${popScale})`, filter: blur ? `blur(${blur}px)` : undefined }}>
         <FamilyView family={family} scene={scene} visual={visual} role={role} index={index} count={count} title={title} style={style} colors={colors} box={{ width: box.width, height: box.height - 12 }} />
       </div>
-
     </AbsoluteFill>
   );
 }
