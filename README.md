@@ -1,49 +1,89 @@
 # Clipper Studio
 
-Mobile-first, local-first video tools for Safari on iPhone and iPad, in one Next.js app:
+**Clipper Studio** adalah web app Next.js untuk memotong video dan membuat video vertikal berbasis naskah. Dirancang mobile-first untuk Safari di iPhone/iPad, dengan pemrosesan utama di browser agar file video dan audio tidak perlu diunggah ke server aplikasi.
 
-- `/` **Clipper**: cut local videos into 9:16, 16:9 or 1:1 MP4 clips in the browser (this README).
-- `/motion` **Motion Graphics Lab**: script + narration → 1080×1920 MP4 with Remotion, rendered in the browser. See [MOTION_STUDIO.md](MOTION_STUDIO.md).
+## Fitur
 
-## What works
+### 1. Clipper — `/`
 
-1. **Pick a local video** (MP4/MOV/WebM/M4V, up to 1 GB and 60 minutes). It plays in the page and the duration is read automatically.
-2. **Choose the range**: type the start/end (`hh:mm:ss`, `mm:ss` or seconds, decimals allowed) or take them from the player position. Invalid ranges are explained before anything runs. One clip can be up to 5 minutes. Up to 5 ranges can be kept in a work list.
-3. **Choose the format**: 9:16, 16:9 or 1:1 at 1080p, 720p (default) or 480p, with a black background, a blurred background, or cropping to fill the frame.
-4. **Export**: FFmpeg (WebAssembly) cuts and re-encodes the clip in the browser to MP4 (H.264 + AAC, 30 fps, `faststart`). The page shows progress, lets you cancel, and offers a retry of the last export after a failure or cancel.
-5. **Save**: download the MP4, play it in the page, or use the share sheet (iPhone/iPad: "Save Video" to Photos).
+Memotong file video lokal menjadi MP4:
 
-A YouTube link can be opened in a **preview-only** embed to note timestamps. The app does not download YouTube videos. To export, use a file you own or have permission to use.
+- Input MP4, MOV, WebM, atau M4V; batas aplikasi hingga 1 GB dan 60 menit.
+- Pilih rentang waktu menggunakan posisi player atau input waktu. Satu klip maksimal 5 menit; hingga 5 rentang dapat disimpan dalam daftar kerja.
+- Rasio 9:16, 16:9, atau 1:1 dengan resolusi 1080p, 720p, atau 480p.
+- Pilihan latar hitam, latar blur, atau crop untuk memenuhi frame.
+- Ekspor menggunakan FFmpeg WebAssembly di browser ke MP4 H.264 + AAC, 30 fps. Proses menampilkan progres, mendukung pembatalan, dan menyediakan percobaan ulang.
+- Preview YouTube hanya berupa embed untuk membantu mencatat timestamp. Aplikasi tidak mengunduh video dari YouTube.
 
-## Architecture
+Kolom hook/subtitle pada Clipper adalah catatan; kolom tersebut tidak dibakar ke dalam hasil video.
 
-- Processing happens entirely in the browser. The source video is never uploaded, and no server function, storage, database, account or API key is needed. Vercel only serves static files.
-- The FFmpeg core (`@ffmpeg/core`, ~32 MB) is copied from `node_modules` into `public/ffmpeg/` by `scripts/copy-ffmpeg-core.mjs` before `dev`/`build`. It is served from our own origin (no CDN dependency) and downloaded once per session on the first export.
-- The source file is mounted read-only into the FFmpeg worker (WORKERFS) instead of being copied into WebAssembly memory. It falls back to an in-memory copy if mounting is not available.
-- Pure logic (time parsing, validation, output sizes, FFmpeg arguments, error messages) lives in `lib/clip.ts` and is unit-tested. The browser engine wrapper is in `lib/engine.ts`.
+### 2. Motion Graphics Studio — `/motion`
 
-Why not Vercel Functions? Request bodies are limited to a few MB and execution time is limited, so uploading and transcoding up to 1 GB server-side would fail or need paid storage plus a worker. Browser processing costs nothing and keeps the video private. The trade-off is speed: it depends on the device, and long 1080p clips are slow on phones.
+Membuat video vertikal dari naskah, visual, dan audio:
 
-## Limitations
+- Output 1080×1920, 30 fps, MP4 H.264 dengan AAC jika audio tersedia.
+- Preview timeline menggunakan Remotion Player; scene dapat dipilih untuk berpindah ke bagian terkait.
+- Pilihan gaya animasi, palet warna, template visual, dan koreksi manual per scene.
+- Voice-over otomatis Bahasa Indonesia atau Inggris diproses di perangkat, atau gunakan rekaman/berkas audio sendiri.
+- Backsound dapat disintesis di perangkat atau menggunakan audio yang diunggah.
+- Render dilakukan di browser melalui WebCodecs; tidak memerlukan render server atau penyimpanan video di server aplikasi.
 
-- ffmpeg.wasm runs single-threaded. On iPhone/iPad, expect roughly real-time or slower at 720p and noticeably slower at 1080p. Keep the tab in the foreground; Safari may suspend background tabs.
-- Very large or unusual sources (for example HEVC 4K) can exceed browser memory or codec support. The app reports this and suggests a shorter clip or lower resolution.
-- Hook/subtitle fields are notes only and are not burned into the video.
-- Automated tests run in Chromium (desktop and phone-sized viewport). They have not been run on a real iPhone/iPad Safari; test on target devices before relying on it.
-- Not included: AI highlight detection, automatic transcription, downloading from YouTube or other platforms.
+Baca [MOTION_STUDIO.md](MOTION_STUDIO.md) untuk batas input, detail audio, arsitektur render, dan catatan Remotion.
 
-## Develop
+#### Script-First Visual Director
+
+Perencanaan visual pada branch pengembangan ini memisahkan **maksud narasi** dari **cara visual menyajikannya**. Planner deterministik membaca sinyal bahasa dan konteks scene, lalu memberi rekomendasi untuk:
+
+- Pertanyaan, kontras, sebab-akibat, proses, bukti/angka, insight, instruksi, cerita, refleksi, kesimpulan, dan pernyataan.
+- Keluarga komposisi seperti editorial, kinetic typography, explainer, perbandingan, data, proses, metafora, dan story beats.
+- Brief visual, alasan pemilihan, petunjuk kontinuitas, dan tingkat keyakinan heuristik agar rekomendasi dapat ditinjau sebelum render.
+
+Planner deterministik ini **bukan model AI**: ia menggunakan aturan dan sinyal teks, sehingga interpretasinya dapat keliru. Ia tidak menulis ulang naskah. Komposisi yang membutuhkan pemisahan makna tertentu hanya menampilkan pemisahan saat ada pola teks yang cukup aman; jika tidak, komposisi fallback digunakan. Pengguna tetap perlu memeriksa dan dapat mengubah template/ikon secara manual.
+
+Motion Studio juga memiliki bantuan AI opsional untuk pengarahan visual dan perapian transkrip. Penggunaan bantuan tersebut bergantung pada konfigurasi/consent dan dapat mengirim **teks naskah atau transkrip** ke penyedia AI. Jangan menganggap seluruh fitur AI berjalan lokal; periksa pengaturan dan persetujuan sebelum menggunakannya.
+
+> Status pengembangan: Script-First Visual Director sedang ditinjau melalui pull request dan belum dianggap tersedia pada deployment produksi sampai perubahan digabung dan deployment terkait diperiksa.
+
+## Arsitektur dan privasi
+
+- **Clipper:** file video sumber diproses di browser dan tidak diunggah ke server aplikasi. FFmpeg core disajikan dari origin aplikasi, bukan CDN pihak ketiga. File sumber dipasang read-only ke worker bila didukung, dengan fallback ke memori.
+- **Motion Studio:** render video, TTS otomatis, dan backsound otomatis berjalan di perangkat/browser. Rekaman atau audio yang dipilih pengguna digunakan untuk membuat output lokal.
+- **Fitur AI opsional:** beberapa alur dapat mengirim teks naskah/transkrip ke penyedia AI setelah konfigurasi dan persetujuan. Audio/video sumber tidak otomatis dikirim hanya karena fitur tersebut tersedia; baca penjelasan fitur yang digunakan.
+- **Layanan eksternal:** aplikasi memuat Google Fonts; preview YouTube menggunakan embed dari `youtube-nocookie.com`. Remotion Web Renderer dapat mengirim event penggunaan ke `remotion.pro` (origin situs dan status sukses, bukan konten video).
+- Tidak ada klaim bahwa seluruh aplikasi sepenuhnya offline. Pemrosesan lokal tetap bergantung pada browser, aset yang sudah dimuat, codec, dan memori perangkat.
+
+## Batasan yang diketahui
+
+- FFmpeg WebAssembly untuk Clipper berjalan single-threaded. Ekspor panjang, khususnya 1080p di iPhone/iPad, dapat berjalan lambat. Safari dapat menangguhkan tab latar belakang; pertahankan tab aktif selama ekspor.
+- Video sangat besar atau codec yang tidak didukung (misalnya beberapa sumber HEVC 4K) dapat melampaui memori atau kemampuan browser.
+- Render Motion Studio memerlukan dukungan WebCodecs/H.264. Chrome/Edge modern umumnya mendukung; Safari 17+ diharapkan mendukung, tetapi **uji perangkat iPhone/iPad nyata tetap diperlukan** sebelum mengandalkannya untuk produksi.
+- Perencanaan semantik berbasis aturan bukan pemahaman bahasa sempurna. Periksa scene yang diberi keyakinan rendah, metafora abstrak, dan pemisahan sebab-akibat.
+- Preview dan pengujian di Chromium tidak membuktikan kompatibilitas penuh pada Safari iPad.
+
+## Pengembangan lokal
+
+Persyaratan: Node.js sesuai konfigurasi proyek, npm, dan—untuk pengujian output media tertentu—FFmpeg serta Playwright.
 
 ```sh
 npm ci
-npm run dev          # copies the FFmpeg core, starts Next.js
+npm run dev          # menyiapkan aset FFmpeg/TTS lalu menjalankan Next.js
 npm run lint
 npm run typecheck
-npm test             # unit tests; also renders every format with native ffmpeg if it is installed
+npm test             # unit tests; beberapa pemeriksaan media memerlukan FFmpeg native
 npm run build
-npm run test:e2e     # after build: real Clipper export and Motion render in headless Chromium, verified with ffprobe (needs ffmpeg + Playwright)
+npm run test:e2e     # setelah build; memerlukan FFmpeg + Playwright
 ```
 
-## Privacy
+Untuk render Remotion melalui CLI:
 
-The selected video stays on the device. The page loads Google Fonts and, only if you use the YouTube preview, an embed from youtube-nocookie.com. There is no analytics, no upload, and no AI or transcription API.
+```sh
+npm run remotion:studio
+npm run render:motion
+npm run render:script
+```
+
+Perintah dan output CLI dapat berubah mengikuti konfigurasi proyek; periksa `package.json` sebelum menjalankan workflow produksi.
+
+## Lisensi
+
+Periksa ketentuan lisensi Remotion yang berlaku untuk ukuran organisasi dan penggunaan Anda: https://www.remotion.dev/license.
