@@ -25,7 +25,7 @@ function load(): Fields {
 }
 
 /**
- * Affiliate mode: the creator types the product's real facts; the AI writes the script only from them; a claim guard
+ * The affiliate mode's own place: the creator types the product's real facts; the AI writes the script only from them; a claim guard
  * checks every script (the AI's and the creator's own) against those facts and points at risky sentences. The guard
  * never blocks: it says which sentence and why, and the creator decides. The facts are kept on this device only.
  */
@@ -87,8 +87,8 @@ export default function AffiliatePanel({ script, onUseScript, onRemoveLine, onPr
 
   const draftLineFlags = (i: number) => draftFindings.filter(x => x.line === i);
 
-  return <details className="ai-director affiliate-panel" data-testid="affiliate-panel" open={!!f.product || undefined}>
-    <summary><b>Konten affiliate</b> <small>(opsional) AI menulis naskah dari data produk Anda, dan klaim berisiko ditandai</small></summary>
+  return <div className="ai-director affiliate-panel affiliate-only" data-testid="affiliate-panel">
+    <b>Data produk</b>
     <small>Isi hanya fakta yang benar. AI hanya boleh memakai data ini, dan pemeriksa klaim memeriksa naskah terhadapnya. Data disimpan di perangkat ini saja.</small>
     <label className="field-label" htmlFor="aff-product">Nama produk</label>
     <input id="aff-product" data-testid="aff-product" value={f.product} maxLength={80} onChange={e => set("product", e.target.value)} placeholder="mis. Botol Minum Termos Aqualux 750 ml" />
@@ -152,5 +152,5 @@ export default function AffiliatePanel({ script, onUseScript, onRemoveLine, onPr
       {photoMsg && <small role="status" data-testid="aff-photo-msg">{photoMsg}</small>}
     </div>}
     <small className="aff-note" data-testid="aff-disclosure">{DISCLOSURE_NOTE}</small>
-  </details>;
+  </div>;
 }

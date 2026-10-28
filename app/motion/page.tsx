@@ -55,6 +55,9 @@ const MOTION_INTENSITY_LABELS: Record<string, string> = {
   quiet: "Tenang", emphasis: "Penekanan", impact: "Dampak kuat",
 };
 
+type Mode = "normal" | "affiliate";
+const MODE_KEY = "clipper:motion:mode:v1";
+
 type Track = { file: File; url: string; seconds: number };
 /** A scene picture kept in memory only (never uploaded or saved with the session). */
 type SceneImageFile = { url: string; name: string; /** Set for stock photos: who to credit and where. */ credit?: { text: string; href: string } };
@@ -148,6 +151,10 @@ export default function MotionStudio() {
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   // Set while the affiliate panel holds a complete product brief: this is then a selling video.
   const [affiliateBrief, setAffiliateBrief] = useState<AffiliateBrief | null>(null);
+  // Which kind of content this is: ordinary, or a selling (affiliate) video. The last choice is remembered on this device.
+  const [contentMode, setContentMode] = useState<Mode>("normal");
+  useEffect(() => { try { if (localStorage.getItem(MODE_KEY) === "affiliate") setContentMode("affiliate"); } catch { /* storage blocked: starts as ordinary content */ } }, []);
+  function chooseMode(m: Mode) { setContentMode(m); try { localStorage.setItem(MODE_KEY, m); } catch { /* not remembered */ } }
   const [directorNote, setDirectorNote] = useState("");
   const [beforeDirector, setBeforeDirector] = useState<{ style: StyleId; palette: PaletteId; contentPreset: ContentPresetId | "custom"; overrides: Record<string, VisualOverride>; cutOverrides: Record<string, Cut> } | null>(null);
   const imagesRef = useRef(images);
@@ -602,6 +609,9 @@ export default function MotionStudio() {
   }
 
   const busy = rendering || recording || narrationBusy || voiceBusy;
+  // Editing over a source video is ordinary content only; the chosen mode comes back when the video is removed.
+  const videoMode = videoEdit && !!source;
+  const activeMode: Mode = videoMode ? "normal" : contentMode;
   const colors = PALETTES[palette];
   return (
     <main className="motion-shell">
@@ -610,14 +620,18 @@ export default function MotionStudio() {
         <Link className="back-link" href="/">← Clipper Studio</Link>
       </header>
 
-      <section className="motion-intro">
-        <div className="motion-eyebrow"><span className="live-dot" /> MOTION GRAPHICS LAB · REMOTION</div>
-        <h1>Words that <em>move.</em><br />Ideas that stay.</h1>
-        <p>Tulis naskah, buat voice over otomatis (Indonesia/English), tambahkan backsound, lihat pratinjau, lalu render MP4 vertikal 1080×1920 langsung di browser.</p>
+      <section className="motion-intro compact">
+        <div className="seg two mode-switch" role="radiogroup" aria-label="Jenis konten">
+          <button role="radio" aria-checked={activeMode === "normal"} className={activeMode === "normal" ? "active" : ""} onClick={() => chooseMode("normal")} data-testid="mode-normal">Konten biasa</button>
+          <button role="radio" aria-checked={activeMode === "affiliate"} className={activeMode === "affiliate" ? "active" : ""} disabled={videoMode} onClick={() => chooseMode("affiliate")} data-testid="mode-affiliate">Affiliate</button>
+        </div>
+        <p className="mode-hint" data-testid="mode-hint">{videoMode ? "Affiliate tidak tersedia saat mengedit di atas video sumber. Lepas videonya (Ganti video) untuk memakainya."
+          : activeMode === "affiliate" ? "Isi data produk, AI menulis naskah dari data itu, dan klaim berisiko ditandai. Naskah dan pengaturan tetap ada saat Anda pindah ke Konten biasa."
+          : "Tulis naskah sendiri, atau mulai dari video sumber. Naskah dan pengaturan tetap ada saat Anda pindah ke Affiliate."}</p>
       </section>
 
       <div className="studio-grid">
-        <section className="studio-panel">
+        <section className="studio-panel" data-mode={activeMode}>
           <div className="panel-heading"><div><small>01 / NASKAH & AUDIO</small><h2>Atur video</h2></div><span className="local-tag">{cloudUser ? "Tersinkron · tanpa media" : "Lokal · tanpa server"}</span></div>
           <CloudAccount onUser={setCloudUser} />
           {handoffNote && <div className="notice" role="status" data-testid="handoff-note">{handoffNote}</div>}
@@ -626,11 +640,12 @@ export default function MotionStudio() {
             <button className="text-button" data-testid="restore-session" onClick={() => void restoreSession()}>Lanjutkan</button>{" "}
             <button className="text-button" data-testid="restore-discard" onClick={() => void discardSession()}>Mulai baru</button>
           </div>}
-          {offer && !imported && <div className="notice" data-testid="transcript-offer">
+          <div className="step-title" data-testid="step-1"><b>1</b>{activeMode === "affiliate" ? "Produk dan naskah" : "Naskah"}</div>
+          {offer && !imported && <div className="notice normal-only" data-testid="transcript-offer">
             Transkrip dari Clipper tersedia: <strong>{offer.source}</strong> ({allWords(offer.transcript).length} kata, {Math.round(offer.transcript.duration)} dtk).{" "}
             <button className="text-button" data-testid="transcript-import" onClick={() => { setScript(scriptFromTranscript(offer.transcript, FPS)); setImported(offer.transcript); setVoiceMode("manual"); setOffer(null); }}>Impor ke naskah</button>
           </div>}
-          {imported && <div className="notice" data-testid="transcript-status">
+          {imported && <div className="notice normal-only" data-testid="transcript-status">
             {timed ? (videoEdit ? "Mode edit video: video asli (dengan suaranya) jadi dasar; subtitle mengikuti waktu kata, dan scene dengan kata kunci/angka berganti ke grafis. Atur per scene lewat \"Layar\"." : "Subtitle mengikuti waktu kata dari transkrip. Unggah audio asli video pada Voice over → Rekam / unggah agar suara dan subtitle sama.")
               : timings ? "Audio yang dipilih tidak sama panjang dengan transkrip, jadi waktu dibagi otomatis. Unggah audio asli klip yang sama."
               : "Naskah sudah diubah dari transkrip, jadi waktu kata tidak dipakai lagi. Subtitle dibagi otomatis."}
@@ -657,24 +672,24 @@ export default function MotionStudio() {
               <option value="full">Lengkap (meriah)</option>
             </select>
           </label>}
-          {imported && !timed && voiceMode !== "ai" && <div className="notice notice-error" data-testid="timing-lost">
+          {imported && !timed && voiceMode !== "ai" && <div className="notice notice-error normal-only" data-testid="timing-lost">
             Naskah sudah berbeda terlalu jauh dari transkrip, sehingga waktu subtitle memakai <b>perkiraan</b> (bukan waktu ucapan sebenarnya) dan video bisa lebih panjang dari sumbernya.{" "}
             <button className="text-button" data-testid="timing-restore" onClick={() => setScript(scriptFromTranscript(imported, FPS))}>Kembalikan naskah dari transkrip</button>
           </div>}
-          {timed && timed.aligned && <div className="notice" data-testid="aligned-notice">Naskah sudah diedit setelah transkripsi; kata-katanya diselaraskan dengan ucapan asli, jadi waktu caption mungkin bergeser sedikit di bagian yang diubah.</div>}
-          {timed && timed.tooShort > 0 && <div className="notice notice-error" data-testid="short-warning">{timed.tooShort} scene lebih pendek dari {MIN_SCENE_SECONDS} dtk, sehingga akan diperpanjang dan membuat subtitle sesudahnya bergeser. Gabungkan barisnya di kolom Naskah, tetapi pertahankan kata-katanya.</div>}
-          <div className="field-label">Video sumber <span className="field-hint">opsional · unggah video, ucapannya jadi naskah &amp; subtitle otomatis (maks. 3 menit)</span></div>
+          {timed && timed.aligned && <div className="notice normal-only" data-testid="aligned-notice">Naskah sudah diedit setelah transkripsi; kata-katanya diselaraskan dengan ucapan asli, jadi waktu caption mungkin bergeser sedikit di bagian yang diubah.</div>}
+          {timed && timed.tooShort > 0 && <div className="notice notice-error normal-only" data-testid="short-warning">{timed.tooShort} scene lebih pendek dari {MIN_SCENE_SECONDS} dtk, sehingga akan diperpanjang dan membuat subtitle sesudahnya bergeser. Gabungkan barisnya di kolom Naskah, tetapi pertahankan kata-katanya.</div>}
+          <div className="field-label normal-only">Video sumber <span className="field-hint">opsional · unggah video, ucapannya jadi naskah &amp; subtitle otomatis (maks. 3 menit)</span></div>
           {!source
-            ? <label className="upload-source"><input type="file" accept="video/*,.mp4,.mov,.m4v,.webm" onChange={onSourceVideo} data-testid="source-video" /></label>
-            : <>
+            ? <label className="upload-source normal-only"><input type="file" accept="video/*,.mp4,.mov,.m4v,.webm" onChange={onSourceVideo} data-testid="source-video" /></label>
+            : <div className="normal-only">
               <video ref={sourceVideo} src={source.url} controls playsInline preload="metadata" style={{ width: "100%", maxHeight: 220, borderRadius: 10, background: "#000" }} />
               <button className="text-button" disabled={asrBusy} onClick={() => { setSource(null); setImported(null); setVideoEdit(false); setCutOverrides({}); setClipStarts({}); }}>Ganti video ({source.file.name})</button>
               <TranscriptPanel key={source.url} file={source.file} video={sourceVideo} range={{ start: 0, duration: source.seconds }} locked={false} onWorking={setAsrBusy} onCopy={setScript} onUseTiming={useTimingOnly}
                 onUse={t => { setScript(scriptFromTranscript(t, FPS)); setImported(t); setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptionOffset(0); setPalette("pearl"); setContentPreset("custom"); setOffer(null); }} />
-            </>}
-          {sourceError && <p className="field-error" role="alert">{sourceError}</p>}
-          {!(videoEdit && source) && <AffiliatePanel script={script} disabled={rendering} onBrief={setAffiliateBrief} onProductPhoto={placeProductPhoto}
-            onUseScript={(text, t) => { setScript(text); if (t) setTitle(t.slice(0, 60)); setContentPreset("custom"); }} onRemoveLine={i => setScript(removeLine(script, i))} />}
+            </div>}
+          {sourceError && <p className="field-error normal-only" role="alert">{sourceError}</p>}
+          <AffiliatePanel script={script} disabled={rendering} onBrief={setAffiliateBrief} onProductPhoto={placeProductPhoto}
+            onUseScript={(text, t) => { setScript(text); if (t) setTitle(t.slice(0, 60)); setContentPreset("custom"); }} onRemoveLine={i => setScript(removeLine(script, i))} />
           <label className="field-label" htmlFor="motion-script">Naskah <span className="field-hint">satu baris/kalimat = satu scene · *kata* untuk menonjolkan</span></label>
           <textarea id="motion-script" data-testid="script" value={script} onChange={e => setScript(e.target.value)} rows={7} placeholder="Tulis naskah video…" />
           <div className="char-count">{script.length} / 3000</div>
@@ -682,6 +697,7 @@ export default function MotionStudio() {
           <label className="field-label" htmlFor="motion-title">Judul / teks pembuka</label>
           <input id="motion-title" data-testid="title" value={title} onChange={e => setTitle(e.target.value)} maxLength={60} />
           {titleError && <p className="field-error">{titleError}</p>}
+          <details className="fold" data-testid="fold-look"><summary><b>2 · Tampilan</b> <small>{STYLES.find(x => x.id === style)?.label} · {PALETTES[palette].label}{contentPreset !== "custom" ? ` · ${CONTENT_PRESETS.find(p => p.id === contentPreset)?.label}` : ""}</small></summary>
           <label className="field-label" htmlFor="motion-preset">Template konten</label>
           <select id="motion-preset" data-testid="content-preset" value={contentPreset} onChange={e => {
             const id = e.target.value as ContentPresetId | "custom";
@@ -697,7 +713,9 @@ export default function MotionStudio() {
             <div><label className="field-label" htmlFor="motion-style">Gaya animasi</label><select id="motion-style" data-testid="style" value={style} onChange={e => { setStyle(e.target.value as StyleId); setContentPreset("custom"); }}>{STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></div>
             <div><label className="field-label" htmlFor="motion-palette">Palet warna</label><select id="motion-palette" data-testid="palette" value={palette} onChange={e => { setPalette(e.target.value as PaletteId); setContentPreset("custom"); }}>{(Object.keys(PALETTES) as PaletteId[]).map(p => <option key={p} value={p}>{PALETTES[p].label}</option>)}</select></div>
           </div>
+          </details>
 
+          <div className="step-title" data-testid="step-3"><b>3</b>Suara dan musik</div>
           <label className="field-label">Voice over / narasi</label>
           <div className="seg" role="radiogroup" aria-label="Voice over">
             {([["ai", "🤖 Otomatis"], ["manual", "🎙 Rekam / unggah"], ["none", "Tanpa"]] as [VoiceMode, string][]).map(([id, label]) =>
@@ -749,7 +767,7 @@ export default function MotionStudio() {
             {audioError && <p className="field-error" role="alert" data-testid="audio-error">{audioError}</p>}
           </div>}
 
-          <label className="field-label">Backsound</label>
+          <details className="fold" data-testid="fold-music"><summary><b>Backsound</b> <small>{musicMode === "none" ? "Tanpa" : musicMode === "auto" ? `Otomatis · ${MOODS.find(m => m.id === mood)?.label}` : "Unggahan Anda"}</small></summary>
           <div className="audio-box">
             <input ref={musicInput} type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg" onChange={e => void onMusic(e)} className="file-hidden" data-testid="music-input" />
             <div className="seg" role="radiogroup" aria-label="Backsound">
@@ -778,7 +796,9 @@ export default function MotionStudio() {
             </>}
             {musicError && <p className="field-error" role="alert" data-testid="music-error">{musicError}</p>}
           </div>
+          </details>
 
+          <details className="fold" data-testid="fold-duration"><summary><b>Durasi dan subtitle</b> <small>{narration ? "Ikuti narasi" : voiceMode === "ai" ? "Ikuti suara otomatis" : target === "auto" ? "Otomatis" : `${target} detik`} · {captions ? "Subtitle tampil" : "Tanpa subtitle"}</small></summary>
           <div className="field-row">
             <div><label className="field-label" htmlFor="motion-duration">Durasi</label>
               <select id="motion-duration" data-testid="duration" value={narration ? "audio" : voiceMode === "ai" ? "auto" : target} disabled={!!narration || voiceMode === "ai"} onChange={e => setTarget(e.target.value)}>
@@ -789,7 +809,9 @@ export default function MotionStudio() {
             <div><label className="field-label" htmlFor="motion-captions">Subtitle</label>
               <select id="motion-captions" value={captions ? "on" : "off"} onChange={e => setCaptions(e.target.value === "on")}><option value="on">Tampilkan, sorot kata</option><option value="off">Tanpa subtitle</option></select></div>
           </div>
+          </details>
 
+          <div className="step-title" data-testid="step-4"><b>4</b>Render</div>
           {blocker && <p className="field-error" role="alert" data-testid="blocker">{blocker}</p>}
           {timeline.ok && timeline.warnings.map(w => <p className="field-warning" key={w}>{w}</p>)}
 
@@ -815,7 +837,7 @@ export default function MotionStudio() {
           </div>
           <p className="preview-disclaimer">Pratinjau memakai komposisi yang sama dengan hasil render, jadi teks, durasi scene, narasi, dan backsound identik dengan MP4.</p>
           {timeline.ok && <AiDirector language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"} active={Object.keys(directorInfo).length > 0} note={directorNote} onPlan={applyDirector} onUndo={undoDirector}
-            input={{ scenes: timeline.scenes.map(sc => ({ text: sc.text, seconds: sc.durationInFrames / FPS })), videoEdit: !!(videoEdit && source), style, palette, affiliate: affiliateBrief && !(videoEdit && source) ? { product: affiliateBrief.product } : undefined,
+            input={{ scenes: timeline.scenes.map(sc => ({ text: sc.text, seconds: sc.durationInFrames / FPS })), videoEdit: !!(videoEdit && source), style, palette, affiliate: activeMode === "affiliate" && affiliateBrief ? { product: affiliateBrief.product } : undefined,
               current: timeline.scenes.map(sc => ({ template: overrides[sc.text]?.template, icon: overrides[sc.text]?.icon, cut: cutOverrides[sc.text] })) }} />}
           {timeline.ok && !(videoEdit && source) && <PexelsPanel disabled={rendering} onApply={putStockPhoto}
             scenes={timeline.scenes.map(sc => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery, hasImage: !!images[sc.text] }))} />}
