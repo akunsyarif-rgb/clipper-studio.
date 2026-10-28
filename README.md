@@ -37,6 +37,8 @@ Perencanaan visual pada branch pengembangan ini memisahkan **maksud narasi** dar
 - Pertanyaan, kontras, sebab-akibat, proses, bukti/angka, insight, instruksi, cerita, refleksi, kesimpulan, dan pernyataan.
 - Keluarga komposisi seperti editorial, kinetic typography, explainer, perbandingan, data, proses, metafora, dan story beats.
 - Brief visual, alasan pemilihan, petunjuk kontinuitas, dan tingkat keyakinan heuristik agar rekomendasi dapat ditinjau sebelum render.
+- Petunjuk kontinuitas dapat mengikuti referensi eksplisit seperti “hal ini” atau “cara tersebut”; ini heuristik konservatif, bukan pemahaman konteks sempurna.
+- Peringatan review untuk scene panjang, sinyal makna lemah, dan angka/klaim yang perlu diverifikasi sumbernya. Peringatan bukan bukti bahwa naskah salah; keputusan akhir tetap pada kreator.
 
 Planner deterministik ini **bukan model AI**: ia menggunakan aturan dan sinyal teks, sehingga interpretasinya dapat keliru. Ia tidak menulis ulang naskah. Komposisi yang membutuhkan pemisahan makna tertentu hanya menampilkan pemisahan saat ada pola teks yang cukup aman; jika tidak, komposisi fallback digunakan. Pengguna tetap perlu memeriksa dan dapat mengubah template/ikon secara manual.
 
