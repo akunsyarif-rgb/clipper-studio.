@@ -105,15 +105,15 @@ function SceneImage({ src, index, length, colors }: { src: string; index: number
 
 function SceneView({ scene, index, count, title, style, colors, captions }: {
   scene: Scene; index: number; count: number; title: string; style: StyleId;
-  colors: (typeof PALETTES)[keyof typeof PALETTES]; captions: boolean;
+  colors: (typeof PALETTES)[keyof typeof PALETTES];
 }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const d = scene.durationInFrames;
   const intensity = scene.narrative?.intensity ?? "emphasis";
   const calm = style === "editorial" || intensity === "quiet";
-  // Scene-level motion is the same for every family; presets only tune its amplitude.
-  const fadeOut = interpolate(frame, [d - 8, d], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  // Scenes are contiguous and do not overlap. Fade-in only; fading out the previous scene
+  // before the next Sequence starts creates an unintended dim/blank gap between scenes.
   // The first scene is visible from frame 0 so the video thumbnail is never blank.
   const fadeIn = index === 0 ? 1 : interpolate(frame, [0, calm ? 10 : style === "cinematic" ? 14 : 6], [0, 1], { extrapolateRight: "clamp" });
   const drift = interpolate(frame, [0, d], calm ? [6, 0] : style === "cinematic" ? [24, -18] : [14, -4], { easing: Easing.bezier(0.33, 0, 0.2, 1), extrapolateLeft: "clamp", extrapolateRight: "clamp" });
@@ -124,22 +124,14 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
   const role = scene.narrative?.role ?? (index === 0 ? "hook" : index === count - 1 ? "resolution" : "continuation");
   const family = chooseFamily(visual, scene.narrative, role);
   const box = contentBox(captions);
-  const line = phraseLine(stripMarks(scene.text), activeWordIndex(scene.text, frame, spokenFrames(scene), scene.wordStarts));
-
   return (
-    <AbsoluteFill style={{ opacity: Math.min(fadeIn, fadeOut) }}>
+    <AbsoluteFill style={{ opacity: fadeIn }}>
       {scene.image ? <SceneImage src={scene.image} index={index} length={d} colors={colors} /> : null}
       {/* Everything stays inside the platform safe area; the box shrinks when captions take the lower band. */}
       <div data-family={family} style={{ position: "absolute", top: box.top, left: SAFE.side, width: box.width, height: box.height, display: "flex", flexDirection: "column", justifyContent: "center", color: colors.text, transform: `translateY(${drift}px) scale(${popScale})`, filter: blur ? `blur(${blur}px)` : undefined }}>
         <FamilyView family={family} scene={scene} visual={visual} role={role} index={index} count={count} title={title} style={style} colors={colors} box={{ width: box.width, height: box.height - 12 }} />
       </div>
-      {captions && line.words.length > 0 && (
-        <div style={{ position: "absolute", left: SAFE.side, right: SAFE.side, bottom: SAFE.bottom + 24, display: "flex", justifyContent: "center" }}>
-          <div style={{ background: "#000000b0", borderRadius: 16, padding: "16px 28px", fontFamily: "Arial, sans-serif", fontWeight: 800, fontSize: 46, lineHeight: 1.25, color: "#fff", textAlign: "center" }}>
-            {line.words.map((w, i) => <span key={i} style={{ color: i === line.activeInLine ? "#ffe066" : "#fff" }}>{w}{i < line.words.length - 1 ? " " : ""}</span>)}
-          </div>
-        </div>
-      )}
+
     </AbsoluteFill>
   );
 }
@@ -198,7 +190,7 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
                 {/* Cutaway: an opaque graphic over the speaker (at most 4 s); the video underneath keeps playing, so audio never breaks. */}
                 {scene.cut === "graphic" ? <Sequence from={0} durationInFrames={Math.min(scene.durationInFrames, 120)}><Cutaway scene={scene} colors={colors} length={Math.min(scene.durationInFrames, 120)} /></Sequence> : null}
               </>
-              : <SceneView scene={scene} index={i} count={scenes.length} title={title} style={style} colors={colors} captions={captions} />}
+              : <SceneView scene={scene} index={i} count={scenes.length} title={title} style={style} colors={colors} />}
           </Sequence>
         );
       })}
