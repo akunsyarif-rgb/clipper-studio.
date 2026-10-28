@@ -27,7 +27,7 @@ describe("planNarrative", () => {
 
   it("does not require every sentence to use a high-intensity motion", () => {
     const plan = planNarrative(["Kenapa ini terjadi?", "Hal itu terjadi karena kebiasaan.", "Intinya, buat perubahan kecil."]);
-    expect(plan.map(p => p.intensity)).toEqual(["impact", "quiet", "quiet"]);
+    expect(plan.map(p => p.intensity)).toEqual(["impact", "emphasis", "quiet"]);
   });
 
   it("distinguishes process, story, evidence, contrast and reflection beats", () => {
