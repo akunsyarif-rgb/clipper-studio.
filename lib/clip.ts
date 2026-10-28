@@ -107,13 +107,19 @@ export function videoFilter(aspect: Aspect, quality: Quality, fit: Fit): string 
 
 export const OUTPUT_NAME = "clipper-export.mp4";
 
-export function ffmpegArgs(input: string, range: { start: number; duration: number }, aspect: Aspect, quality: Quality, fit: Fit): string[] {
+/** A watermark image (second input, file name inside FFmpeg's file system) laid over the finished frame at x, y. */
+export type WatermarkOverlay = { file: string; x: number; y: number };
+
+export function ffmpegArgs(input: string, range: { start: number; duration: number }, aspect: Aspect, quality: Quality, fit: Fit, watermark?: WatermarkOverlay | null): string[] {
+  const picture = watermark
+    ? ["-i", watermark.file, "-t", range.duration.toFixed(3),
+      "-filter_complex", `[0:v:0]${videoFilter(aspect, quality, fit)}[base];[base][1:v]overlay=${watermark.x}:${watermark.y}:format=auto,format=yuv420p[out]`,
+      "-map", "[out]", "-map", "0:a:0?"]
+    : ["-t", range.duration.toFixed(3), "-map", "0:v:0", "-map", "0:a:0?", "-vf", videoFilter(aspect, quality, fit)];
   return [
     "-ss", range.start.toFixed(3),
     "-i", input,
-    "-t", range.duration.toFixed(3),
-    "-map", "0:v:0", "-map", "0:a:0?",
-    "-vf", videoFilter(aspect, quality, fit),
+    ...picture,
     "-r", "30",
     "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-pix_fmt", "yuv420p",
     "-c:a", "aac", "-b:a", "128k", "-ac", "2",

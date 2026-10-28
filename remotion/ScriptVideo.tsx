@@ -3,11 +3,13 @@ import { Audio, Video } from "@remotion/media";
 import { AbsoluteFill, Easing, Img, interpolate, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig, type CalculateMetadataFunction } from "remotion";
 import { kenBurns } from "../lib/scene-image";
 import { musicGain } from "../lib/audio";
-import { activeWordIndex, clipPlan, phraseLine, spokenFrames, PALETTES, totalFrames, type Scene, type StyleId, type VideoProps } from "../lib/script";
+import { activeWordIndex, clipPlan, HEIGHT, phraseLine, spokenFrames, PALETTES, totalFrames, WIDTH, type Scene, type StyleId, type VideoProps } from "../lib/script";
 import { chooseFamily, planLayouts, type Layout } from "../lib/composition";
 import { CAPTION_BOTTOM, CONTENT_WIDTH, contentBox, MOTION, SAFE } from "../lib/layout";
 import { detectVisual, stripMarks } from "../lib/visuals";
 import { overlayWindows } from "../lib/overlay";
+import { watermarkInsets } from "../lib/watermark";
+import { measureWatermark, WatermarkLayer } from "./Watermark";
 import { FamilyView } from "./Families";
 import { VideoOverlay } from "./Overlays";
 import { BottomVisual, TopVisual } from "./SceneVisuals";
@@ -104,8 +106,8 @@ function SceneImage({ src, index, length, colors }: { src: string; index: number
   );
 }
 
-function SceneView({ scene, index, count, title, style, colors, layout }: {
-  layout: Layout; scene: Scene; index: number; count: number; title: string; style: StyleId;
+function SceneView({ scene, index, count, title, style, colors, layout, insets }: {
+  layout: Layout; insets: { top: number; bottom: number }; scene: Scene; index: number; count: number; title: string; style: StyleId;
   colors: (typeof PALETTES)[keyof typeof PALETTES];
 }) {
   const frame = useCurrentFrame();
@@ -125,7 +127,7 @@ function SceneView({ scene, index, count, title, style, colors, layout }: {
   const role = scene.narrative?.role ?? (index === 0 ? "hook" : index === count - 1 ? "resolution" : "continuation");
   const family = chooseFamily(visual, scene.narrative, role);
   // Text scenes draw no karaoke caption (it would duplicate the headline), so no caption band is reserved.
-  const box = contentBox(false);
+  const box = contentBox(false, insets);
   return (
     <AbsoluteFill style={{ opacity: fadeIn }}>
       {scene.image ? <SceneImage src={scene.image} index={index} length={d} colors={colors} /> : null}
@@ -137,7 +139,7 @@ function SceneView({ scene, index, count, title, style, colors, layout }: {
   );
 }
 
-export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech, video, overlay, brandMotion }) => {
+export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech, video, overlay, brandMotion, watermark }) => {
   const frame = useCurrentFrame();
   const { durationInFrames, fps } = useVideoConfig();
   const colors = PALETTES[palette] ?? PALETTES.violet;
@@ -159,6 +161,8 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
     const role = sc.narrative?.role ?? (i === 0 ? "hook" : i === scenes.length - 1 ? "resolution" : "continuation");
     return { family: chooseFamily(sc.visual ?? detectVisual(sc.text), sc.narrative, role), role, intensity: sc.narrative?.intensity };
   }));
+  // A watermark reserves its own strip, so scenes and overlays keep clear of it (nothing reserved when it is off or empty).
+  const insets = watermarkInsets(watermark, { width: WIDTH, height: HEIGHT }, measureWatermark());
   let from = 0;
   return (
     <AbsoluteFill style={{ background: `linear-gradient(145deg, ${colors.bg1} 0%, ${colors.bg2} 100%)`, overflow: "hidden" }}>
@@ -180,7 +184,7 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
           video (not inside one scene); scenes that take over the picture are drawn above them. */}
       {video ? overlayWindows(scenes, scenes.map(sc => sc.visual ?? detectVisual(sc.text)), durationInFrames).map(w => (
         <Sequence key={`overlay-${w.scene}`} from={w.from} durationInFrames={w.length} name={`Animasi ${w.scene + 1}`}>
-          <VideoOverlay scene={scenes[w.scene]} visual={scenes[w.scene].visual ?? detectVisual(scenes[w.scene].text)} colors={colors} position={overlay ?? "top"} length={w.length} offset={w.offset} brandMotion={brandMotion ?? "simple"} />
+          <VideoOverlay scene={scenes[w.scene]} visual={scenes[w.scene].visual ?? detectVisual(scenes[w.scene].text)} colors={colors} position={overlay ?? "top"} length={w.length} offset={w.offset} brandMotion={brandMotion ?? "simple"} topInset={insets.top} />
         </Sequence>
       )) : null}
       {scenes.map((scene, i) => {
@@ -196,11 +200,12 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
                 {/* Cutaway: an opaque graphic over the speaker (at most 4 s); the video underneath keeps playing, so audio never breaks. */}
                 {scene.cut === "graphic" ? <Sequence from={0} durationInFrames={Math.min(scene.durationInFrames, 120)}><Cutaway scene={scene} colors={colors} length={Math.min(scene.durationInFrames, 120)} index={i} /></Sequence> : null}
               </>
-              : <SceneView scene={scene} index={i} count={scenes.length} title={title} style={style} colors={colors} layout={layouts[i]} />}
+              : <SceneView scene={scene} index={i} count={scenes.length} title={title} style={style} colors={colors} layout={layouts[i]} insets={insets} />}
           </Sequence>
         );
       })}
       <div style={{ position: "absolute", bottom: 72, left: 70, right: 70, height: quiet ? 2 : 4, background: `${colors.text}30` }}><div style={{ height: "100%", width: `${progress}%`, background: colors.accent }} /></div>
+      <WatermarkLayer watermark={watermark} />
     </AbsoluteFill>
   );
 };

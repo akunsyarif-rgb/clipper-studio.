@@ -66,6 +66,7 @@ try {
       assert(/Model ucapan gagal diunduh|Transkripsi gagal|Tidak ada ucapan/.test(text), "unexpected error text: " + text);
       assert(!(await page.getByTestId("asr-progress").isVisible()), "progress cleared after error");
       assert(await page.getByTestId("asr-run").isEnabled(), "can retry after error");
+      if (!/Tidak ada ucapan/.test(text)) assert(await page.getByTestId("asr-retry").isVisible(), "a clear retry button is offered after a failure");
       return "model unreachable here → " + text.slice(0, 60);
     }
     assert((await page.getByTestId("asr-seg").count()) > 0, "segments listed");

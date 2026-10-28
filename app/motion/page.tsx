@@ -28,6 +28,8 @@ import { ScriptVideo } from "@/remotion/ScriptVideo";
 import TranscriptPanel from "../TranscriptPanel";
 import GeminiJudge from "../GeminiJudge";
 import AiDirector from "../AiDirector";
+import WatermarkPanel from "../WatermarkPanel";
+import { DEFAULT_WATERMARK, isWatermarkActive, loadWatermark, saveWatermark, type Watermark } from "@/lib/watermark";
 import { CAPTION_BOTTOM, contentBox, SAFE, SQUARE_CROP } from "@/lib/layout";
 import { buildStoryboard, validateExport, validateStoryboard, type Issue } from "@/lib/storyboard";
 import { emptyHistory, record, redo, undo, type History } from "@/lib/revision";
@@ -195,6 +197,10 @@ export default function MotionStudio() {
   const [directorNote, setDirectorNote] = useState("");
   type DirectorSnap = { style: StyleId; palette: PaletteId; contentPreset: ContentPresetId | "custom"; overrides: Record<string, VisualOverride>; cutOverrides: Record<string, Cut>; info: Record<string, { reason: string; imageIdea?: string; imageQuery?: string }>; note: string };
   const [guide, setGuide] = useState(false);
+  // Watermark: remembered for this editing session, so it is back for every re-render (and shared with the clipper).
+  const [watermark, setWatermarkState] = useState<Watermark>(DEFAULT_WATERMARK);
+  useEffect(() => { setWatermarkState(loadWatermark()); }, []);
+  const setWatermark = (w: Watermark) => { setWatermarkState(w); saveWatermark(w); };
   const [directorHistory, setDirectorHistory] = useState<History<DirectorSnap>>(emptyHistory());
   const imagesRef = useRef(images);
   imagesRef.current = images;
@@ -305,7 +311,7 @@ export default function MotionStudio() {
   })) : [];
   const props: VideoProps | null = timeline.ok ? {
     title: title.trim(), scenes: sceneList, style, palette, audioSrc: narration?.url ?? null, captions, video: videoEdit && source ? { src: source.url, seconds: source.seconds } : null, overlay: overlayPos, brandMotion,
-    music, speech: narration?.speech ?? null,
+    music, speech: narration?.speech ?? null, ...(isWatermarkActive(watermark) ? { watermark } : {}),
   } : null;
   const snapshot = useMemo<SessionData>(() => ({
     v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlay: overlayPos, density, brandMotion, imported,
@@ -373,7 +379,7 @@ export default function MotionStudio() {
   const srtText = result && timeline.ok && captions && !videoEdit ? scenesToSrt(sceneList) : null;
   const srtUrl = useMemo(() => srtText ? URL.createObjectURL(new Blob([srtText], { type: "text/plain;charset=utf-8" })) : null, [srtText]);
   useEffect(() => () => { if (srtUrl) URL.revokeObjectURL(srtUrl); }, [srtUrl]);
-  useEffect(() => { setResult(null); }, [script, title, style, palette, target, captions, narration, musicMode, musicTrack, musicVolume, duck]);
+  useEffect(() => { setResult(null); }, [script, title, style, palette, target, captions, narration, musicMode, musicTrack, musicVolume, duck, watermark]);
 
   const generate = useCallback(async (seconds: number, m: Mood, s: number): Promise<Generated | null> => {
     setMusicBusy(true); setMusicError("");
@@ -873,6 +879,10 @@ export default function MotionStudio() {
             <div><label className="field-label" htmlFor="motion-captions">Subtitle</label>
               <select id="motion-captions" value={captions ? "on" : "off"} onChange={e => setCaptions(e.target.value === "on")}><option value="on">Tampilkan, sorot kata</option><option value="off">Tanpa subtitle</option></select></div>
           </div>
+          </details>
+
+          <details className="fold" data-testid="fold-watermark"><summary><b>Watermark video</b> <small>{isWatermarkActive(watermark) ? `${watermark.text} · ${watermark.position.replace("-", " ")}` : "Nonaktif"}</small></summary>
+            <WatermarkPanel value={watermark} onChange={setWatermark} disabled={rendering} note="Terlihat langsung di pratinjau." />
           </details>
 
           <div className="step-title" data-testid="step-4"><b>4</b>Render</div>

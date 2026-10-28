@@ -3,6 +3,7 @@ import type { Music } from "./audio";
 import type { BrandMotion, OverlayPosition } from "./overlay";
 import type { Cut, SceneVisual } from "./visuals";
 import type { NarrativePlan } from "./narrative";
+import type { Watermark } from "./watermark";
 
 export const FPS = 30;
 export const WIDTH = 1080;
@@ -86,6 +87,8 @@ export type VideoProps = {
   overlay?: OverlayPosition;
   /** Popular names: "simple" (default) is calm, "full" adds a small animated scene of each service. */
   brandMotion?: BrandMotion;
+  /** Custom text watermark drawn over the whole video; absent, switched off or empty means none. */
+  watermark?: Watermark;
 };
 
 const words = (s: string) => s.split(/\s+/).filter(Boolean);
