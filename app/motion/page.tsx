@@ -28,6 +28,7 @@ import { ScriptVideo } from "@/remotion/ScriptVideo";
 import TranscriptPanel from "../TranscriptPanel";
 import GeminiJudge from "../GeminiJudge";
 import AiDirector from "../AiDirector";
+import { CAPTION_BOTTOM, contentBox, SAFE, SQUARE_CROP } from "@/lib/layout";
 import { buildStoryboard, validateExport, validateStoryboard, type Issue } from "@/lib/storyboard";
 import { emptyHistory, record, redo, undo, type History } from "@/lib/revision";
 import PexelsPanel from "../PexelsPanel";
@@ -70,6 +71,24 @@ type AiNarration = { key: string; narration: Narration; sceneSeconds: number[] }
 type VoiceProgress = { phase: "download" | "synth"; loaded: number; total: number; label: string };
 
 /** Reads an audio file's duration, decoding it when the media element cannot (e.g. some WAV/OGG on Safari). */
+/** Safe-zone guide drawn over the preview only (percentages of the 1080×1920 frame); never part of the rendered video. */
+function SafeGuide() {
+  const x = (v: number) => `${(v / WIDTH) * 100}%`, y = (v: number) => `${(v / HEIGHT) * 100}%`;
+  const box = contentBox(false);
+  const shade = { position: "absolute" as const, background: "rgba(255,60,60,0.22)" };
+  return (
+    <div data-testid="safe-guide" aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+      <div style={{ ...shade, left: 0, right: 0, top: 0, height: y(SAFE.top) }} />
+      <div style={{ ...shade, left: 0, right: 0, bottom: 0, height: y(SAFE.bottom) }} />
+      <div style={{ ...shade, left: 0, width: x(SAFE.side), top: y(SAFE.top), bottom: y(SAFE.bottom) }} />
+      <div style={{ ...shade, right: 0, width: x(SAFE.side), top: y(SAFE.top), bottom: y(SAFE.bottom) }} />
+      <div style={{ position: "absolute", left: 0, right: 0, top: y(SQUARE_CROP.top), height: y(SQUARE_CROP.bottom - SQUARE_CROP.top), border: "1px dashed #59b7ff" }} />
+      <div style={{ position: "absolute", left: x(SAFE.side), right: x(SAFE.side), top: y(box.top), height: y(box.height), border: "1px dashed #ffffffcc" }} />
+      <div style={{ position: "absolute", left: x(SAFE.side), right: x(SAFE.side), top: y(HEIGHT - CAPTION_BOTTOM), borderTop: "2px solid #ffe066" }} />
+    </div>
+  );
+}
+
 /** Size and length of a finished MP4 as the browser reads them; undefined where this browser cannot say (checked then skipped). */
 async function probeRendered(blob: Blob): Promise<{ width?: number; height?: number; seconds?: number }> {
   const url = URL.createObjectURL(blob);
@@ -175,6 +194,7 @@ export default function MotionStudio() {
   function chooseMode(m: Mode) { setContentMode(m); try { localStorage.setItem(MODE_KEY, m); } catch { /* not remembered */ } }
   const [directorNote, setDirectorNote] = useState("");
   type DirectorSnap = { style: StyleId; palette: PaletteId; contentPreset: ContentPresetId | "custom"; overrides: Record<string, VisualOverride>; cutOverrides: Record<string, Cut>; info: Record<string, { reason: string; imageIdea?: string; imageQuery?: string }>; note: string };
+  const [guide, setGuide] = useState(false);
   const [directorHistory, setDirectorHistory] = useState<History<DirectorSnap>>(emptyHistory());
   const imagesRef = useRef(images);
   imagesRef.current = images;
@@ -875,10 +895,13 @@ export default function MotionStudio() {
 
         <section className="preview-column">
           <div className="panel-heading"><div><small>02 / PRATINJAU</small><h2>Preview video</h2></div><span className="preview-badge"><i /> {props ? `${(totalFrames(props.scenes) / FPS).toFixed(1)}s · 9:16` : "—"}</span></div>
-          <div className="player-wrap" style={{ background: `linear-gradient(145deg, ${colors.bg1}, ${colors.bg2})` }}>
+          <div className="player-wrap" style={{ position: "relative", background: `linear-gradient(145deg, ${colors.bg1}, ${colors.bg2})` }}>
             {props ? <Player ref={player} component={ScriptVideo} inputProps={props} durationInFrames={props ? totalFrames(props.scenes) : 1} fps={FPS} compositionWidth={WIDTH} compositionHeight={HEIGHT} controls style={{ width: "100%", aspectRatio: "9 / 16" }} acknowledgeRemotionLicense />
               : <div className="player-empty">{blocker}</div>}
+            {guide && props ? <SafeGuide /> : null}
           </div>
+          <label className="check-row" data-testid="safe-guide-toggle"><input type="checkbox" checked={guide} onChange={e => setGuide(e.target.checked)} /> Tampilkan panduan area aman (hanya di pratinjau, tidak ikut ke MP4)</label>
+          {guide ? <p className="preview-disclaimer" data-testid="safe-guide-legend">Merah: tertutup tampilan aplikasi (tab, deskripsi, tombol kanan). Putus-putus putih: area konten utama 1200 px. Biru: kotak 1080×1080 yang tersisa bila dipotong 1:1. Kuning: baris dasar subtitle.</p> : null}
           <p className="preview-disclaimer">Pratinjau memakai komposisi yang sama dengan hasil render, jadi teks, durasi scene, narasi, dan backsound identik dengan MP4.</p>
           {timeline.ok && <AiDirector language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"} active={Object.keys(directorInfo).length > 0} note={directorNote} onPlan={applyDirector} onUndo={undoDirector} onRedo={redoDirector} canRedo={directorHistory.future.length > 0} versions={directorHistory.past.length}
             input={{ scenes: timeline.scenes.map(sc => ({ text: sc.text, seconds: sc.durationInFrames / FPS })), videoEdit: !!(videoEdit && source), style, palette, affiliate: activeMode === "affiliate" && affiliateBrief ? { product: affiliateBrief.product } : undefined,

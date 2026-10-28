@@ -874,6 +874,22 @@ try {
     return `${seen.searches.length} searches by the app, ${seen.pages.length} pages read, the AI only summarized (1 fabricated quote dropped), price only on request, 1 real picture through the server on 2 scenes with credit, AI and search failures keep the pages' own facts`;
   });
 
+  await step("the safe-zone guide is a preview-only overlay and text stays inside the safe area", async () => {
+    const g = await browser.newPage();
+    g.on("pageerror", e => pageErrors.push(e.message));
+    await g.goto(BASE); await openFolds(g);
+    await g.getByTestId("voice-none").click();
+    assert(await g.getByTestId("safe-guide").count() === 0, "guide is off by default");
+    await g.getByTestId("safe-guide-toggle").locator("input").check();
+    await g.getByTestId("safe-guide").waitFor({ timeout: 5000 });
+    await g.getByTestId("safe-guide-legend").waitFor({ timeout: 5000 });
+    // Every fitted headline in the preview sits inside the 1080 px frame minus the 130 px side insets.
+    const box = await g.locator(".player-wrap [data-family]").first().evaluate(el => { const r = el.getBoundingClientRect(), f = el.closest(".player-wrap").getBoundingClientRect(); return { left: (r.left - f.left) / f.width, right: (f.right - r.right) / f.width, top: (r.top - f.top) / f.height, bottom: (f.bottom - r.bottom) / f.height }; });
+    assert(box.left >= 130 / 1080 - 0.01 && box.right >= 130 / 1080 - 0.01, `content keeps the side insets: ${JSON.stringify(box)}`);
+    assert(box.top >= 220 / 1920 - 0.01 && box.bottom >= 380 / 1920 - 0.01, `content keeps the top and bottom insets: ${JSON.stringify(box)}`);
+    await g.close();
+  });
+
   await step("there is no limit on the number of scenes, and a long script still renders its timeline", async () => {
     const ctxL = await browser.newContext();
     const L = await ctxL.newPage();

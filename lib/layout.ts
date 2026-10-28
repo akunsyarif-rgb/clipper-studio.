@@ -3,19 +3,34 @@
 import { HEIGHT, WIDTH } from "./script";
 
 /**
- * Areas short-form apps cover with their own UI (status bar and tabs on top, caption/buttons at the
- * bottom, action rail on the right). Content stays inside; the right inset matches the left so
- * centred layouts stay centred.
+ * Areas short-form apps cover with their own UI: tabs and logo on top (200–250 px), username, description and audio bar at the
+ * bottom (350–450 px), the action rail on the right (120–150 px). The left only needs 40–60 px for curved bezels, but the side
+ * inset is the larger right one on both sides, so centred layouts stay centred.
  */
-export const SAFE = { top: 220, bottom: 380, side: 110 } as const;
+export const SAFE = { top: 220, bottom: 380, side: 130 } as const;
+/** Burned-in captions end this far above the bottom edge (500–600 px): above the platform's description, below the face. */
+export const CAPTION_BOTTOM = 520;
 /** Height reserved above the bottom safe edge for the burned-in caption line. */
 export const CAPTION_RESERVE = 170;
 export const CONTENT_WIDTH = WIDTH - SAFE.side * 2;
+/** Main visual content (headline, subject) stays in a centred band this tall. */
+export const ACTIVE_HEIGHT = 1200;
+/** What survives a 1:1 crop (profile grid, feed): the centred 1080×1080 square. Key information belongs inside. */
+export const SQUARE_CROP = { top: (HEIGHT - WIDTH) / 2, bottom: (HEIGHT + WIDTH) / 2 } as const;
 
-/** Vertical box available to a scene's content, with or without burned-in captions. */
+/**
+ * Vertical box available to a scene's content, with or without burned-in captions. It never exceeds the active band
+ * (ACTIVE_HEIGHT) and is centred in the safe area, so headlines sit where the eye is and clear every platform overlay.
+ */
 export function contentBox(captions: boolean): { top: number; bottom: number; height: number; width: number } {
-  const bottom = HEIGHT - SAFE.bottom - (captions ? CAPTION_RESERVE : 0);
-  return { top: SAFE.top, bottom, height: bottom - SAFE.top, width: CONTENT_WIDTH };
+  const safeBottom = HEIGHT - SAFE.bottom;
+  if (captions) {
+    const bottom = Math.min(safeBottom - CAPTION_RESERVE, SAFE.top + ACTIVE_HEIGHT);
+    return { top: SAFE.top, bottom, height: bottom - SAFE.top, width: CONTENT_WIDTH };
+  }
+  const height = Math.min(ACTIVE_HEIGHT, safeBottom - SAFE.top);
+  const top = Math.round((SAFE.top + safeBottom - height) / 2);
+  return { top, bottom: top + height, height, width: CONTENT_WIDTH };
 }
 
 /** Motion tokens: one calm vocabulary shared by every composition family. */

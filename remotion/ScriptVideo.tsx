@@ -5,7 +5,7 @@ import { kenBurns } from "../lib/scene-image";
 import { musicGain } from "../lib/audio";
 import { activeWordIndex, clipPlan, phraseLine, spokenFrames, PALETTES, totalFrames, type Scene, type StyleId, type VideoProps } from "../lib/script";
 import { chooseFamily, planLayouts, type Layout } from "../lib/composition";
-import { contentBox, MOTION, SAFE } from "../lib/layout";
+import { CAPTION_BOTTOM, CONTENT_WIDTH, contentBox, MOTION, SAFE } from "../lib/layout";
 import { detectVisual, stripMarks } from "../lib/visuals";
 import { overlayWindows } from "../lib/overlay";
 import { FamilyView } from "./Families";
@@ -43,8 +43,8 @@ function VideoCaption({ scene }: { scene: Scene }) {
   if (!state) return null;
   const pop = spring({ frame: state.since, fps, config: { damping: 16, stiffness: 220, mass: 0.5 } });
   return (
-    <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", paddingBottom: 400 }}>
-      <div style={{ maxWidth: 880, textAlign: "center", fontFamily: "Arial, sans-serif", fontWeight: 800, fontSize: 76, lineHeight: 1.12, letterSpacing: -1, color: "#fff", textShadow: "0 4px 22px #000d, 0 0 3px #000c", opacity: Math.min(1, 0.2 + pop), transform: `translateY(${(1 - Math.min(1, pop)) * 18}px) scale(${0.94 + 0.06 * Math.min(1, pop)})` }}>
+    <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", paddingBottom: CAPTION_BOTTOM }}>
+      <div style={{ maxWidth: CONTENT_WIDTH, textAlign: "center", fontFamily: "Arial, sans-serif", fontWeight: 800, fontSize: 76, lineHeight: 1.12, letterSpacing: -1, color: "#fff", textShadow: "0 4px 22px #000d, 0 0 3px #000c", opacity: Math.min(1, 0.2 + pop), transform: `translateY(${(1 - Math.min(1, pop)) * 18}px) scale(${0.94 + 0.06 * Math.min(1, pop)})` }}>
         {state.line.words.map((w, i) => <span key={i} style={{ color: i === state.line.activeInLine ? "#ffe066" : "#fff" }}>{w}{i < state.line.words.length - 1 ? " " : ""}</span>)}
       </div>
     </AbsoluteFill>
@@ -76,10 +76,10 @@ function Cutaway({ scene, colors, length, index }: { scene: Scene; colors: Color
   return (
     <AbsoluteFill style={{ background: `linear-gradient(145deg, ${colors.bg1} 0%, ${colors.bg2} 100%)`, opacity: fade }}>
       {scene.image ? <SceneImage src={scene.image} index={index} length={length} colors={colors} /> : null}
-      <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", padding: "0 80px", color: colors.text, transform: `scale(${0.92 + 0.08 * Math.min(1, enter)})` }}>
+      <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", padding: `0 ${SAFE.side}px`, color: colors.text, transform: `scale(${0.92 + 0.08 * Math.min(1, enter)})` }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", width: "100%" }}>
           {bottom ? <div style={{ transform: "scale(1.35)", margin: "0 0 40px" }}><BottomVisual visual={{ ...visual, template: visual.template }} colors={colors} /></div> : <TopVisual visual={visual} colors={colors} sceneFrames={length} />}
-          <div style={{ minHeight: 190, display: "flex", alignItems: "center", justifyContent: "center", maxWidth: 880, fontFamily: "Arial, sans-serif", fontWeight: 800, fontSize: 72, lineHeight: 1.12, letterSpacing: -1, marginTop: bottom ? 30 : 10 }}>
+          <div style={{ minHeight: 190, display: "flex", alignItems: "center", justifyContent: "center", maxWidth: CONTENT_WIDTH, fontFamily: "Arial, sans-serif", fontWeight: 800, fontSize: 72, lineHeight: 1.12, letterSpacing: -1, marginTop: bottom ? 30 : 10 }}>
             {state?.line.words.map((w, i) => <span key={i} style={{ color: i === state.line.activeInLine ? colors.accent : colors.text }}>{w}{i < state.line.words.length - 1 ? "\u00a0" : ""}</span>)}
           </div>
         </div>

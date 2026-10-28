@@ -1,6 +1,6 @@
 // Motion graphics that sit ON TOP of the speaker (instead of replacing the picture): where they go, which colours
 // stay readable over footage, and which word to feature. Pure and deterministic.
-import { contrast, SAFE } from "./layout";
+import { CAPTION_BOTTOM, contrast, SAFE } from "./layout";
 import { HEIGHT, wordStartFrame, type Scene } from "./script";
 import { stripMarks, wordKey } from "./text";
 import type { SceneVisual } from "./visuals";
@@ -14,7 +14,7 @@ export const MAX_OVERLAY_FRAMES = 120;
 export const OVERLAY_HEIGHT = 480;
 /** Space kept between an overlay and the caption below it. */
 const CAPTION_GAP = 40;
-/** Height of the burned-in caption block (two lines) above the bottom safe edge. */
+/** Height of the burned-in caption block (two lines), whose last line sits CAPTION_BOTTOM above the bottom edge. */
 const CAPTION_BLOCK = 170;
 
 /**
@@ -23,7 +23,7 @@ const CAPTION_BLOCK = 170;
  */
 export function overlayBand(position: OverlayPosition): { top: number; height: number } {
   if (position === "top") return { top: SAFE.top, height: OVERLAY_HEIGHT };
-  const bottom = HEIGHT - SAFE.bottom - 24 - CAPTION_BLOCK - CAPTION_GAP;
+  const bottom = HEIGHT - CAPTION_BOTTOM - CAPTION_BLOCK - CAPTION_GAP;
   return { top: bottom - OVERLAY_HEIGHT, height: OVERLAY_HEIGHT };
 }
 
