@@ -1,7 +1,7 @@
 // Quiet Editorial Motion: five composition families sharing one headline renderer and one motion vocabulary.
 // Every animation is a function of the frame (springs/interpolate only); no timers, no randomness.
 import React from "react";
-import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { splitCause, type Family } from "../lib/composition";
 import { estimateHeavy, fitText, MOTION, TYPE, type FitOptions, type Measure } from "../lib/layout";
 import type { NarrativeRole } from "../lib/narrative";
@@ -300,7 +300,7 @@ function DataFigure({ scene, visual, role, colors, box }: FamilyProps) {
   const finalText = formatNumber(value, decimals, prefix) + suffix;
   // Sized from the final value so the counter never reflows while it counts.
   const fig = fitText(finalText, measureFor(TYPE.display, 900), { maxWidth: box.width * 0.97, maxHeight: 260, maxSize: 240, minSize: 90, lineHeight: 1, letterSpacing: -0.03, maxLines: 1 });
-  const bar = interpolate(frame, [6, fps * 1.2], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const bar = interpolate(frame, [6, fps * 1.2], [0, 1], { easing: Easing.out(Easing.cubic), extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const p = useAppear(0, MOTION.springFirm);
   const LABEL = 44;
   return (

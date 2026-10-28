@@ -400,3 +400,17 @@ Gejala: subtitle kurang presisi, dan di akhir video gambar membeku sementara sub
 - **Komposisi tidak pernah lebih panjang dari video sumber** (`fitScenesToVideo`): adegan yang mulai setelah video habis dibuang dan adegan terakhir dipendekkan. Berlaku untuk pratinjau, render MP4, dan `props.json`.
 - **Waktu terlepas tidak lagi diam-diam:** bila naskah diedit sampai terlalu berbeda dari transkrip, muncul peringatan merah dengan tombol **"Kembalikan naskah dari transkrip"**; selama itu adegan dibentang tepat sepanjang video sumber.
 - **Presisi tertinggi:** di panel Transkrip (di perangkat, Whisper) kini ada **"Pakai hanya waktunya (naskah saya tetap)"**: waktu kata diambil dari Whisper, teks AI tetap. Waktu AI (per kalimat, mudah meleset beberapa detik) cocok untuk memilih klip; untuk subtitle yang pas gunakan tombol ini.
+
+## Gambar latar per scene (video faceless)
+
+Tahap "aset visual" dalam alur produksi (naskah → storyboard → suara → **aset** → motion → ekspor). Sebelumnya scene hanya bisa berisi tipografi, ikon, dan diagram; gambar milik pembuat (foto produk, referensi dari Pinterest, dsb.) belum bisa dipasang.
+
+- **Cara pakai:** di Timeline scene, ketuk **"+ Gambar latar"** di bawah scene, pilih gambar. **Ganti gambar** / **Hapus** ada di tempat yang sama. Hanya untuk mode tanpa video sumber (faceless); di mode edit video, layar tetap milik pembicara.
+- **Gerak:** gambar memenuhi layar dengan Ken Burns pelan (`kenBurns` di `lib/scene-image.ts`): scene berselang-seling zoom masuk/keluar dan geser ke arah berlawanan, dengan easing di awal dan akhir, dan geseran tidak pernah memperlihatkan tepi gambar. Berbasis frame, jadi pratinjau sama dengan MP4.
+- **Keterbacaan:** di atas gambar ada lapisan warna latar palet (lebih tipis di atas, lebih pekat di area teks), jadi warna teks palet tetap kontras di gambar apa pun, terang (Pearl/Ivory) maupun gelap. Diperiksa dengan gambar sangat ramai (mandelbrot) di palet Pearl dan Gold.
+- **Memori iPad:** gambar diperkecil di perangkat menjadi JPEG maksimal 2200 px sisi terpanjang (`prepareImage`) sebelum dipakai. File yang bukan gambar atau lebih dari 25 MB ditolak dengan pesan jelas.
+- **Privasi:** gambar tidak diunggah, tidak disinkron ke Supabase, dan tidak ikut tersimpan di sesi. Setelah memuat ulang halaman, pilih gambarnya lagi. `props.json` menyimpan nama file gambar seperti audio; untuk render CLI salin file gambarnya ke `public/`.
+- **Hak cipta:** gambar dari internet (termasuk Pinterest) belum tentu boleh dipakai ulang; app mengingatkan ini di bawah timeline.
+- **Pengujian:** `lib/scene-image.test.ts`; `e2e/motion.mjs` ("a scene picture moves behind its scene…": file bukan gambar ditolak, foto 4000×3000 diperkecil, pratinjau, render MP4, warna frame scene 1 berasal dari gambar dan scene 2 tetap latar palet, hapus gambar).
+
+Perubahan kecil lain di rilis yang sama: label pengembang "CLIPPER / MOTION · 30 FPS" tidak lagi ikut terbakar di MP4, dan gerak drift scene serta bar data kini memakai easing (bukan linear).

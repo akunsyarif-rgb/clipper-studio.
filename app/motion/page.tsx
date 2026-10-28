@@ -31,6 +31,7 @@ import CloudAccount from "../CloudAccount";
 import { cloud } from "@/lib/cloud";
 import type { SceneScore } from "@/lib/gemini";
 import { probeVideo, validateFile } from "@/lib/clip";
+import { imageProblem, prepareImage } from "@/lib/scene-image";
 import "./motion.css";
 
 const SAMPLE = "Jangan tunggu semangat datang.\nMulailah, meski langkahmu kecil.\nDisiplin membuatmu tetap bergerak.\nSatu langkah hari ini lebih baik dari rencana sempurna.\nMulai sekarang.";
@@ -48,6 +49,8 @@ const MOTION_INTENSITY_LABELS: Record<string, string> = {
 };
 
 type Track = { file: File; url: string; seconds: number };
+/** A scene picture kept in memory only (never uploaded or saved with the session). */
+type SceneImageFile = { url: string; name: string };
 type Generated = Track & { mood: Mood; seed: number };
 type MusicMode = "none" | "auto" | "upload";
 type VoiceMode = "ai" | "manual" | "none";
@@ -130,6 +133,11 @@ export default function MotionStudio() {
   const [aiScores, setAiScores] = useState<Record<string, SceneScore>>({});
   const [brandMotion, setBrandMotion] = useState<BrandMotion>("simple");
   const [cutOverrides, setCutOverrides] = useState<Record<string, Cut>>({});
+  // Scene pictures for faceless videos, keyed by scene text like the other per-scene choices.
+  const [images, setImages] = useState<Record<string, SceneImageFile>>({});
+  const [imageError, setImageError] = useState("");
+  const imagesRef = useRef(images);
+  imagesRef.current = images;
   // Where in the source video a "clip" scene starts (seconds), per scene text.
   const [clipStarts, setClipStarts] = useState<Record<string, number>>({});
 
@@ -195,7 +203,7 @@ export default function MotionStudio() {
   useEffect(() => { if (!generated) return; const url = generated.url; return () => URL.revokeObjectURL(url); }, [generated]);
   useEffect(() => { if (!uploadedMusic) return; const url = uploadedMusic.url; return () => URL.revokeObjectURL(url); }, [uploadedMusic]);
   useEffect(() => { if (!result) return; const url = result.url; return () => URL.revokeObjectURL(url); }, [result]);
-  useEffect(() => () => { abort.current?.abort(); recorder.current?.cancel(); }, []);
+  useEffect(() => () => { abort.current?.abort(); recorder.current?.cancel(); Object.values(imagesRef.current).forEach(im => URL.revokeObjectURL(im.url)); }, []);
   // The mood follows the animation style until the user picks one.
   useEffect(() => { if (!moodTouched) setMood(moodForStyle(style)); }, [style, moodTouched]);
 
@@ -233,6 +241,7 @@ export default function MotionStudio() {
   const sceneList = timeline.ok ? (videoEdit && source ? (list: typeof timeline.scenes) => fitScenesToVideo(list, Math.round(source.seconds * FPS)) : (list: typeof timeline.scenes) => list)(timeline.scenes).map((sc, i) => ({
     ...sc, visual: sceneVisuals[i], narrative: narrativePlan[i], ...(timed && !aiFresh ? { wordStarts: timed.wordStarts[i], wordEnds: timed.wordEnds[i], pauseFrames: undefined } : {}),
     ...(videoEdit && source ? { cut: cutOverrides[sc.text] ?? planned[i], ...(cutOverrides[sc.text] === "clip" ? { clipFrom: clipStarts[sc.text] ?? 0 } : {}) } : {}),
+    ...(!(videoEdit && source) && images[sc.text] ? { image: images[sc.text].url } : {}),
   })) : [];
   const props: VideoProps | null = timeline.ok ? {
     title: title.trim(), scenes: sceneList, style, palette, audioSrc: narration?.url ?? null, captions, video: videoEdit && source ? { src: source.url, seconds: source.seconds } : null, overlay: overlayPos, brandMotion,
@@ -446,6 +455,23 @@ export default function MotionStudio() {
     }
   }
 
+  async function onSceneImage(text: string, e: ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    const problem = imageProblem(f);
+    if (problem) { setImageError(problem); return; }
+    setImageError("");
+    try {
+      const blob = await prepareImage(f);
+      const url = URL.createObjectURL(blob);
+      setImages(prev => { if (prev[text]) URL.revokeObjectURL(prev[text].url); return { ...prev, [text]: { url, name: f.name } }; });
+    } catch (err) { setImageError(err instanceof Error ? err.message : String(err)); }
+  }
+  function removeSceneImage(text: string) {
+    setImages(prev => { if (!prev[text]) return prev; URL.revokeObjectURL(prev[text].url); const next = { ...prev }; delete next[text]; return next; });
+  }
+
   async function render() {
     if (!props || blocker) return;
     setRenderError(""); setErrorDetail(""); setResult(null); setProgress(0);
@@ -492,6 +518,8 @@ export default function MotionStudio() {
     if (!props) return;
     const project = {
       ...props,
+      // Pictures are referenced by file name, like the audio: copy them into public/ for a CLI render.
+      scenes: props.scenes.map(sc => sc.image ? { ...sc, image: images[sc.text]?.name ?? null } : sc),
       audioSrc: narration ? narration.file.name : null,
       music: music && musicTrack ? { ...music, src: musicTrack.file.name } : null,
       fps: FPS, width: WIDTH, height: HEIGHT, durationInFrames: props ? totalFrames(props.scenes) : 0,
@@ -501,7 +529,7 @@ export default function MotionStudio() {
     const a = document.createElement("a");
     a.href = url; a.download = `${slug(title || "video")}-props.json`; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    const files = [narration?.file.name, musicTrack?.file.name].filter(Boolean);
+    const files = [narration?.file.name, musicTrack?.file.name, ...props.scenes.map(sc => sc.image ? images[sc.text]?.name : undefined)].filter(Boolean);
     setStatus(files.length ? `Proyek diunduh. Untuk render CLI, salin ${files.map(f => `"${f}"`).join(" dan ")} ke folder public/ (unduh lewat tombol di bagian audio), lalu ikuti MOTION_STUDIO.md.` : "Proyek diunduh. Lihat MOTION_STUDIO.md untuk render lewat CLI.");
   }
 
@@ -510,7 +538,7 @@ export default function MotionStudio() {
       "MOTION GRAPHICS BRIEF", `Judul: ${title}`, `Gaya: ${STYLES.find(s => s.id === style)?.label}`, `Palet: ${PALETTES[palette].label}`,
       `Format: 9:16, ${WIDTH}x${HEIGHT}, ${FPS} fps`, `Narasi: ${narration ? narration.file.name : "tanpa narasi"}`,
       `Backsound: ${musicMode === "auto" ? `otomatis (${mood})` : musicMode === "upload" ? uploadedMusic?.file.name : "tanpa backsound"}`,
-      ...(timeline.ok ? timeline.scenes.map((s, i) => `Scene ${i + 1} (${(s.durationInFrames / FPS).toFixed(1)} dtk): ${s.text}`) : []),
+      ...(timeline.ok ? timeline.scenes.map((s, i) => `Scene ${i + 1} (${(s.durationInFrames / FPS).toFixed(1)} dtk): ${s.text}${images[s.text] && !(videoEdit && source) ? ` [gambar: ${images[s.text].name}]` : ""}`) : []),
     ].join("\n");
     try { await navigator.clipboard.writeText(brief); setStatus("Brief disalin ke clipboard."); }
     catch { setStatus("Browser tidak memberi izin clipboard. Gunakan Ekspor proyek JSON."); }
@@ -744,7 +772,17 @@ export default function MotionStudio() {
                 onClipHere={() => setClipStarts(prev => ({ ...prev, [s.text]: Math.min(sourceVideo.current?.currentTime ?? 0, source?.seconds ?? 0) }))}
                 onClipSeek={t => { if (sourceVideo.current) { sourceVideo.current.currentTime = t; } }}
                 onChange={o => setOverrides(prev => { const next = { ...prev }; if (o.template || o.icon) next[s.text] = o; else delete next[s.text]; return next; })} />
+              {!(videoEdit && source) && <div className="scene-image" data-testid="scene-image">
+                {/* eslint-disable-next-line @next/next/no-img-element -- a local blob: thumbnail, nothing for next/image to optimise */}
+                {images[s.text] ? <img src={images[s.text].url} alt="" className="scene-thumb" /> : null}
+                <label className="text-link">
+                  {images[s.text] ? "Ganti gambar" : "+ Gambar latar"}
+                  <input type="file" accept="image/*" hidden disabled={rendering} data-testid="scene-image-input" onChange={e => void onSceneImage(s.text, e)} />
+                </label>
+                {images[s.text] ? <button type="button" className="text-link" disabled={rendering} onClick={() => removeSceneImage(s.text)} data-testid="scene-image-remove">Hapus</button> : null}
+              </div>}
             </div>); }); })()}</div>
+          {!(videoEdit && source) && timeline.ok && <p className="preview-disclaimer" data-testid="image-note">{imageError ? <span className="scene-image-error" data-testid="image-error">{imageError} </span> : null}Gambar latar hanya dipakai di perangkat ini dan tidak ikut tersimpan atau tersinkron; pilih lagi setelah memuat ulang halaman. Pakai gambar milik Anda atau yang boleh dipakai ulang: gambar dari internet (mis. Pinterest) belum tentu bebas hak cipta.</p>}
         </section>
       </div>
 

@@ -376,6 +376,42 @@ try {
     return "scenes " + rows.length + ", counter 17.000 on one line";
   });
 
+  await step("a scene picture moves behind its scene in preview and render, other scenes stay without", async () => {
+    await page.getByTestId("voice-none").click();
+    await page.getByTestId("music-none").click();
+    await page.getByTestId("style").selectOption("hybrid");
+    await page.getByTestId("palette").selectOption("violet");
+    await page.getByTestId("script").fill("Gambar ini milik saya sendiri.\nScene kedua tanpa gambar.");
+    await page.getByTestId("duration").selectOption("15");
+    // A large phone-size photo stand-in: plain red, so the frame check below is unambiguous.
+    const photo = join(dir, "foto.png");
+    execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=red:s=4000x3000", "-frames:v", "1", photo]);
+    await page.getByTestId("scene-image-input").nth(1).setInputFiles(notAudio);
+    await page.getByTestId("image-error").filter({ hasText: "JPG" }).waitFor({ timeout: 3000 });
+    await page.getByTestId("scene-image-input").nth(0).setInputFiles(photo);
+    await page.locator(".scene-thumb").waitFor({ timeout: 10000 });
+    assert(await page.getByTestId("image-error").count() === 0, "error cleared after a good picture");
+    const size = await page.locator(".scene-thumb").evaluate(img => [img.naturalWidth, img.naturalHeight]);
+    assert(Math.max(...size) <= 2200, `picture reduced for memory, got ${size}`);
+    const player = page.locator(".player-wrap");
+    await page.getByTestId("scene-item").nth(0).locator(".scene-row").click();
+    await player.locator("img").first().waitFor({ timeout: 5000 });
+    const info = await renderAndCheck("picture", false, 15);
+    const out = join(dir, "picture.mp4");
+    // Average colour of the top band (lightest scrim): red in scene 1, the violet background in scene 2.
+    const band = at => {
+      const raw = execFileSync("ffmpeg", ["-v", "error", "-ss", String(at), "-i", out, "-frames:v", "1", "-vf", "crop=1080:200:0:0,scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+      return [...raw];
+    };
+    const [r1, g1, b1] = band(3), [r2, , b2] = band(11);
+    assert(r1 > 120 && r1 > g1 + 60 && r1 > b1 + 40, `scene 1 should show the red picture, got rgb ${r1},${g1},${b1}`);
+    assert(r2 < 120 && b2 >= r2, `scene 2 should keep the palette background, got r ${r2} b ${b2}`);
+    if (process.env.E2E_SHOTS) for (const at of [0.2, 3, 7, 11]) execFileSync("ffmpeg", ["-v", "error", "-y", "-ss", String(at), "-i", out, "-frames:v", "1", join(process.env.E2E_SHOTS, `picture-${at}s.png`)]);
+    await page.getByTestId("scene-image-remove").click();
+    assert(await page.locator(".scene-thumb").count() === 0, "picture removed");
+    return `${info}, top band scene 1 rgb ${r1},${g1},${b1}, scene 2 rgb ${r2},-,${b2}`;
+  });
+
   await step("no horizontal scroll on iPhone-size viewport", async () => {
     const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
     await phone.goto(BASE);
