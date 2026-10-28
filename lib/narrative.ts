@@ -92,10 +92,11 @@ function visualCueFor(intent: NarrativeIntent, topic: string | null): string {
   return `${cue[intent]}; pertahankan konteks ${topicLabel} bila relevan.`;
 }
 
-function roleOf(intent: NarrativeIntent, first: boolean, last: boolean): NarrativeRole {
+function roleOf(intent: NarrativeIntent, first: boolean, last: boolean, text: string): NarrativeRole {
   if (first) return "hook";
   if (intent === "contrast") return "tension";
-  if (intent === "cause-effect" || intent === "evidence" || intent === "process") return "explanation";
+  if (intent === "process") return patterns.application.test(text) ? "application" : "explanation";
+  if (intent === "cause-effect" || intent === "evidence") return "explanation";
   if (intent === "insight") return "reveal";
   if (intent === "instruction") return "application";
   if (intent === "reflection" || (last && (intent === "statement" || intent === "story"))) return "resolution";
@@ -111,7 +112,7 @@ export function planNarrative(texts: string[]): NarrativePlan[] {
     const first = index === 0;
     const last = index === clean.length - 1;
     const intent = intentOf(text);
-    const role = roleOf(intent, first, last);
+    const role = roleOf(intent, first, last, text);
     const topic = topics[index];
     const related = topics.map((t, i) => t && t === topic && i !== index ? i : null).filter((i): i is number => i !== null);
     const previousRelated = related.filter(i => i < index).at(-1) ?? null;
