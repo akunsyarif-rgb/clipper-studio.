@@ -18,7 +18,7 @@ describe("chooseFamily", () => {
       "73% orang berhenti sebelum minggu ketiga.",
       "Kesimpulannya, mulai dari langkah sekecil mungkin.",
     ];
-    expect(familyFor(texts)).toEqual(["editorial", "comparison", "kinetic", "explainer", "data", "editorial"]);
+    expect(familyFor(texts)).toEqual(["editorial", "comparison", "kinetic", "process", "data", "editorial"]);
   });
 
   it("uses the explainer for numbered steps", () => {
@@ -27,6 +27,17 @@ describe("chooseFamily", () => {
 
   it("treats a call to action after the hook as a product/action showcase", () => {
     expect(familyFor(["Hook pembuka.", "Ini penting.", "Ikuti untuk tips berikutnya."])[2]).toBe("data");
+  });
+
+  it("selects distinct families for metaphor and story intent", () => {
+    const plan = planNarrative([
+      "Aku pernah merasa semua pintu tertutup.",
+      "Ternyata, harapan adalah kompas saat kita tersesat.",
+    ]);
+    expect(plan[0].intent).toBe("story");
+    expect(chooseFamily(detectVisual("Aku pernah merasa semua pintu tertutup."), plan[0])).toBe("story");
+    expect(plan[1].strategy).toBe("metaphor");
+    expect(chooseFamily(detectVisual("Ternyata, harapan adalah kompas saat kita tersesat."), plan[1])).toBe("metaphor");
   });
 
   it("does not stage a year as a statistic", () => {
