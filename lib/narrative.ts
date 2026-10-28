@@ -69,6 +69,7 @@ function intentOf(text: string): NarrativeIntent {
   if (patterns.process.test(text) || /^(?:\d+[.)]|langkah\s+\d+)/i.test(text)) return "process";
   if (patterns.data.test(text)) return "evidence";
   if (patterns.reveal.test(text)) return "insight";
+  if (patterns.resolution.test(text)) return "resolution";
   if (patterns.application.test(text)) return "instruction";
   if (patterns.story.test(text)) return "story";
   if (patterns.reflection.test(text)) return "reflection";
@@ -87,14 +88,16 @@ function visualCueFor(intent: NarrativeIntent, topic: string | null): string {
     instruction: "Tunjukkan satu tindakan yang dapat dilakukan penonton",
     story: "Bangun adegan dengan konteks, peristiwa, dan perubahan",
     reflection: "Gunakan ruang, tipografi, dan gerak tenang untuk memberi waktu merenung",
-    statement: "Pilih satu hierarki visual yang mendukung gagasan, bukan dekorasi",\n    resolution: "Ringkas gagasan utama dan beri ruang untuk mengingatnya",
+    statement: "Pilih satu hierarki visual yang mendukung gagasan, bukan dekorasi",
+    resolution: "Ringkas gagasan utama dan beri ruang untuk mengingatnya",
   };
   return `${cue[intent]}; pertahankan konteks ${topicLabel} bila relevan.`;
 }
 
 function roleOf(intent: NarrativeIntent, first: boolean, last: boolean, text: string): NarrativeRole {
   if (first) return "hook";
-  if (intent === "resolution") return "resolution";\n  if (intent === "contrast") return "tension";
+  if (intent === "resolution") return "resolution";
+  if (intent === "contrast") return "tension";
   if (intent === "process") return patterns.application.test(text) ? "application" : "explanation";
   if (intent === "cause-effect" || intent === "evidence") return "explanation";
   if (intent === "insight") return "reveal";
@@ -115,7 +118,8 @@ export function planNarrative(texts: string[]): NarrativePlan[] {
     const role = roleOf(intent, first, last, text);
     const topic = topics[index];
     const related = topics.map((t, i) => t && t === topic && i !== index ? i : null).filter((i): i is number => i !== null);
-    const prior = related.filter(i => i < index);\n    const previousRelated = prior.length ? prior[prior.length - 1] : null;
+    const prior = related.filter(i => i < index);
+    const previousRelated = prior.length ? prior[prior.length - 1] : null;
     const nextRelated = related.find(i => i > index) ?? null;
 
     let strategy: VisualStrategy = "minimal";
@@ -129,7 +133,9 @@ export function planNarrative(texts: string[]): NarrativePlan[] {
       strategy = "typography"; intensity = "impact"; confidence = "high";
     } else if (intent === "insight") {
       strategy = "metaphor"; intensity = "emphasis"; confidence = "medium";
-    } else if (intent === "resolution") {\n      strategy = "typography"; intensity = "quiet"; confidence = "medium";\n    } else if (intent === "instruction") {
+    } else if (intent === "resolution") {
+      strategy = "typography"; intensity = "quiet"; confidence = "medium";
+    } else if (intent === "instruction") {
       strategy = patterns.concrete.test(text) ? "footage" : "diagram";
       intensity = "emphasis"; confidence = patterns.application.test(text) ? "medium" : "low";
     } else if (intent === "question") {
