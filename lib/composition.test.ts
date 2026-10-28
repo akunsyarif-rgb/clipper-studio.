@@ -21,8 +21,8 @@ describe("chooseFamily", () => {
     expect(familyFor(texts)).toEqual(["editorial", "comparison", "kinetic", "process", "data", "editorial"]);
   });
 
-  it("uses the explainer for numbered steps", () => {
-    expect(familyFor(["Hook pembuka.", "Pertama, tentukan target yang jelas."])[1]).toBe("explainer");
+  it("uses process grammar for numbered steps", () => {
+    expect(familyFor(["Hook pembuka.", "Pertama, tentukan target yang jelas."])[1]).toBe("process");
   });
 
   it("treats a call to action after the hook as a product/action showcase", () => {
