@@ -5,10 +5,13 @@ import { cloud } from "./cloud";
 export type ProductPage = {
   url: string; host: string; title: string; brand: string; description: string;
   price: { amount: string; currency: string } | null;
-  /** "name: value" facts the page lists itself. */
+  /** "name: value" facts the page lists itself (structured data, specification tables). */
   specs: string[];
   images: string[];
+  /** The page's readable text, so a fact can be checked against what the page really says. */
+  text: string;
 };
+export type SearchHit = { title: string; url: string; host: string; snippet: string };
 
 export type ProductErrorKind = "signed-out" | "bad-url" | "blocked" | "network" | "server";
 export class ProductError extends Error {
@@ -23,7 +26,7 @@ async function failure(res: Response | null): Promise<ProductError> {
   let code = "", message = "";
   try { const e = ((await res.json()) as { error?: { status?: string; message?: string } }).error; code = e?.status ?? ""; message = e?.message ?? ""; } catch { /* not JSON */ }
   if (code === "BAD_URL") return new ProductError("bad-url", message || "Tautan harus alamat https publik.");
-  if (code === "PAGE_BLOCKED" || code === "IMAGE_FAILED") return new ProductError("blocked", message || "Situs menolak dibaca otomatis.");
+  if (code === "PAGE_BLOCKED" || code === "IMAGE_FAILED" || code === "SEARCH_BLOCKED") return new ProductError("blocked", message || "Situs menolak dibaca otomatis.");
   if (res.status === 401) return new ProductError("signed-out", "Masuk dulu untuk membaca halaman produk.");
   if (res.status === 404) return new ProductError("server", "Fungsi pembaca halaman produk belum dipasang di server.");
   return new ProductError("server", message || "Halaman produk tidak bisa dibaca. Coba lagi.");
@@ -45,7 +48,17 @@ export async function readProductPage(url: string, o: { signal?: AbortSignal; fn
   if (!res?.ok) throw await failure(res);
   const page = ((await res.json().catch(() => null)) as { page?: ProductPage } | null)?.page;
   if (!page) throw new ProductError("server", "Halaman produk tidak bisa dibaca. Coba lagi.");
-  return { ...page, specs: page.specs ?? [], images: page.images ?? [] };
+  return { ...page, specs: page.specs ?? [], images: page.images ?? [], text: page.text ?? "" };
+}
+
+/** Web search done by the server (no AI): the best matching pages for a query. */
+export async function searchWeb(query: string, o: { signal?: AbortSignal; fn?: Fn } = {}): Promise<SearchHit[]> {
+  let res: Response | null;
+  try { res = await (o.fn ?? defaultFn)("product", { action: "search", query }, { signal: o.signal, timeoutMs: 40_000 }); }
+  catch { throw new ProductError("network", "Tidak bisa terhubung ke server. Periksa koneksi internet."); }
+  if (!res?.ok) throw await failure(res);
+  const hits = ((await res.json().catch(() => null)) as { hits?: SearchHit[] } | null)?.hits;
+  return Array.isArray(hits) ? hits : [];
 }
 
 /** One of the page's pictures as a file, fetched by the server (so the shop's hotlink rules do not matter). */

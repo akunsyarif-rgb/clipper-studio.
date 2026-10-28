@@ -741,23 +741,16 @@ try {
     return "default ordinary; product data and video source each only in their own mode; script and settings carried over; selling rules only in affiliate mode; last mode remembered; folds closed with summaries";
   });
 
-  await step("affiliate research: sourced specifications, a price hint, the product's own pictures on the scenes, with credits", async () => {
+  await step("affiliate research: the app searches and reads pages (no AI browsing), the AI only summarizes quoted text, sourced facts, a price hint, real product pictures with credits", async () => {
     const SB = "https://smwealrfgnzxquqqscxs.supabase.co";
     const OFFICIAL = "https://www.aqualux.example/produk/termos-750";
     const STORE = "https://tokoresmi.example/aqualux-750";
+    const OTHER = "https://lain.example/termos-aqualux";
     const orange = join(dir, "produk-asli.jpg");
     execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=orange:s=1080x1920", "-frames:v", "1", orange]);
     const jpgBytes = readFileSync(orange);
-    const seen = { research: [], pages: [], images: [], generate: 0, failSearch: false };
-    const researchAnswer = {
-      official_name: "Aqualux Termos 750 ml", brand: "Aqualux", category: "botol minum termos",
-      facts: [
-        { text: "Kapasitas 750 ml", source_url: OFFICIAL }, { text: "Bahan stainless steel 304", source_url: OFFICIAL },
-        { text: "Menjaga dingin 12 jam", source_url: "https://dikarang.example/x" }, { text: "Termos terbaik nomor 1", source_url: OFFICIAL },
-      ],
-      price: { text: "Rp 89.000", source_url: OFFICIAL },
-      pages: [{ url: OFFICIAL, kind: "official", title: "Aqualux" }, { url: STORE, kind: "store", title: "Toko" }, { url: "https://dikarang.example/p", kind: "store", title: "?" }],
-    };
+    const PAGE_TEXT = "Termos Aqualux 750 ml\nKapasitas 750 ml dengan bahan stainless steel 304.\nTutup rapat anti bocor, menjaga minuman tetap dingin hingga 12 jam.\nTermos terbaik nomor 1 di Indonesia.";
+    const seen = { searches: [], pages: [], images: [], extraction: [], other: [], failExtraction: false, blockSearch: false };
     const ctxR = await browser.newContext({ acceptDownloads: true });
     await ctxR.route("https://cdn.aqualux.example/**", r => r.fulfill({ status: 200, contentType: "image/jpeg", body: jpgBytes, headers: { "access-control-allow-origin": "*" } }));
     await ctxR.route(SB + "/**", async route => {
@@ -771,20 +764,34 @@ try {
       if (u.pathname === "/functions/v1/gemini") {
         if (m.action === "status") return send(200, { hasKey: true, provider: "openai", baseUrl: "https://openrouter.ai/api/v1", model: "google/gemini-x" });
         const prompt = m.body.messages[0].content;
-        if (m.model === "perplexity/sonar") {
-          seen.research.push({ model: m.model, prompt });
-          if (seen.failSearch) return send(402, { error: { message: "insufficient credits" } });
-          return send(200, { choices: [{ message: { content: "```json\n" + JSON.stringify(researchAnswer) + "\n```", annotations: [{ type: "url_citation", url_citation: { url: OFFICIAL } }, { type: "url_citation", url_citation: { url: STORE + "?ref=x" } }] } }] });
+        seen.other.push(m.model);
+        if (prompt.includes("HANYA dari teks halaman")) {
+          seen.extraction.push(prompt);
+          if (seen.failExtraction) return send(402, { error: { message: "insufficient credits" } });
+          const facts = [
+            { page: 0, text: "Bahan stainless steel 304", quote: "dengan bahan stainless steel 304" },
+            { page: 0, text: "Tutup rapat anti bocor", quote: "Tutup rapat anti bocor" },
+            { page: 0, text: "Tahan benturan keras", quote: "tahan benturan keras sekali" },
+            { page: 0, text: "Termos terbaik nomor 1", quote: "Termos terbaik nomor 1 di Indonesia" },
+          ];
+          return send(200, { choices: [{ message: { content: JSON.stringify({ facts }) } }] });
         }
-        seen.generate++;
         const lines = ["Air cepat hangat saat kerja?", "Termos Aqualux muat 750 ml.", "Bahannya stainless steel 304.", "Cek keranjang kuning sekarang."];
         return send(200, { choices: [{ message: { content: JSON.stringify({ title: "Termos Aqualux", lines }) } }] });
       }
       if (u.pathname !== "/functions/v1/product") return send(404, {});
+      if (m.action === "search") {
+        seen.searches.push(m.query);
+        if (seen.blockSearch) return send(502, { error: { status: "SEARCH_BLOCKED", message: "Mesin pencari membatasi pencarian otomatis saat ini." } });
+        const hit = (url, title) => ({ title, url, host: new URL(url).hostname.replace(/^www\./, ""), snippet: "" });
+        return send(200, { hits: [hit(OFFICIAL, "Aqualux Termos 750 ml"), hit(STORE, "Termos Aqualux - Toko Resmi"), hit("https://www.pinterest.com/pin/1", "Termos Aqualux"), hit(OTHER, "Termos Aqualux lain")] });
+      }
       if (m.action === "page") {
         seen.pages.push(m.url);
         if (m.url.startsWith("https://tokoresmi.example")) return send(502, { error: { status: "PAGE_BLOCKED", message: "Situs menolak dibaca otomatis." } });
-        return send(200, { page: { url: m.url, host: new URL(m.url).hostname, title: "Termos Aqualux 750 ml", brand: "Aqualux", description: "", price: { amount: "89000", currency: "IDR" }, specs: ["Kapasitas: 750 ml", "Warna: Hitam"], images: ["https://cdn.aqualux.example/1.jpg", "https://cdn.aqualux.example/2.jpg"] } });
+        const first = m.url === OFFICIAL || m.url === OFFICIAL + "/";
+        return send(200, { page: { url: m.url, host: new URL(m.url).hostname, title: "Termos Aqualux 750 ml", brand: "Aqualux", description: "", price: first ? { amount: "89000", currency: "IDR" } : null,
+          specs: first ? ["Kapasitas: 750 ml", "Warna: Hitam", "Garansi: 1 tahun"] : [], images: first ? ["https://cdn.aqualux.example/1.jpg", "https://cdn.aqualux.example/2.jpg"] : [], text: first ? PAGE_TEXT : "Halaman lain tentang termos dan botol minum untuk dijual di toko." } });
       }
       if (m.action === "image") { seen.images.push(m.url); return route.fulfill({ status: 200, headers: { ...cors, "content-type": "image/jpeg" }, body: jpgBytes }); }
       return send(400, {});
@@ -807,32 +814,36 @@ try {
     await p.getByTestId("aff-link").fill("www.aqualux.example/produk/termos-750");
     await p.getByTestId("aff-research-run").click();
     await p.getByTestId("aff-result").waitFor({ timeout: 15000 });
-    // What was asked, and of which model.
-    assert(seen.research.length === 1 && seen.research[0].model === "perplexity/sonar", "one web search with the search model");
-    assert(seen.research[0].prompt.includes("Termos Aqualux 750 ml") && seen.research[0].prompt.includes(OFFICIAL), "the product and the pasted page are in the request");
-    assert(seen.pages[0] === OFFICIAL, `the pasted page was read first (address completed): ${seen.pages[0]}`);
-    assert(seen.pages.length === 2 && seen.pages.includes(STORE) && !seen.pages.some(x => x.includes("dikarang")), `found pages were read, an invented one never: ${seen.pages}`);
+    // The app did the browsing: two searches, the pasted page first, the best other pages, never social media or a page twice.
+    assert(seen.searches.length === 2 && /spesifikasi/.test(seen.searches[0]) && /specifications/.test(seen.searches[1]), `two searches by the app: ${seen.searches}`);
+    assert(seen.pages[0] === OFFICIAL, `the pasted page (address completed) was read first: ${seen.pages[0]}`);
+    assert(seen.pages.length === 3 && seen.pages.includes(STORE) && seen.pages.includes(OTHER) && !seen.pages.some(x => /pinterest/.test(x)), `best pages read, social media never: ${seen.pages}`);
+    assert(seen.pages.filter(x => x.includes("aqualux.example")).length === 1, "the pasted page is not read a second time");
+    // The AI only summarized: one ordinary request about the pages' text, and no web-search model or plugin.
+    assert(seen.extraction.length === 1 && seen.extraction[0].includes("Kapasitas 750 ml dengan bahan stainless steel 304"), "the AI got the pages' text once");
+    assert(seen.other.every(mod => mod === "google/gemini-x") && !/perplexity|plugins|web_search/.test(seen.extraction[0]), "the creator's normal model, no web search by the AI");
     assert(/menolak dibaca otomatis/.test(await p.getByTestId("aff-note").first().textContent()), "a page that refused is reported");
-    assert(/Merek: Aqualux/.test(await p.getByTestId("aff-brand").textContent()), "brand and category shown");
-    // Facts with their sources; only sourced, non-promotional ones are ticked.
+    assert(await p.getByTestId("aff-note").filter({ hasText: "1 ringkasan AI dibuang" }).count() === 1, "the summary without a real quote was dropped and reported");
+    assert(/Merek: Aqualux/.test(await p.getByTestId("aff-brand").textContent()), "brand shown");
+    // Facts with their sources and quotes; promotional and claim-like ones are held back.
     const facts = await p.getByTestId("aff-fact").allTextContents();
     const ticked = await p.locator('[data-testid="aff-fact"] input').evaluateAll(els => els.map(e => e.checked));
-    const textOf = i => facts[i];
     const idx = t => facts.findIndex(x => x.includes(t));
     assert(idx("Kapasitas: 750 ml") === 0 && ticked[0], "the page's own specification comes first and is ticked");
-    assert(!ticked[idx("Menjaga dingin 12 jam")] && /tidak bisa dipastikan/.test(textOf(idx("Menjaga dingin 12 jam"))), "a fact whose source the search never returned is not ticked and says so");
-    assert(!ticked[idx("terbaik nomor 1")] && /Kata promosi/.test(textOf(idx("terbaik nomor 1"))), "promotional wording is held back");
-    assert(ticked[idx("Bahan stainless steel 304")] && /aqualux\.example/.test(textOf(idx("Bahan stainless steel 304"))), "a sourced fact shows its source");
-    assert(facts.filter(x => /Kapasitas/.test(x)).length === 1, "the same fact from the page and from the search appears once");
+    assert(ticked[idx("Bahan stainless steel 304")] && /Kutipan halaman: “dengan bahan stainless steel 304”/.test(facts[idx("Bahan stainless steel 304")]), "a quoted fact shows the page's own words and is ticked");
+    assert(idx("Tahan benturan") === -1, "a fabricated quote never appears");
+    assert(!ticked[idx("terbaik nomor 1")] && /Kata promosi/.test(facts[idx("terbaik nomor 1")]), "promotional wording is held back");
+    assert(!ticked[idx("Garansi: 1 tahun")] && /Kata promosi atau klaim/.test(facts[idx("Garansi: 1 tahun")]), "a warranty line reads as a guarantee claim: not ticked by default");
+    assert(facts.filter(x => /Bahan stainless steel 304/.test(x)).length === 1, "no duplicates");
     await p.getByTestId("aff-use-facts").click();
     const benefits = await p.getByTestId("aff-benefits").inputValue();
-    assert(/Kapasitas: 750 ml/.test(benefits) && /Warna: Hitam/.test(benefits) && /stainless steel 304/.test(benefits), `ticked facts were added: ${benefits}`);
-    assert(!/Menjaga dingin/.test(benefits) && !/terbaik/.test(benefits), "unticked facts were not added");
+    assert(/Kapasitas: 750 ml/.test(benefits) && /Warna: Hitam/.test(benefits) && /Bahan stainless steel 304/.test(benefits) && /Tutup rapat anti bocor/.test(benefits), `ticked facts were added: ${benefits}`);
+    assert(!/terbaik/.test(benefits) && !/Garansi/.test(benefits), "unticked facts were not added");
     // The price is only a hint until the creator uses it.
     assert(await p.getByTestId("aff-price").inputValue() === "", "the price is never filled in by itself");
-    assert(/Rp 89000/.test(await p.getByTestId("aff-price-hint").textContent()) || /89.000/.test(await p.getByTestId("aff-price-hint").textContent()), "the price hint shows what was found");
+    assert(/Rp 89\.000/.test(await p.getByTestId("aff-price-hint").textContent()), "the price hint shows what was found, in rupiah");
     await p.getByTestId("aff-use-price").click();
-    assert((await p.getByTestId("aff-price").inputValue()).length > 0, "the price goes into the field when asked");
+    assert(await p.getByTestId("aff-price").inputValue() === "Rp 89.000", "the price goes into the field when asked");
     // The script is written from these facts, then the product's own picture goes on its scenes.
     await p.getByTestId("aff-write").click();
     await p.getByTestId("aff-draft").waitFor({ timeout: 10000 });
@@ -844,21 +855,21 @@ try {
     assert(/2 scene/.test(await p.getByTestId("aff-research-msg").textContent()), `message: ${await p.getByTestId("aff-research-msg").textContent()}`);
     assert(await p.locator(".scene-thumb").count() === 2, "two scenes got the product picture");
     const credit = p.getByTestId("scene-credit").first();
-    assert(/Gambar: www\.aqualux\.example|Gambar: aqualux\.example/.test(await credit.textContent()), `credit names the source: ${await credit.textContent()}`);
+    assert(/Gambar: aqualux\.example/.test(await credit.textContent()), `credit names the source: ${await credit.textContent()}`);
     assert((await credit.locator("a").getAttribute("href")) === OFFICIAL, "the credit links to the page the picture came from");
-    // A failing search still keeps what the pasted page gives, and says why.
-    seen.failSearch = true;
+    // When the AI cannot be used the pages' own specifications are still there; when the search is limited the pasted page still works.
+    seen.failExtraction = true; seen.blockSearch = true;
     await p.getByTestId("aff-research-run").click();
-    await p.getByTestId("aff-note").filter({ hasText: "Saldo" }).waitFor({ timeout: 15000 });
-    assert(await p.getByTestId("aff-fact").count() >= 2, "the pasted page's facts are kept when the search fails");
-    // The model can be changed (names on the router change) and the product data is remembered.
-    await p.locator(".aff-advanced summary").click();
-    await p.getByTestId("aff-research-model").fill("perplexity/sonar-pro");
+    await p.getByTestId("aff-note").filter({ hasText: "AI tidak bisa merangkum" }).waitFor({ timeout: 15000 });
+    assert(await p.getByTestId("aff-note").filter({ hasText: "membatasi pencarian" }).count() === 1, "the limited search engine is reported");
+    assert(await p.getByTestId("aff-fact").count() >= 3, "the pasted page's own specifications are kept");
+    assert(await p.getByTestId("aff-research-model").count() === 0, "there is no web-search model to set any more");
+    // The product data is remembered.
     await p.reload();
     await until(async () => (await p.getByTestId("aff-link").inputValue()) === "www.aqualux.example/produk/termos-750", "the link is remembered");
     await until(async () => /Kapasitas: 750 ml/.test(await p.getByTestId("aff-benefits").inputValue()), "the facts are remembered");
     await ctxR.close();
-    return `sourced facts ticked only when verified, ${seen.pages.length} pages read (invented one never), price only on request, 1 real picture through the server on 2 scenes with credit, search failure keeps the page's facts`;
+    return `${seen.searches.length} searches by the app, ${seen.pages.length} pages read, the AI only summarized (1 fabricated quote dropped), price only on request, 1 real picture through the server on 2 scenes with credit, AI and search failures keep the pages' own facts`;
   });
 
   await step("no horizontal scroll on iPhone-size viewport", async () => {

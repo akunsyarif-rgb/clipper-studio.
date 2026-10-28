@@ -23,7 +23,7 @@ can be rebuilt by running them in order (SQL editor, or `supabase db push`).
 
 ## Edge Functions (`functions/`)
 
-`gemini` (AI proxy; key read from `user_secrets`), `youtube` (captions), `pexels` (stock-photo search and download; key read from `user_pexels`) and `product` (reads a public product page's structured facts and pictures, and hands over a chosen picture; needs no key and no table). All require a signed-in user (`verify_jwt`).
+`gemini` (AI proxy; key read from `user_secrets`), `youtube` (captions), `pexels` (stock-photo search and download; key read from `user_pexels`) and `product` (product research done by code: searches the web through DuckDuckGo's HTML page, reads a public product page's structured data, specification tables and text, and hands over a chosen picture; needs no key and no table). All require a signed-in user (`verify_jwt`).
 The logic is in `handler.ts` (pure, unit-tested from `lib/*-function.test.ts`); `index.ts` only starts it in Deno. Deploy with
 `supabase functions deploy <name>` or from the dashboard.
 

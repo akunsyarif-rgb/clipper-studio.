@@ -1,44 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { citedAddresses, formatPrice, mergeResearch, pageKey, parseResearch, researchEverything, researchProduct, researchPrompt, DEFAULT_RESEARCH_MODEL } from "./product-research";
-import { ProductError, type ProductPage } from "./product";
+import { aiExtractor, extractionPrompt, formatPrice, mergeResearch, pageKey, parseExtraction, rankHits, researchEverything, searchQueries, type PageForAi, type ResearchFact } from "./product-research";
+import { ProductError, type ProductPage, type SearchHit } from "./product";
 
 const OFFICIAL = "https://www.aqualux.example/produk/termos-750";
 const STORE = "https://tokoresmi.example/aqualux-750";
-const answerJson = {
-  official_name: "Aqualux Termos 750 ml", brand: "Aqualux", category: "botol minum termos",
-  facts: [
-    { text: "Kapasitas 750 ml", source_url: OFFICIAL },
-    { text: "Bahan stainless steel 304", source_url: OFFICIAL + "/" },
-    { text: "Menjaga dingin 12 jam", source_url: "https://invented.example/nowhere" },
-    { text: "Termos terbaik nomor 1", source_url: OFFICIAL },
-    { text: "Membantu menurunkan berat badan", source_url: OFFICIAL },
-    { text: "Kapasitas 750 ml!", source_url: STORE },
-    { text: "x", source_url: OFFICIAL },
-  ],
-  price: { text: "Rp 89.000", source_url: STORE },
-  pages: [{ url: OFFICIAL, kind: "official", title: "Aqualux" }, { url: "https://made-up.example/p", kind: "store", title: "?" }, { url: STORE, kind: "store", title: "Toko" }],
-};
-const response = (content: unknown, extra: object = {}) => ({ choices: [{ message: { content: typeof content === "string" ? content : JSON.stringify(content), annotations: [{ type: "url_citation", url_citation: { url: OFFICIAL } }, { type: "url_citation", url_citation: { url: STORE + "?utm=1" } }] } }], ...extra });
+const hit = (url: string, title = "Halaman", snippet = ""): SearchHit => ({ title, url, host: new URL(url).hostname.replace(/^www\./, ""), snippet });
+const page = (url: string, extra: Partial<ProductPage> = {}): ProductPage => ({ url, host: new URL(url).hostname, title: "Termos Aqualux 750 ml", brand: "", description: "", price: null, specs: [], images: [], text: "", ...extra });
+const PAGE_TEXT = "Termos Aqualux 750 ml\nKapasitas 750 ml dengan bahan stainless steel 304.\nTutup rapat anti bocor, menjaga minuman tetap dingin hingga 12 jam.\nGaransi resmi 1 tahun dari distributor.";
 
-describe("researchPrompt", () => {
-  it("asks for sourced specifications only and forbids guessing and promotion", () => {
-    const p = researchPrompt({ product: "Termos Aqualux 750 ml", link: OFFICIAL });
-    expect(p).toContain("HANYA fakta yang tertulis");
-    expect(p).toContain("source_url");
-    expect(p).toContain("Jangan menebak");
-    expect(p).toContain("Jangan menulis kata promosi");
-    expect(p).toContain(OFFICIAL);
-    expect(researchPrompt({ product: "X produk" })).not.toContain("Halaman produk dari pembuat video");
-  });
-});
-
-describe("citedAddresses", () => {
-  it("collects addresses from annotations, citations and search results, once each", () => {
-    const r = response("{}", { citations: [STORE, { url: "https://c.example/x" }], search_results: [{ url: "https://d.example/y" }, { url: OFFICIAL }] });
-    expect(citedAddresses(r)).toEqual([OFFICIAL, STORE + "?utm=1", STORE, "https://c.example/x", "https://d.example/y"]);
-  });
-  it("ignores anything that is not a web address", () => {
-    expect(citedAddresses({ citations: ["javascript:alert(1)", 5, null, "ftp://x.example"] })).toEqual([]);
+describe("searchQueries", () => {
+  it("asks for the specification in Indonesian and in English", () => {
+    expect(searchQueries("  Termos   Aqualux 750 ml ")).toEqual(["Termos Aqualux 750 ml spesifikasi resmi", "Termos Aqualux 750 ml specifications"]);
   });
 });
 
@@ -49,126 +21,87 @@ describe("pageKey", () => {
   });
 });
 
-describe("parseResearch", () => {
-  const r = parseResearch(response(answerJson));
-  it("accepts a fact as sourced only when its address was returned by the search itself", () => {
-    const byText = Object.fromEntries(r.facts.map(f => [f.text, f]));
-    expect(byText["Kapasitas 750 ml"]).toMatchObject({ verified: true, host: "aqualux.example", risky: false });
-    expect(byText["Bahan stainless steel 304"].verified).toBe(true); // same page, trailing slash
-    expect(byText["Menjaga dingin 12 jam"].verified).toBe(false); // an address the search never returned
+describe("rankHits", () => {
+  const hits = [
+    hit("https://www.pinterest.com/pin/1", "Termos Aqualux"), hit("https://blogsaya.example/review-termos-terbaik", "Review termos terbaik 2026"),
+    hit("https://www.tokopedia.com/aqualux/termos-750", "Termos Aqualux 750 ml"), hit("https://www.aqualux.example/produk/termos-750", "Aqualux Termos 750 ml"),
+    hit("https://www.youtube.com/watch?v=1", "Unboxing"), hit("https://toko.example/termos-aqualux", "Termos Aqualux - Toko Resmi"),
+  ];
+  const ranked = rankHits(hits, "Termos Aqualux 750 ml");
+  it("puts the brand's own site first, then official shops and marketplaces, review lists last", () => {
+    expect(ranked.map(h => h.host)).toEqual(["aqualux.example", "toko.example", "tokopedia.com", "blogsaya.example"]);
   });
-  it("holds back promotional and health wording, but not numbers", () => {
-    const byText = Object.fromEntries(r.facts.map(f => [f.text, f]));
-    expect(byText["Termos terbaik nomor 1"].risky).toBe(true);
-    expect(byText["Membantu menurunkan berat badan"].risky).toBe(true);
-    expect(byText["Kapasitas 750 ml"].risky).toBe(false);
+  it("leaves out social media and video sites", () => {
+    expect(ranked.some(h => /pinterest|youtube/.test(h.host))).toBe(false);
   });
-  it("drops duplicates and junk", () => {
-    expect(r.facts.filter(f => /^Kapasitas 750 ml/.test(f.text))).toHaveLength(1);
-    expect(r.facts.some(f => f.text === "x")).toBe(false);
+  it("skips pages already read, whatever the query string or trailing slash", () => {
+    expect(rankHits(hits, "Termos Aqualux 750 ml", ["https://aqualux.example/produk/termos-750/?utm=1"]).some(h => h.host === "aqualux.example")).toBe(false);
   });
-  it("keeps a price only as a hint with its source status", () => {
-    expect(r.price).toEqual({ text: "Rp 89.000", url: STORE, host: "tokoresmi.example", verified: true });
-    expect(parseResearch(response({ ...answerJson, price: { text: "murah", source_url: STORE } })).price).toBeNull();
-  });
-  it("lists only pages the search really returned, never an address the model invented", () => {
-    expect(r.pages.map(p => p.url)).toEqual([OFFICIAL, STORE]);
-  });
-  it("reads an answer wrapped in a code fence or in extra words", () => {
-    expect(parseResearch(response("```json\n" + JSON.stringify(answerJson) + "\n```")).facts.length).toBeGreaterThan(0);
-    expect(parseResearch(response("Berikut hasilnya: " + JSON.stringify(answerJson) + " semoga membantu")).brand).toBe("Aqualux");
-  });
-  it("says so when the answer is unusable", () => {
-    expect(() => parseResearch({ choices: [{ message: { content: "" } }] })).toThrow(/tidak memberi jawaban/);
-    expect(() => parseResearch(response("bukan json"))).toThrow(/JSON/);
-  });
-  it("copes with missing parts", () => {
-    const e = parseResearch(response({ facts: "no", pages: 5 }));
-    expect(e).toMatchObject({ facts: [], price: null, pages: [], brand: "" });
+  it("takes at most two pages per site", () => {
+    const many = [1, 2, 3, 4].map(i => hit(`https://www.aqualux.example/p${i}`, "Aqualux"));
+    expect(rankHits(many, "Aqualux")).toHaveLength(2);
   });
 });
 
-describe("researchProduct", () => {
-  const fnOf = (res: Response | null | Error) => { const calls: Record<string, unknown>[] = []; return { calls, fn: async (_n: string, b: unknown) => { calls.push(b as Record<string, unknown>); if (res instanceof Error) throw res; return res?.clone() ?? null; } }; };
-  const ok = () => new Response(JSON.stringify(response(answerJson)), { status: 200 });
-  it("sends one request to the search model through the server and returns the answer", async () => {
-    const f = fnOf(ok());
-    const a = await researchProduct({ product: "Termos Aqualux" }, { fn: f.fn });
-    expect(a.brand).toBe("Aqualux");
-    expect(f.calls[0]).toMatchObject({ action: "generate", model: DEFAULT_RESEARCH_MODEL });
-    expect(JSON.stringify(f.calls[0])).toContain("Termos Aqualux");
+describe("extractionPrompt", () => {
+  const pages: PageForAi[] = [{ url: OFFICIAL, host: "aqualux.example", title: "T", text: "x".repeat(5000) }];
+  const p = extractionPrompt("Termos Aqualux 750 ml", pages);
+  it("only summarizes the pages' text, requires a quote and forbids adding anything", () => {
+    expect(p).toContain("HANYA dari teks halaman");
+    expect(p).toContain("tidak mencari apa pun");
+    expect(p).toContain("\"quote\"");
+    expect(p).toContain("Angka di \"text\" harus ada di kutipan");
+    expect(p).toContain("Jangan kata promosi");
   });
-  it("uses the model the creator chose", async () => {
-    const f = fnOf(ok());
-    await researchProduct({ product: "Termos Aqualux" }, { fn: f.fn, model: " perplexity/sonar-pro " });
-    expect(f.calls[0].model).toBe("perplexity/sonar-pro");
-  });
-  it("explains a missing model, credit, sign-in and network failures", async () => {
-    const e = (status: number, body: unknown = {}) => researchProduct({ product: "Termos" }, { fn: fnOf(new Response(JSON.stringify(body), { status })).fn });
-    await expect(e(404, { error: { message: "No endpoints found" } })).rejects.toMatchObject({ kind: "model", message: /perplexity\/sonar.*tidak ditemukan/ });
-    await expect(e(402)).rejects.toMatchObject({ kind: "quota", message: /Saldo/ });
-    await expect(researchProduct({ product: "Termos" }, { fn: fnOf(null).fn })).rejects.toMatchObject({ kind: "key" });
-    await expect(researchProduct({ product: "Termos" }, { fn: fnOf(new Error("x")).fn })).rejects.toMatchObject({ kind: "network" });
+  it("sends a bounded excerpt of each page", () => {
+    expect(p.length).toBeLessThan(5000);
+    expect(p).toContain(OFFICIAL);
   });
 });
 
-describe("mergeResearch", () => {
-  const page: ProductPage = { url: OFFICIAL, host: "www.aqualux.example", title: "Termos Aqualux", brand: "Aqualux", description: "", price: { amount: "89000", currency: "IDR" }, specs: ["Kapasitas: 750 ml", "Bahan: Stainless steel 304"], images: ["https://cdn.aqualux.example/1.jpg", "https://cdn.aqualux.example/2.jpg"] };
-  const answer = parseResearch(response(answerJson));
-  const m = mergeResearch(answer, [page]);
-  it("puts what the pages list themselves first, then sourced facts, then held-back ones last", () => {
-    expect(m.facts[0]).toMatchObject({ text: "Kapasitas: 750 ml", verified: true, host: "aqualux.example" });
-    const idx = (t: string) => m.facts.findIndex(f => f.text === t);
-    expect(idx("Bahan stainless steel 304")).toBeLessThan(idx("Menjaga dingin 12 jam"));
-    expect(idx("Menjaga dingin 12 jam")).toBeLessThan(idx("Termos terbaik nomor 1"));
+describe("parseExtraction", () => {
+  const pages: PageForAi[] = [{ url: OFFICIAL, host: "aqualux.example", title: "T", text: PAGE_TEXT }, { url: STORE, host: "tokoresmi.example", title: "S", text: "Warna hitam doff. Berat 420 gram." }];
+  it("keeps a fact whose quote is really in the page, ignoring case and spacing", () => {
+    const { facts, dropped } = parseExtraction({ facts: [{ page: 0, text: "Kapasitas 750 ml", quote: "kapasitas  750 ML dengan bahan stainless steel 304" }, { page: 1, text: "Berat 420 gram", quote: "Berat 420 gram." }] }, pages);
+    expect(dropped).toBe(0);
+    expect(facts).toEqual([
+      { text: "Kapasitas 750 ml", url: OFFICIAL, host: "aqualux.example", verified: true, risky: false, quote: "kapasitas 750 ML dengan bahan stainless steel 304" },
+      { text: "Berat 420 gram", url: STORE, host: "tokoresmi.example", verified: true, risky: false, quote: "Berat 420 gram." },
+    ]);
   });
-  it("shows the page's own price as a sourced hint", () => {
-    expect(m.price).toEqual({ text: "Rp 89.000", url: OFFICIAL, host: "aqualux.example", verified: true });
+  it("drops a fabricated quote, a wrong page, and a number that is not in the quote", () => {
+    const { facts, dropped } = parseExtraction({ facts: [
+      { page: 0, text: "Tahan benturan", quote: "tahan benturan hebat" },
+      { page: 1, text: "Kapasitas 750 ml", quote: "Kapasitas 750 ml" },
+      { page: 0, text: "Kapasitas 900 ml", quote: "Kapasitas 750 ml dengan bahan" },
+      { page: 7, text: "Entah", quote: "Warna hitam" },
+      { page: 0, text: "x", quote: "ab" },
+    ] }, pages);
+    expect(facts).toEqual([]);
+    expect(dropped).toBe(5);
   });
-  it("collects the pictures with where they came from, once each", () => {
-    expect(m.images).toEqual([{ url: "https://cdn.aqualux.example/1.jpg", pageUrl: OFFICIAL, host: "aqualux.example" }, { url: "https://cdn.aqualux.example/2.jpg", pageUrl: OFFICIAL, host: "aqualux.example" }]);
+  it("holds back promotional or health wording, not numbers", () => {
+    const withPromo: PageForAi[] = [{ url: OFFICIAL, host: "aqualux.example", title: "T", text: "Termos terbaik nomor 1 di Indonesia. Cocok untuk diet menurunkan berat badan." }];
+    const { facts } = parseExtraction([{ page: 0, text: "Termos terbaik nomor 1", quote: "Termos terbaik nomor 1 di Indonesia" }, { page: 0, text: "Cocok untuk menurunkan berat badan", quote: "Cocok untuk diet menurunkan berat badan" }], withPromo);
+    expect(facts.map(f => f.risky)).toEqual([true, true]);
   });
-  it("works with pages alone or an answer alone", () => {
-    expect(mergeResearch(null, [page]).facts).toHaveLength(2);
-    expect(mergeResearch(answer, []).images).toEqual([]);
-    expect(mergeResearch(null, [page]).brand).toBe("Aqualux");
+  it("accepts a bare array, copes with junk, and caps the number of facts", () => {
+    expect(parseExtraction([{ page: 0, text: "Kapasitas 750 ml", quote: "Kapasitas 750 ml" }], pages).facts).toHaveLength(1);
+    expect(parseExtraction("nothing", pages)).toEqual({ facts: [], dropped: 0 });
+    const lots = { facts: Array.from({ length: 20 }, (_, i) => ({ page: 0, text: `Garansi resmi ${i}`, quote: "Garansi resmi 1 tahun" })) };
+    expect(parseExtraction(lots, [{ ...pages[0], text: "Garansi resmi 1 tahun" }]).facts.length).toBeLessThanOrEqual(8);
   });
 });
 
-describe("researchEverything", () => {
-  const page = (url: string, extra: Partial<ProductPage> = {}): ProductPage => ({ url, host: new URL(url).hostname, title: "T", brand: "", description: "", price: null, specs: [], images: [], ...extra });
-  const fnOf = (res: Response | Error) => async () => { if (res instanceof Error) throw res; return res.clone(); };
-  const ok = () => new Response(JSON.stringify(response(answerJson)), { status: 200 });
-
-  it("reads the pasted page, searches the web, and reads the pages the search found (at most two more)", async () => {
-    const read: string[] = [];
-    const r = await researchEverything({ product: "Termos Aqualux", link: "https://pasted.example/p" }, { fn: fnOf(ok()), readPage: async u => { read.push(u); return page(u, { specs: [`Spek ${read.length}`], images: [`https://cdn.example/${read.length}.jpg`] }); } });
-    expect(read).toEqual(["https://pasted.example/p", OFFICIAL, STORE]);
-    expect(r.images).toHaveLength(3);
-    expect(r.facts.length).toBeGreaterThan(3);
-  });
-  it("does not read a found page twice when it is the pasted one", async () => {
-    const read: string[] = [];
-    await researchEverything({ product: "Termos Aqualux", link: OFFICIAL + "/" }, { fn: fnOf(ok()), readPage: async u => { read.push(u); return page(u); } });
-    expect(read).toEqual([OFFICIAL + "/", STORE]);
-  });
-  it("carries on when a page refuses to be read, and says so", async () => {
-    const r = await researchEverything({ product: "Termos Aqualux" }, { fn: fnOf(ok()), readPage: async () => { throw new ProductError("blocked", "x"); } });
-    expect(r.notes.join(" ")).toMatch(/menolak dibaca otomatis/);
-    expect(r.facts.length).toBeGreaterThan(0);
-  });
-  it("still gives the page's facts when the web search fails", async () => {
-    const r = await researchEverything({ product: "Termos Aqualux", link: "https://pasted.example/p" }, { fn: fnOf(new Response("{}", { status: 402 })), readPage: async u => page(u, { specs: ["Kapasitas: 750 ml"] }) });
-    expect(r.facts.map(f => f.text)).toEqual(["Kapasitas: 750 ml"]);
-    expect(r.notes.join(" ")).toMatch(/Saldo/);
-  });
-  it("fails clearly when nothing at all could be confirmed", async () => {
-    await expect(researchEverything({ product: "Termos Aqualux" }, { fn: fnOf(new Response("{}", { status: 402 })) })).rejects.toMatchObject({ kind: "quota" });
-    await expect(researchEverything({ product: "Termos Aqualux" }, { fn: fnOf(new Response(JSON.stringify(response({ facts: [], pages: [] })), { status: 200 })) })).rejects.toThrow(/tidak ada informasi/i);
-  });
-  it("stops when cancelled", async () => {
-    const ctl = new AbortController();
-    await expect(researchEverything({ product: "Termos Aqualux" }, { signal: ctl.signal, fn: async () => { ctl.abort(); throw new Error("aborted"); } })).rejects.toThrow();
+describe("aiExtractor", () => {
+  it("asks the creator's AI once with the prompt and returns its JSON, without any web search", async () => {
+    let sent = "";
+    const fetchImpl = (async (_u: string, init: { body: string }) => { sent = init.body; return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ facts: [] }) }] } }] }), { status: 200 }); }) as unknown as typeof fetch;
+    const extract = aiExtractor({ apiKey: "k".repeat(30), model: "m", language: "id", fetchImpl, retryDelaysMs: [] });
+    expect(await extract("PROMPT ISI")).toEqual({ facts: [] });
+    expect(sent).toContain("PROMPT ISI");
+    expect(sent).not.toContain("k".repeat(30));
+    expect(sent).not.toMatch(/plugins|web_search|online/);
   });
 });
 
@@ -178,5 +111,98 @@ describe("formatPrice", () => {
     expect(formatPrice("1500000", "")).toBe("Rp 1.500.000");
     expect(formatPrice("750", "IDR")).toBe("Rp 750");
     expect(formatPrice("12.99", "USD")).toBe("USD 12.99");
+  });
+});
+
+describe("mergeResearch", () => {
+  const p = page(OFFICIAL, { host: "www.aqualux.example", brand: "Aqualux", price: { amount: "89000", currency: "IDR" }, specs: ["Kapasitas: 750 ml", "Garansi: 1 tahun"], images: ["https://cdn.aqualux.example/1.jpg", "https://cdn.aqualux.example/2.jpg"] });
+  const ai: ResearchFact[] = [
+    { text: "Kapasitas 750 ml", url: OFFICIAL, host: "aqualux.example", verified: true, risky: false, quote: "q" },
+    { text: "Tutup rapat anti bocor", url: OFFICIAL, host: "aqualux.example", verified: true, risky: false, quote: "q2" },
+    { text: "Termos terbaik", url: OFFICIAL, host: "aqualux.example", verified: true, risky: true, quote: "q3" },
+  ];
+  const m = mergeResearch([p], ai);
+  it("lists what the page itself lists first, then quoted facts, held-back ones last, without duplicates", () => {
+    expect(m.facts.map(f => f.text)).toEqual(["Kapasitas: 750 ml", "Tutup rapat anti bocor", "Garansi: 1 tahun", "Termos terbaik"]);
+    expect(m.facts.filter(f => /Kapasitas/.test(f.text))).toHaveLength(1);
+    expect(m.facts[2].risky).toBe(true); // a warranty line reads as a guarantee claim: unticked, the creator can still tick it
+  });
+  it("shows the page's price as a sourced hint, with its pictures and where they came from", () => {
+    expect(m.price).toEqual({ text: "Rp 89.000", url: OFFICIAL, host: "aqualux.example", verified: true });
+    expect(m.images).toHaveLength(2);
+    expect(m.images[0]).toEqual({ url: "https://cdn.aqualux.example/1.jpg", pageUrl: OFFICIAL, host: "aqualux.example" });
+    expect(m.brand).toBe("Aqualux");
+  });
+});
+
+describe("researchEverything", () => {
+  const sampleSpecs = (url: string) => page(url, { specs: [`Spek dari ${new URL(url).hostname}`], text: PAGE_TEXT, images: [`https://cdn.example/${new URL(url).hostname}.jpg`] });
+  const hits = [hit(OFFICIAL, "Aqualux Termos 750 ml"), hit(STORE, "Termos Aqualux - Toko Resmi"), hit("https://www.pinterest.com/x", "pin"), hit("https://blog.example/review-termos", "Review termos terbaik"), hit("https://lain.example/termos-aqualux", "Termos Aqualux lain")];
+  const base = (over: Partial<Parameters<typeof researchEverything>[1]> = {}) => {
+    const read: string[] = [], queries: string[] = [];
+    return { read, queries, opts: { readPage: async (u: string) => { read.push(u); return sampleSpecs(u); }, search: async (q: string) => { queries.push(q); return hits; }, ...over } };
+  };
+
+  it("reads the pasted page first, searches twice, and reads the best other pages (four in all), never the same page twice", async () => {
+    const t = base();
+    const r = await researchEverything({ product: "Termos Aqualux 750 ml", link: OFFICIAL + "/" }, t.opts);
+    expect(t.queries).toHaveLength(2);
+    expect(t.read[0]).toBe(OFFICIAL + "/");
+    expect(t.read).toHaveLength(4);
+    expect(t.read.filter(u => pageKey(u) === pageKey(OFFICIAL))).toHaveLength(1);
+    expect(t.read.some(u => /pinterest/.test(u))).toBe(false);
+    expect(r.facts.length).toBeGreaterThanOrEqual(4);
+    expect(r.images.length).toBe(4);
+  });
+  it("works from the product name alone", async () => {
+    const t = base();
+    const r = await researchEverything({ product: "Termos Aqualux 750 ml" }, t.opts);
+    expect(t.read).toHaveLength(4);
+    expect(r.facts.length).toBeGreaterThan(0);
+  });
+  it("hands the pages' text to the AI and adds only its quoted facts, noting what it dropped", async () => {
+    const prompts: string[] = [];
+    const t = base({ extract: async prompt => { prompts.push(prompt); return { facts: [{ page: 0, text: "Garansi resmi 1 tahun", quote: "Garansi resmi 1 tahun dari distributor" }, { page: 0, text: "Anti pecah", quote: "anti pecah total" }] }; } });
+    const r = await researchEverything({ product: "Termos Aqualux 750 ml", link: OFFICIAL }, t.opts);
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("Kapasitas 750 ml dengan bahan stainless steel 304");
+    expect(r.facts.some(f => f.quote && /Garansi resmi/.test(f.text))).toBe(true);
+    expect(r.facts.some(f => /Anti pecah/.test(f.text))).toBe(false);
+    expect(r.notes.join(" ")).toMatch(/1 ringkasan AI dibuang/);
+  });
+  it("uses only what the pages list when there is no AI, and does not call one", async () => {
+    const t = base();
+    const r = await researchEverything({ product: "Termos Aqualux 750 ml" }, t.opts);
+    expect(r.facts.every(f => !f.quote)).toBe(true);
+  });
+  it("keeps the pages' facts when the AI fails, and says so", async () => {
+    const t = base({ extract: async () => { throw new Error("Saldo habis."); } });
+    const r = await researchEverything({ product: "Termos Aqualux 750 ml" }, t.opts);
+    expect(r.facts.length).toBeGreaterThan(0);
+    expect(r.notes.join(" ")).toMatch(/AI tidak bisa merangkum halaman: Saldo habis\./);
+  });
+  it("carries on when the search is limited, with the pasted page, and says so", async () => {
+    const t = base({ search: async () => { throw new ProductError("blocked", "Mesin pencari membatasi."); } });
+    const r = await researchEverything({ product: "Termos Aqualux 750 ml", link: OFFICIAL }, t.opts);
+    expect(r.facts.length).toBeGreaterThan(0);
+    expect(r.notes).toContain("Mesin pencari membatasi.");
+    expect(t.read).toEqual([OFFICIAL]);
+  });
+  it("reports a page that refuses to be read, and still uses the others", async () => {
+    const t = base({ readPage: async (u: string) => { if (u.includes("tokoresmi")) throw new ProductError("blocked", "x"); return sampleSpecs(u); } });
+    const r = await researchEverything({ product: "Termos Aqualux 750 ml" }, t.opts);
+    expect(r.notes.join(" ")).toMatch(/tokoresmi\.example tidak bisa dibaca \(situsnya menolak dibaca otomatis\)/);
+    expect(r.facts.length).toBeGreaterThan(0);
+  });
+  it("fails clearly when nothing at all could be read", async () => {
+    const limited = base({ search: async () => { throw new ProductError("blocked", "Mesin pencari membatasi."); } });
+    await expect(researchEverything({ product: "Termos Aqualux 750 ml" }, limited.opts)).rejects.toMatchObject({ kind: "blocked" });
+    const empty = base({ search: async () => [] });
+    await expect(researchEverything({ product: "Termos Aqualux 750 ml" }, empty.opts)).rejects.toThrow(/tempel tautan/i);
+  });
+  it("stops when cancelled", async () => {
+    const ctl = new AbortController();
+    const t = base({ signal: ctl.signal, search: async () => { ctl.abort(); throw new Error("aborted"); } });
+    await expect(researchEverything({ product: "Termos Aqualux 750 ml" }, t.opts)).rejects.toThrow();
   });
 });

@@ -2,17 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { downloadProductImage, normalizeLink, ProductError } from "@/lib/product";
-import { DEFAULT_RESEARCH_MODEL, researchEverything, type ProductResearch as Research, type ResearchFact, type ResearchImage } from "@/lib/product-research";
+import { aiExtractor, researchEverything, type ProductResearch as Research, type ResearchFact, type ResearchImage } from "@/lib/product-research";
 import { GeminiError } from "@/lib/gemini";
-import { useGeminiAccess } from "./useGeminiAccess";
+import { getAccess } from "@/lib/gemini-access";
 
-const MODEL_KEY = "clipper:research-model:v1";
 const factKey = (f: ResearchFact) => f.text;
 
 /**
- * AI research for an affiliate product: specifications with their sources, a price hint, and the product's own pictures from
- * its shop or brand page. Nothing is added to the video's data without the creator ticking it, every fact shows where it
- * came from, and the creator's own check remains the last word.
+ * Research for an affiliate product, done by the app (web search and page reading, no AI browsing): specifications with
+ * their sources, a price hint, and the product's own pictures from its shop or brand page. The creator's AI, if there is one,
+ * only turns the pages' text into short facts, each with the page's own words as a quote. Nothing is added to the video's
+ * data without the creator ticking it, and the creator's own check remains the last word.
  */
 export default function ProductResearch({ product, link, onUseFacts, onUsePrice, onPhoto, disabled }: {
   product: string;
@@ -23,8 +23,6 @@ export default function ProductResearch({ product, link, onUseFacts, onUsePrice,
   onPhoto: (file: File, credit: { text: string; href: string }) => Promise<number>;
   disabled: boolean;
 }) {
-  const access = useGeminiAccess();
-  const [model, setModel] = useState(DEFAULT_RESEARCH_MODEL);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<Research | null>(null);
@@ -33,20 +31,20 @@ export default function ProductResearch({ product, link, onUseFacts, onUsePrice,
   const [picking, setPicking] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
 
-  useEffect(() => { try { const m = localStorage.getItem(MODEL_KEY); if (m && /^[\w.:/-]{3,100}$/.test(m)) setModel(m); } catch { /* default model */ } return () => abort.current?.abort(); }, []);
-  const changeModel = (m: string) => { setModel(m); try { localStorage.setItem(MODEL_KEY, m); } catch { /* not remembered */ } };
+  useEffect(() => () => abort.current?.abort(), []);
 
   const pasted = link.trim() ? normalizeLink(link) : null;
   const linkProblem = link.trim() !== "" && !pasted;
   const canRun = (product.trim().length >= 2 || !!pasted) && !linkProblem;
-  const webSearch = access?.where === "server" && access.format === "openai";
 
   async function run() {
     abort.current?.abort();
     const ctl = new AbortController(); abort.current = ctl;
     setBusy(true); setError(""); setMsg(""); setResult(null);
     try {
-      const r = await researchEverything({ product: product.trim() || (pasted ?? ""), link: pasted ?? undefined }, { model, signal: ctl.signal });
+      const settings = await getAccess();
+      const extract = settings ? aiExtractor({ apiKey: settings.apiKey, model: settings.model, language: "id", signal: ctl.signal, transport: settings.transport, format: settings.format, timeoutMs: 90_000 }) : undefined;
+      const r = await researchEverything({ product: product.trim(), link: pasted ?? undefined }, { signal: ctl.signal, extract });
       setResult(r);
       setTicked(new Set(r.facts.filter(f => f.verified && !f.risky).map(factKey)));
     } catch (e) {
@@ -71,17 +69,13 @@ export default function ProductResearch({ product, link, onUseFacts, onUsePrice,
       <button onClick={() => void run()} disabled={busy || disabled || !canRun} data-testid="aff-research-run">{busy ? "Mencari info produk…" : result ? "Cari ulang info produk" : "Cari info produk dengan AI"}</button>
       {busy && <button onClick={() => abort.current?.abort()} data-testid="aff-research-cancel">Batal</button>}
     </div>
-    <small>AI mencari spesifikasi di web dan membaca halaman produk toko atau merek; tiap fakta ditampilkan dengan sumbernya, dan hanya yang Anda centang yang dipakai. Satu pencarian memakai sedikit saldo OpenRouter (pencarian web).{!webSearch && access !== undefined ? " Pencarian web butuh kunci OpenRouter yang tersimpan di akun (masuk dulu); tanpa itu hanya halaman yang Anda tempel yang dibaca." : ""}</small>
+    <small>App mencari di web dan membaca halaman toko atau merek (tanpa AI). AI, bila ada kunci, hanya merangkum teks halaman menjadi fakta pendek dengan kutipan aslinya; ringkasan yang kutipannya tidak ada di halaman dibuang. Tiap fakta menampilkan sumbernya, dan hanya yang Anda centang yang dipakai. Perlu masuk ke akun.</small>
     {linkProblem && <small className="aff-flag" data-testid="aff-link-problem">Tautan belum benar. Tempel alamat halaman produk, mis. https://toko.contoh/produk.</small>}
-    <details className="aff-advanced"><summary><small>Lanjutan: model pencarian web</small></summary>
-      <input value={model} onChange={e => changeModel(e.target.value)} maxLength={100} aria-label="Model pencarian web" data-testid="aff-research-model" />
-      <small>Model yang bisa mencari web dan menyertakan sumber. Bila OpenRouter mengganti namanya dan pencarian gagal dengan &quot;model tidak ditemukan&quot;, tulis nama yang baru di sini.</small>
-    </details>
     {error && <div className="notice notice-error" role="alert" data-testid="aff-research-error">{error}</div>}
 
     {result && <div className="aff-result" data-testid="aff-result">
       <b>Hasil riset{result.officialName ? `: ${result.officialName}` : ""}</b>
-      {(result.brand || result.category) && <small data-testid="aff-brand">{[result.brand && `Merek: ${result.brand}`, result.category && `Kategori: ${result.category}`].filter(Boolean).join(" · ")}</small>}
+      {result.brand && <small data-testid="aff-brand">Merek: {result.brand}</small>}
       {result.notes.map((n, i) => <small key={i} className="aff-flag" data-testid="aff-note">{n}</small>)}
 
       {result.facts.length > 0 && <>
@@ -91,9 +85,10 @@ export default function ProductResearch({ product, link, onUseFacts, onUsePrice,
               <input type="checkbox" checked={ticked.has(factKey(f))} onChange={e => setTicked(prev => { const n = new Set(prev); if (e.target.checked) n.add(factKey(f)); else n.delete(factKey(f)); return n; })} />
               <span>{f.text}</span>
             </label>
-            <small className={f.risky || !f.verified ? "aff-flag" : undefined}>
+            <small className={f.risky ? "aff-flag" : undefined}>
               {f.risky ? "⚠ Kata promosi atau klaim, tidak dicentang. " : ""}
-              {f.verified ? <>Sumber: <a href={f.url} target="_blank" rel="noreferrer noopener">{f.host}</a></> : f.url ? <>⚠ Sumber tidak bisa dipastikan ({f.host}); periksa sendiri sebelum memakai.</> : "⚠ Tanpa sumber; periksa sendiri sebelum memakai."}
+              Sumber: <a href={f.url} target="_blank" rel="noreferrer noopener">{f.host}</a>
+              {f.quote ? <> · Kutipan halaman: “{f.quote}”</> : null}
             </small>
           </li>)}
         </ul>

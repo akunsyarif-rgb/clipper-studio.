@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { downloadProductImage, normalizeLink, ProductError, readProductPage, type ProductPage } from "./product";
+import { downloadProductImage, normalizeLink, ProductError, readProductPage, searchWeb, type ProductPage } from "./product";
 
-const page: ProductPage = { url: "https://a.example/p", host: "a.example", title: "T", brand: "B", description: "D", price: null, specs: ["Kapasitas: 750 ml"], images: ["https://cdn.a.example/1.jpg"] };
+const page: ProductPage = { url: "https://a.example/p", host: "a.example", title: "T", brand: "B", description: "D", price: null, specs: ["Kapasitas: 750 ml"], images: ["https://cdn.a.example/1.jpg"], text: "Teks halaman." };
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const err = (status: number, code: string, message = "") => json(status, { error: { status: code, message } });
 const fnOf = (...answers: (Response | null | Error)[]) => {
@@ -53,5 +53,24 @@ describe("downloadProductImage", () => {
   it("rejects a broken or non-image answer and explains a refusal", async () => {
     await expect(downloadProductImage("u", { fn: fnOf(new Response("<html>", { headers: { "content-type": "text/html" } })).fn })).rejects.toMatchObject({ kind: "server" });
     await expect(downloadProductImage("u", { fn: fnOf(err(502, "IMAGE_FAILED", "Situs melarang.")).fn })).rejects.toMatchObject({ kind: "blocked" });
+  });
+});
+
+describe("searchWeb", () => {
+  it("asks the product function to search and returns the hits", async () => {
+    const hits = [{ title: "T", url: "https://a.example/p", host: "a.example", snippet: "S" }];
+    const f = fnOf(json(200, { hits }));
+    expect(await searchWeb("termos aqualux", { fn: f.fn })).toEqual(hits);
+    expect(f.calls).toEqual([{ name: "product", body: { action: "search", query: "termos aqualux" } }]);
+  });
+  it("treats an odd answer as no hits and explains a limited search engine", async () => {
+    expect(await searchWeb("x", { fn: fnOf(json(200, { nope: 1 })).fn })).toEqual([]);
+    await expect(searchWeb("x", { fn: fnOf(err(502, "SEARCH_BLOCKED", "Mesin pencari membatasi.")).fn })).rejects.toMatchObject({ kind: "blocked", message: "Mesin pencari membatasi." });
+    await expect(searchWeb("x", { fn: fnOf(null).fn })).rejects.toMatchObject({ kind: "signed-out" });
+    await expect(searchWeb("x", { fn: fnOf(new Error("offline")).fn })).rejects.toMatchObject({ kind: "network" });
+  });
+  it("keeps the page's text when it is missing from an older answer", async () => {
+    const { text: _t, ...noText } = page;
+    expect((await readProductPage("u", { fn: fnOf(json(200, { page: noText })).fn })).text).toBe("");
   });
 });

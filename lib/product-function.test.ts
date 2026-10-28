@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanPublicUrl, handle, parseProductPage } from "../supabase/functions/product/handler";
+import { cleanPublicUrl, handle, parseProductPage, parseSearchResults, readableText, tableSpecs } from "../supabase/functions/product/handler";
 
 const ENV = { url: "https://p.supabase.co", serviceKey: "service-secret" };
 const PAGE = "https://www.aqualux.example/produk/termos-750";
@@ -127,5 +127,79 @@ describe("the image action", () => {
     expect((await run(world({ routes: { [IMG]: new Error("down") } }), { action: "image", url: IMG })).json.error.status).toBe("IMAGE_UNREACHABLE");
     const big = new Response(new Uint8Array(13 * 1024 * 1024), { status: 200, headers: { "content-type": "image/png" } });
     expect((await run(world({ routes: { [IMG]: big } }), { action: "image", url: IMG })).status).toBe(413);
+  });
+});
+
+const DDG_HTML = `<html><body>
+<div class="result results_links results_links_deep web-result"><h2 class="result__title"><a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.aqualux.example%2Fproduk%2Ftermos-750&amp;rut=abc">Termos <b>Aqualux</b> 750 ml &amp; tutup</a></h2>
+<a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.aqualux.example%2Fproduk%2Ftermos-750">Termos stainless <b>steel</b> 750 ml menjaga dingin.</a></div>
+<div class="result result--ad"><a class="result__a" href="https://duckduckgo.com/y.js?ad_provider=x&amp;u3=https%3A%2F%2Fads.example%2F">Iklan</a></div>
+<div class="result"><a class="result__a" href="//duckduckgo.com/l/?uddg=http%3A%2F%2F169.254.169.254%2Flatest">Internal</a></div>
+<div class="result"><a href="https://tokoresmi.example/aqualux-750" class="result__a">Toko resmi</a><div class="result__snippet">Beli langsung di toko resmi.</div></div>
+<div class="result"><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.aqualux.example%2Fproduk%2Ftermos-750">Duplikat</a></div>
+</body></html>`;
+
+describe("parseSearchResults", () => {
+  const hits = parseSearchResults(DDG_HTML);
+  it("returns the real address behind each redirect link, with title and snippet", () => {
+    expect(hits[0]).toEqual({ title: "Termos Aqualux 750 ml & tutup", url: "https://www.aqualux.example/produk/termos-750", host: "aqualux.example", snippet: "Termos stainless steel 750 ml menjaga dingin." });
+    expect(hits[1]).toMatchObject({ url: "https://tokoresmi.example/aqualux-750", host: "tokoresmi.example", snippet: "Beli langsung di toko resmi." });
+  });
+  it("drops ads, internal addresses and duplicates", () => {
+    expect(hits).toHaveLength(2);
+  });
+  it("copes with a page that has no results", () => {
+    expect(parseSearchResults("<html><body>kosong</body></html>")).toEqual([]);
+  });
+});
+
+describe("tableSpecs and readableText", () => {
+  const html = `<table><tr><th>Kapasitas</th><td>750 ml</td></tr><tr><td>Bahan:</td><td><b>Stainless</b> steel 304</td></tr><tr><td>satu</td><td>dua</td><td>tiga</td></tr><tr><th>Warna</th><th>Warna</th></tr></table>
+    <dl><dt>Berat</dt><dd>420 gram</dd></dl><script>var x = "Skrip jangan ikut";</script><p>Termos ini menjaga minuman tetap dingin sampai dua belas jam.</p><p>pendek</p>`;
+  it("reads two-cell rows and definition lists, and nothing else", () => {
+    expect(tableSpecs(html)).toEqual(["Kapasitas: 750 ml", "Bahan: Stainless steel 304", "Berat: 420 gram"]);
+  });
+  it("keeps the visible text without scripts or tiny fragments", () => {
+    const t = readableText(html);
+    expect(t).toContain("Termos ini menjaga minuman tetap dingin sampai dua belas jam.");
+    expect(t).not.toContain("Skrip jangan ikut");
+    expect(t).not.toContain("pendek");
+  });
+  it("caps the text", () => {
+    expect(readableText("<p>" + "kalimat panjang yang berulang. ".repeat(2000) + "</p>").length).toBeLessThanOrEqual(8000);
+  });
+  it("puts the specifications and the text on the parsed page", () => {
+    const p = parseProductPage(`<html><body>${html}</body></html>`, PAGE);
+    expect(p.specs).toEqual(["Kapasitas: 750 ml", "Bahan: Stainless steel 304", "Berat: 420 gram"]);
+    expect(p.text).toContain("Termos ini menjaga");
+  });
+});
+
+describe("the search action", () => {
+  const url = (q: string) => `https://html.duckduckgo.com/html/?${new URLSearchParams({ q, kl: "id-id" })}`;
+  it("returns checked hits and sends no credentials to the search engine", async () => {
+    const w = world({ routes: { [url("termos aqualux 750")]: html200(DDG_HTML) } });
+    const r = await run(w, { action: "search", query: "  termos   aqualux 750 " });
+    expect(r.status).toBe(200);
+    expect(r.json.hits).toHaveLength(2);
+    expect(r.json.hits[0].url).toBe("https://www.aqualux.example/produk/termos-750");
+    const call = w.calls.find(c => c.url.startsWith("https://html.duckduckgo.com"))!;
+    expect(JSON.stringify(call.init.headers)).not.toMatch(/authorization|service-secret|jwt/i);
+  });
+  it("needs a real query and a signed-in user", async () => {
+    expect((await run(world(), { action: "search", query: "a" })).json.error.status).toBe("BAD_QUERY");
+    expect((await run(world({ user: false }), { action: "search", query: "termos" })).status).toBe(401);
+  });
+  it("says so when the search engine limits automated searches or cannot be reached", async () => {
+    const q = "termos";
+    expect((await run(world({ routes: { [url(q)]: new Response("", { status: 202 }) } }), { action: "search", query: q })).json.error.status).toBe("SEARCH_BLOCKED");
+    expect((await run(world({ routes: { [url(q)]: new Response("", { status: 429 }) } }), { action: "search", query: q })).json.error.status).toBe("SEARCH_BLOCKED");
+    expect((await run(world({ routes: { [url(q)]: html200("<html>Unfortunately, bots use DuckDuckGo too. anomaly detected</html>") } }), { action: "search", query: q })).json.error.status).toBe("SEARCH_BLOCKED");
+    expect((await run(world({ routes: { [url(q)]: new Response("", { status: 500 }) } }), { action: "search", query: q })).json.error.status).toBe("SEARCH_ERROR");
+    expect((await run(world({ routes: { [url(q)]: new Error("down") } }), { action: "search", query: q })).json.error.status).toBe("SEARCH_UNREACHABLE");
+  });
+  it("returns no hits, not an error, when there are simply no results", async () => {
+    const r = await run(world({ routes: { [url("xyzzy")]: html200("<html><body>No results.</body></html>") } }), { action: "search", query: "xyzzy" });
+    expect(r.json.hits).toEqual([]);
   });
 });

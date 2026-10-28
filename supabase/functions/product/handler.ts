@@ -1,5 +1,6 @@
-// Product pages for Clipper Studio's affiliate mode: reads a public product page (the shop's or the brand's own) and returns
-// its structured facts (schema.org Product, Open Graph) and picture addresses, and hands over the bytes of a chosen picture.
+// Product research for Clipper Studio's affiliate mode, done by code (no AI): searches the web, reads a public product page
+// (the shop's or the brand's own) and returns its structured facts (schema.org Product, specification tables, Open Graph),
+// its text and picture addresses, and hands over the bytes of a chosen picture.
 // It answers only to a signed-in user. The server fetches addresses it was given, so every one of them (and every redirect)
 // must be a public https address: no credentials, no ports, no IP numbers, no local or internal names. Nothing here needs a key.
 // Pure on purpose (fetch is passed in) so it is unit-tested from the app's test suite.
@@ -8,10 +9,16 @@ export type Env = { url: string; serviceKey: string };
 export type ProductPage = {
   url: string; host: string; title: string; brand: string; description: string;
   price: { amount: string; currency: string } | null;
-  /** "name: value" facts the page lists itself (schema.org additionalProperty). */
+  /** "name: value" facts the page lists itself (schema.org additionalProperty, specification tables, definition lists). */
   specs: string[];
   images: string[];
+  /** The page's readable text (at most MAX_TEXT characters), so facts can be checked against what the page really says. */
+  text: string;
 };
+export type SearchHit = { title: string; url: string; host: string; snippet: string };
+
+const SEARCH_URL = "https://html.duckduckgo.com/html/";
+const MAX_TEXT = 8000;
 
 const MAX_HTML_BYTES = 1_500_000;
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
@@ -106,6 +113,53 @@ function ldNodes(html: string): Json[] {
   return out;
 }
 
+/** "name: value" pairs from two-cell table rows and <dt>/<dd> pairs: how most shops and brands list specifications. */
+export function tableSpecs(html: string): string[] {
+  const out: string[] = [];
+  const add = (nameRaw: string, valueRaw: string) => {
+    const name = text(nameRaw, 80).replace(/[:：]\s*$/, ""), value = text(valueRaw, 120);
+    if (name.length < 2 || name.length > 50 || value.length < 1 || value.length > 100 || name.toLowerCase() === value.toLowerCase()) return;
+    const line = `${name}: ${value}`;
+    if (!out.includes(line)) out.push(line);
+  };
+  for (const row of html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const cells = [...row[1].matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi)].map(c => c[1]);
+    if (cells.length === 2) add(cells[0], cells[1]);
+  }
+  for (const pair of html.matchAll(/<dt\b[^>]*>([\s\S]*?)<\/dt>\s*<dd\b[^>]*>([\s\S]*?)<\/dd>/gi)) add(pair[1], pair[2]);
+  return out.slice(0, 16);
+}
+
+/** The visible text of a page, line by line (scripts, styles and tiny fragments dropped), capped. */
+export function readableText(html: string): string {
+  const body = html.replace(/<(script|style|noscript|svg|template|head)\b[\s\S]*?<\/\1>/gi, " ").replace(/<\/(p|div|li|tr|h[1-6]|section|article|ul|ol|table)>|<br\s*\/?>/gi, "\n");
+  const lines = body.split("\n").map(l => text(l, 400)).filter(l => l.length >= 8);
+  const out: string[] = [];
+  let total = 0;
+  for (const l of lines) { if (total + l.length > MAX_TEXT) break; out.push(l); total += l.length + 1; }
+  return out.join("\n");
+}
+
+/** Results from DuckDuckGo's HTML page: the real address behind each redirect link, never an ad. */
+export function parseSearchResults(html: string): SearchHit[] {
+  const anchors = [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)].filter(m => /\bresult__a\b/.test(m[1]));
+  const hits: SearchHit[] = [];
+  anchors.forEach((m, i) => {
+    const href = m[1].match(/href\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+    let target = "";
+    try {
+      const u = new URL((href?.[1] ?? href?.[2] ?? "").replace(/&amp;/g, "&"), "https://duckduckgo.com");
+      target = u.hostname.endsWith("duckduckgo.com") ? (u.pathname === "/l/" ? u.searchParams.get("uddg") ?? "" : "") : u.toString();
+    } catch { /* an unreadable link is skipped */ }
+    const url = cleanPublicUrl(target);
+    if (!url || hits.some(h => h.url === url)) return;
+    const segment = html.slice(m.index ?? 0, anchors[i + 1]?.index ?? html.length);
+    const snippet = segment.match(/class\s*=\s*"[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/(?:a|div|td|span)>/i)?.[1];
+    hits.push({ title: text(m[2], 160), url, host: new URL(url).hostname.replace(/^www\./, ""), snippet: text(snippet, 300) });
+  });
+  return hits;
+}
+
 /** The product page's facts. Anything missing stays empty; nothing is guessed. */
 export function parseProductPage(html: string, pageUrl: string): ProductPage {
   const product = ldNodes(html).find(isProduct);
@@ -138,10 +192,11 @@ export function parseProductPage(html: string, pageUrl: string): ProductPage {
     if (images.length >= 8) break;
   }
 
+  for (const t of tableSpecs(html)) if (!specs.includes(t)) specs.push(t);
   const title = text(product?.name ?? metaContent(html, ["og:title", "twitter:title"]) ?? "", 160) || text(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1], 160);
   const description = text(product?.description ?? metaContent(html, ["og:description", "description", "twitter:description"]), 600);
   const host = new URL(pageUrl).hostname;
-  return { url: pageUrl, host, title, brand: brand || text(metaContent(html, ["og:site_name"]), 60), description, price, specs: specs.slice(0, 12), images };
+  return { url: pageUrl, host, title, brand: brand || text(metaContent(html, ["og:site_name"]), 60), description, price, specs: specs.slice(0, 16), images, text: readableText(html) };
 }
 
 export async function handle(req: Request, env: Env, fetchImpl: typeof fetch = fetch): Promise<Response> {
@@ -156,10 +211,26 @@ export async function handle(req: Request, env: Env, fetchImpl: typeof fetch = f
   } catch { return fail(502, "AUTH_UNREACHABLE", "Layanan login tidak terjangkau."); }
   if (!uid) return fail(401, "NOT_SIGNED_IN", "Masuk dulu.");
 
-  let msg: { action?: string; url?: unknown };
+  let msg: { action?: string; url?: unknown; query?: unknown };
   try { msg = await req.json(); } catch { return fail(400, "BAD_REQUEST", "Permintaan tidak terbaca."); }
 
   try {
+    if (msg.action === "search") {
+      const query = text(msg.query, 150);
+      if (query.length < 2) return fail(400, "BAD_QUERY", "Kata kunci terlalu pendek.");
+      let got: { res: Response; finalUrl: string };
+      try { got = await fetchPublic(fetchImpl, `${SEARCH_URL}?${new URLSearchParams({ q: query, kl: "id-id" })}`, "text/html", 20_000); }
+      catch { return fail(502, "SEARCH_UNREACHABLE", "Mesin pencari tidak terjangkau dari server."); }
+      if ([202, 403, 429].includes(got.res.status)) return fail(502, "SEARCH_BLOCKED", "Mesin pencari membatasi pencarian otomatis saat ini. Tempel tautan halaman produk, atau coba lagi nanti.");
+      if (!got.res.ok) return fail(502, "SEARCH_ERROR", `Mesin pencari menjawab ${got.res.status}.`);
+      const bytes = await readCapped(got.res, MAX_HTML_BYTES);
+      if (!bytes) return fail(502, "SEARCH_ERROR", "Jawaban mesin pencari terlalu besar.");
+      const html = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+      const hits = parseSearchResults(html).slice(0, 10);
+      if (hits.length === 0 && /anomaly|captcha|unusual traffic|robot/i.test(html)) return fail(502, "SEARCH_BLOCKED", "Mesin pencari membatasi pencarian otomatis saat ini. Tempel tautan halaman produk, atau coba lagi nanti.");
+      return reply(200, { hits });
+    }
+
     if (msg.action === "page") {
       const url = cleanPublicUrl(msg.url);
       if (!url) return fail(400, "BAD_URL", "Tautan harus alamat https publik (tanpa IP, port, atau nama lokal).");
