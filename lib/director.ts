@@ -21,6 +21,8 @@ export type DirectorInput = {
   current?: { template?: Template; icon?: string; cut?: Cut }[];
   /** The creator's words about the previous result, e.g. "terlalu ramai, lebih tenang". */
   feedback?: string;
+  /** An affiliate (selling) video for this product: price and promo become number scenes, the buying prompt closes the video. */
+  affiliate?: { product: string };
   language: "id" | "en";
 };
 
@@ -59,6 +61,11 @@ export function directorPrompt(i: DirectorInput): string {
     `Opsi ikon (icon, atau "none"): ${iconList()}`,
     cutRule,
     "",
+    ...(i.affiliate ? [
+      "",
+      `Ini video AFFILIATE untuk produk "${i.affiliate.product.replace(/\s+/g, " ").trim().slice(0, 80)}". Tambahan aturan: hook di scene 1 menyebut satu manfaat atau masalah nyata; kalimat berisi harga atau promo memakai tampilan number; ajakan membeli ada di scene terakhir dengan tampilan cta (hanya di sana); jangan menambah klaim lewat pilihan tampilan; imageQuery berisi kategori produk dan situasi pemakaian (mis. "water bottle office desk"), bukan merek atau logo.`,
+      "",
+    ] : []),
     `Sekarang: style=${i.style}, palette=${i.palette}.`,
     i.feedback ? `Masukan pembuat video tentang hasil sebelumnya (utamakan ini): "${i.feedback.replace(/\s+/g, " ").trim().slice(0, 400)}"` : "Belum ada masukan; susun yang terbaik menurut panduan.",
     "Beri alasan (reason) singkat dalam bahasa Indonesia, maksimal 10 kata, yang menjelaskan PILIHAN itu kepada pembuat video. Beri juga \"note\": satu kalimat ringkasan arah keseluruhan (maks. 25 kata).",

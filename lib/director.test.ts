@@ -18,6 +18,13 @@ describe("directorPrompt", () => {
     expect(p).toContain("jangan isi \"cut\"");
     expect(p).toContain("imageQuery");
   });
+  it("adds the selling rules for an affiliate video, and only then", () => {
+    const p = directorPrompt({ ...input, affiliate: { product: "Botol Termos Aqualux" } });
+    expect(p).toContain("video AFFILIATE");
+    expect(p).toContain("Botol Termos Aqualux");
+    expect(p).toContain("scene terakhir");
+    expect(directorPrompt(input)).not.toContain("AFFILIATE");
+  });
   it("asks for screen cuts only when editing over a video", () => {
     expect(directorPrompt({ ...input, videoEdit: true })).toContain("isi juga \"cut\"");
   });
