@@ -1,6 +1,7 @@
 // Browser-only FFmpeg (WebAssembly) wrapper. The core is self-hosted under /ffmpeg (copied at build time).
 import type { FFmpeg } from "@ffmpeg/ffmpeg";
-import { AUDIO_OUTPUT_NAME, audioArgs, ffmpegArgs, logTime, MP3_OUTPUT_NAME, mp3Args, OUTPUT_NAME, type Aspect, type Fit, type Quality } from "./clip";
+import { AUDIO_OUTPUT_NAME, audioArgs, ffmpegArgs, isAudioFile, logTime, MP3_OUTPUT_NAME, mp3Args, OUTPUT_NAME, type Aspect, type Fit, type Quality } from "./clip";
+import { WATERMARK_PNG_NAME } from "./watermark";
 
 export const CORE_BASE = "/ffmpeg";
 
@@ -52,6 +53,8 @@ export type ExportJob = {
   aspect: Aspect;
   quality: Quality;
   fit: Fit;
+  /** Watermark picture (see lib/watermark-canvas.ts) laid over every frame; leave out for a clean video. */
+  watermark?: { data: Uint8Array; x: number; y: number } | null;
   onProgress: (fraction: number) => void;
 };
 
@@ -78,7 +81,8 @@ export async function exportClip(job: ExportJob): Promise<Blob> {
       input = "source-video";
       await ff.writeFile(input, await fetchFile(job.file));
     }
-    const code = await ff.exec(ffmpegArgs(input, job, job.aspect, job.quality, job.fit));
+    if (job.watermark) await ff.writeFile(WATERMARK_PNG_NAME, job.watermark.data);
+    const code = await ff.exec(ffmpegArgs(input, job, job.aspect, job.quality, job.fit, job.watermark ? { file: WATERMARK_PNG_NAME, x: job.watermark.x, y: job.watermark.y } : null, isAudioFile(job.file)));
     if (code !== 0) throw new Error(`FFmpeg keluar dengan kode ${code}: ${lastLogs.slice(-6).join(" | ")}`);
     const data = await ff.readFile(OUTPUT_NAME);
     if (typeof data === "string" || data.byteLength < 1024) throw new Error(`Output MP4 kosong. ${lastLogs.slice(-6).join(" | ")}`);
@@ -88,6 +92,7 @@ export async function exportClip(job: ExportJob): Promise<Blob> {
     onLine = null;
     if (engine === ff) {
       await ff.deleteFile(OUTPUT_NAME).catch(() => undefined);
+      if (job.watermark) await ff.deleteFile(WATERMARK_PNG_NAME).catch(() => undefined);
       if (mounted) await ff.unmount(mountPoint).catch(() => undefined);
       else if (input) await ff.deleteFile(input).catch(() => undefined);
     }
@@ -163,9 +168,10 @@ export async function extractAudio(file: File, range: { start: number; duration:
     if (code !== 0) throw new Error(`FFmpeg keluar dengan kode ${code}: ${logs}`);
     const data = await ff.readFile(AUDIO_OUTPUT_NAME);
     if (typeof data === "string" || data.byteLength < 3200) throw new Error("no audio: video tidak punya audio");
-    const pcm = new Int16Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength - (data.byteLength % 2)));
-    const out = new Float32Array(pcm.length);
-    for (let i = 0; i < pcm.length; i++) out[i] = pcm[i] / 32768;
+    // Convert straight from the bytes read: no intermediate Int16 copy (the peak matters on a tablet).
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength - (data.byteLength % 2));
+    const out = new Float32Array(view.byteLength / 2);
+    for (let i = 0; i < out.length; i++) out[i] = view.getInt16(i * 2, true) / 32768;
     return out;
   } finally {
     if (engine === ff) {

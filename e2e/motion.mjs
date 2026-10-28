@@ -417,6 +417,63 @@ try {
     return `${info}, top band scene 1 rgb ${r1},${g1},${b1}, scene 2 rgb ${r2},-,${b2}`;
   });
 
+  await step("the watermark: previewed, burned into the MP4 only when on and non-empty, positioned, remembered for re-renders", async () => {
+    await page.getByTestId("voice-none").click();
+    await page.getByTestId("music-none").click();
+    await page.getByTestId("style").selectOption("hybrid");
+    await page.getByTestId("palette").selectOption("violet");
+    await page.getByTestId("script").fill("Watermark diuji di sini.\nScene kedua juga.");
+    await page.getByTestId("duration").selectOption("15");
+    await page.evaluate(() => document.querySelectorAll("details.fold").forEach(d => { d.open = true; }));
+    const player = page.locator(".player-wrap");
+    // Region of the frame (1080x1920) as raw RGB, and the mean absolute difference between two such regions.
+    const region = (file, x, y, w, h) => execFileSync("ffmpeg", ["-v", "error", "-ss", "1", "-i", file, "-frames:v", "1", "-vf", `crop=${w}:${h}:${x}:${y}`, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], { maxBuffer: 1 << 26 });
+    const diff = (a, b) => { let t = 0; for (let i = 0; i < a.length; i++) t += Math.abs(a[i] - b[i]); return t / a.length; };
+    const BR = [560, 1380, 400, 180], TL = [100, 200, 500, 180];
+
+    // A: text typed but switched off -> no watermark anywhere.
+    await page.getByTestId("wm-text").fill("@ArkaSenja");
+    assert(await player.getByTestId("watermark").count() === 0, "nothing in the preview while switched off");
+    await renderAndCheck("wm-off", false, 15);
+    // B: on, bottom-right (default): visible in the preview, then in the file.
+    await page.getByTestId("wm-enabled").check();
+    await page.getByTestId("wm-pos-bottom-right").click();
+    await player.getByTestId("watermark").waitFor({ timeout: 5000 });
+    assert((await player.getByTestId("watermark").textContent()) === "@ArkaSenja", "preview shows the typed text");
+    assert(await player.getByTestId("watermark").getAttribute("data-position") === "bottom-right", "preview position");
+    await renderAndCheck("wm-br", false, 15);
+    // C: on but empty text -> nothing.
+    await page.getByTestId("wm-text").fill("   ");
+    await page.getByTestId("wm-empty").waitFor({ timeout: 3000 });
+    assert(await player.getByTestId("watermark").count() === 0, "an empty text draws nothing in the preview");
+    await renderAndCheck("wm-empty", false, 15);
+    // D: top-left, larger and more opaque.
+    await page.getByTestId("wm-text").fill("@ArkaSenja");
+    await page.getByTestId("wm-pos-top-left").click();
+    await page.getByTestId("wm-size").fill("8");
+    await page.getByTestId("wm-opacity").fill("1");
+    assert(await player.getByTestId("watermark").getAttribute("data-position") === "top-left", "preview follows the position");
+    await renderAndCheck("wm-tl", false, 15);
+
+    const off = join(dir, "wm-off.mp4"), br = join(dir, "wm-br.mp4"), empty = join(dir, "wm-empty.mp4"), tl = join(dir, "wm-tl.mp4");
+    const offBR = region(off, ...BR), offTL = region(off, ...TL);
+    const brOnBR = diff(offBR, region(br, ...BR)), emptyOnBR = diff(offBR, region(empty, ...BR));
+    const tlOnTL = diff(offTL, region(tl, ...TL)), tlOnBR = diff(offBR, region(tl, ...BR));
+    assert(brOnBR > 2, `the bottom-right watermark is in the file (region change ${brOnBR.toFixed(2)})`);
+    assert(emptyOnBR < 0.5, `an empty text leaves the file as if switched off (region change ${emptyOnBR.toFixed(2)})`);
+    assert(tlOnTL > 2, `the top-left watermark is in the file (region change ${tlOnTL.toFixed(2)})`);
+    assert(tlOnBR < 0.5, `a top-left watermark leaves the bottom-right untouched (region change ${tlOnBR.toFixed(2)})`);
+    assert(diff(offTL, region(br, ...TL)) < 0.5, "a bottom-right watermark leaves the top-left untouched");
+    // Remembered for the editing session: the same settings are back after a reload, so re-rendering needs no re-typing.
+    await page.reload(); await openFolds(page);
+    await until(async () => (await page.getByTestId("wm-text").inputValue()) === "@ArkaSenja", "text remembered");
+    assert(await page.getByTestId("wm-enabled").isChecked() && await page.getByTestId("wm-pos-top-left").getAttribute("aria-pressed") === "true", "switch and position remembered");
+    assert(await page.getByTestId("wm-size").inputValue() === "8" && await page.getByTestId("wm-opacity").inputValue() === "1", "size and transparency remembered");
+    // Leave the session clean for the steps that follow.
+    await page.getByTestId("wm-enabled").uncheck();
+    return `file change: bottom-right ${brOnBR.toFixed(1)}, top-left ${tlOnTL.toFixed(1)}, empty ${emptyOnBR.toFixed(2)}, cross-talk ${tlOnBR.toFixed(2)}`;
+  });
+
   await step("the AI director arranges the video, shows its reasons, takes feedback, can be undone and edited by hand", async () => {
     const ai = await (await browser.newContext()).newPage();
     ai.on("pageerror", e => pageErrors.push(e.message));

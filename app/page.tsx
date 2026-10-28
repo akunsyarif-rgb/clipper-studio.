@@ -2,14 +2,17 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
-  ASPECTS, FITS, QUALITIES, MAX_CLIP_SECONDS, exportFileName, explainError, formatBytes, formatTime, outputSize,
+  SOURCE_ACCEPT, isAudioFile, ASPECTS, FITS, QUALITIES, MAX_CLIP_SECONDS, exportFileName, explainError, formatBytes, formatTime, outputSize,
   checkedVideo, parseTime, parseYouTube, validateFile, validateRange, type Aspect, type Fit, type Quality, type YouTubeRef,
 } from "@/lib/clip";
 import TranscriptPanel from "./TranscriptPanel";
 import CloudAccount from "./CloudAccount";
 import ClipFlow, { type NewClip } from "./ClipFlow";
+import WatermarkPanel from "./WatermarkPanel";
+import { canvasMeasure, renderWatermarkPng } from "@/lib/watermark-canvas";
+import { cleanWatermarkText, DEFAULT_WATERMARK, isWatermarkActive, loadWatermark, saveWatermark, watermarkBox, WATERMARK_FONT, WATERMARK_SHADOW, WATERMARK_WEIGHT, type Watermark } from "@/lib/watermark";
 import YoutubeFlow from "./YoutubeFlow";
 import { lengthsMatch } from "@/lib/youtube";
 import { useGeminiAccess } from "./useGeminiAccess";
@@ -21,7 +24,7 @@ import { ExportCancelled, exportClip, isEngineLoaded, terminateEngine } from "@/
 
 type Clip = { id: number; start: number; end: number; title?: string; transcript?: Transcript };
 /** `after` takes the finished clip instead of offering it for download (used to hand it to the motion studio). */
-type Job = { start: number; duration: number; aspect?: Aspect; after?: (blob: Blob) => Promise<void> };
+type Job = { start: number; duration: number; aspect?: Aspect; after?: (blob: Blob) => Promise<void>; /** The clip goes on to the motion studio, which draws the watermark itself; never bake it in twice. */ noWatermark?: boolean };
 const MAX_CLIPS = 10;
 
 export default function Home() {
@@ -52,6 +55,10 @@ export default function Home() {
   const [yt, setYt] = useState<YouTubeRef | null>(null);
   const [asrBusy, setAsrBusy] = useState(false);
   const busy = phase !== "idle";
+  // Watermark: remembered for this editing session (shared with the motion studio) and reused for every export.
+  const [watermark, setWatermarkState] = useState<Watermark>(DEFAULT_WATERMARK);
+  useEffect(() => { setWatermarkState(loadWatermark()); }, []);
+  const setWatermark = (w: Watermark) => { setWatermarkState(w); saveWatermark(w); };
   // Coming back from another page (e.g. the motion studio): the video, cut list and settings are put back as they were.
   const [restored, setRestored] = useState(false);
   const keepRange = useRef(false);
@@ -88,7 +95,7 @@ export default function Home() {
     if (!check.ok) { e.target.value = ""; return say(check.error, true); }
     resetFile();
     setFile(f); setSrc(URL.createObjectURL(f)); setStart("00:00:00"); setEnd("00:00:30");
-    say("Video dipilih. Membaca durasi…");
+    say(isAudioFile(f) ? "Audio dipilih. Membaca durasi…" : "Video dipilih. Membaca durasi…");
   }
 
   function onMetadata() {
@@ -98,11 +105,11 @@ export default function Home() {
     if (d > 60 * 60) return say("Durasi video melebihi batas MVP 60 menit.", true);
     if (keepRange.current) { keepRange.current = false; return; }
     setEnd(formatTime(Math.min(30, d)));
-    say("Video siap. Sumber diproses lokal di browser, tidak diunggah ke server.");
+    say(file && isAudioFile(file) ? "Audio siap. Hasil ekspor berupa MP4 berlatar gelap dengan suara bagian yang dipilih; sumber diproses lokal di browser, tidak diunggah ke server." : "Video siap. Sumber diproses lokal di browser, tidak diunggah ke server.");
   }
 
   function onVideoError() {
-    say("Browser tidak dapat memutar video ini (format/codec tidak didukung). Coba MP4 H.264 atau MOV dari kamera iPhone.", true);
+    say("Browser tidak dapat memutar berkas ini (format/codec tidak didukung). Coba MP4 H.264 atau MOV dari kamera iPhone, atau audio MP3/M4A/WAV.", true);
   }
 
   function seek(t: number) {
@@ -138,7 +145,7 @@ export default function Home() {
     if (!file) return;
     const name = exportFileName(file.name, "9:16", quality, c.start);
     void runExport({
-      start: c.start, duration: c.end - c.start, aspect: "9:16",
+      start: c.start, duration: c.end - c.start, aspect: "9:16", noWatermark: true,
       after: async blob => {
         const checked = await checkedVideo(blob);
         if (!checked.probe.ok) {
@@ -173,8 +180,10 @@ export default function Home() {
     setPhase(isEngineLoaded() ? "encoding" : "loading");
     say(isEngineLoaded() ? "Memproses video…" : "Menyiapkan mesin video lokal (±32 MB, sekali per sesi)…");
     try {
+      const jobAspect = job.aspect ?? aspect;
       const blob = await exportClip({
-        file, start: job.start, duration: job.duration, aspect: job.aspect ?? aspect, quality, fit,
+        file, start: job.start, duration: job.duration, aspect: jobAspect, quality, fit,
+        watermark: job.noWatermark ? null : await renderWatermarkPng(watermark, outputSize(jobAspect, quality)),
         onProgress: p => { setPhase("encoding"); setProgress(Math.round(p * 100)); },
       });
       if (cancelled.current) throw new ExportCancelled();
@@ -222,6 +231,7 @@ export default function Home() {
   }
 
   const { width: outW, height: outH } = outputSize(aspect, quality);
+  const wmBox = useMemo(() => isWatermarkActive(watermark) ? watermarkBox(watermark, { width: outW, height: outH }, canvasMeasure()) : null, [watermark, outW, outH]);
   const range = file && duration ? currentRange() : null;
   const startSeconds = parseTime(start);
 
@@ -230,10 +240,10 @@ export default function Home() {
     <CloudAccount />
     <section className="hero"><div className="eyebrow"><span className="eyebrow-line" /> VIDEO WORKSPACE</div><h1>Video panjang.<br/><em>Potongan yang tepat.</em></h1><p>Potong video menjadi klip 9:16, 16:9, atau 1:1. Pilih video, atur rentang waktu, lalu ekspor MP4 langsung dari perangkat.</p><div className="hero-tags"><span><b>01</b> Lokal dahulu</span><span><b>02</b> Tanpa login</span><span><b>03</b> Maks. 1 GB</span></div></section>
     <section className="workspace">
-      <div className="section-heading"><div><small>LANGKAH 01</small><h2>Pilih video sumber</h2></div><span className="step-count">01 / 03</span></div>
+      <div className="section-heading"><div><small>LANGKAH 01</small><h2>Pilih video atau audio sumber</h2></div><span className="step-count">01 / 03</span></div>
       <div className={"dropzone " + (file ? "has-file" : "")} onClick={() => !file && picker.current?.click()} role={!file ? "button" : undefined} tabIndex={!file ? 0 : undefined} onKeyDown={e => { if (!file && (e.key === "Enter" || e.key === " ")) picker.current?.click(); }}>
-        <input ref={picker} type="file" accept="video/*,.mp4,.mov,.m4v,.webm" onChange={onPick} data-testid="file-input"/>
-        {file && src ? <><video ref={player} src={src} controls playsInline preload="metadata" onLoadedMetadata={onMetadata} onError={onVideoError}/><div className="file-details"><span className="file-mark">▶</span><div className="file-name"><strong>{file.name}</strong><span>{formatBytes(file.size)} · {duration ? formatTime(duration) : "Membaca durasi…"}</span></div><button className="text-button" disabled={busy||asrBusy} onClick={e => { e.stopPropagation(); resetFile(); say("Pilih video baru untuk memulai."); }}>Ganti</button></div></> : <div className="empty-drop"><div className="upload-icon"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg></div><strong>Ketuk untuk memilih video</strong><span>Ambil dari Files atau Photos di iPhone/iPad</span><div className="format-chips"><span>MP4</span><span>MOV</span><span>≤ 1 GB</span></div><small>Format/codec harus didukung browser.</small></div>}
+        <input ref={picker} type="file" accept={SOURCE_ACCEPT} onChange={onPick} data-testid="file-input"/>
+        {file && src ? <><video ref={player} src={src} controls playsInline preload="metadata" onLoadedMetadata={onMetadata} onError={onVideoError}/><div className="file-details"><span className="file-mark">▶</span><div className="file-name"><strong>{file.name}</strong><span>{formatBytes(file.size)} · {duration ? formatTime(duration) : "Membaca durasi…"}</span></div><button className="text-button" disabled={busy||asrBusy} onClick={e => { e.stopPropagation(); resetFile(); say("Pilih video baru untuk memulai."); }}>Ganti</button></div></> : <div className="empty-drop"><div className="upload-icon"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg></div><strong>Ketuk untuk memilih video atau audio</strong><span>Ambil dari Files atau Photos di iPhone/iPad</span><div className="format-chips"><span>MP4</span><span>MOV</span><span>≤ 1 GB</span></div><small>Format/codec harus didukung browser.</small></div>}
       </div>
       <div className="privacy-note"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span><strong>Video tetap di perangkat.</strong> Pemotongan dilakukan di browser dengan FFmpeg WebAssembly. Tidak ada unggahan ke server.</span></div>
       <details className="yt-panel" open={!file} data-testid="yt-panel">
@@ -258,7 +268,9 @@ export default function Home() {
       <div className="option-grid">{FITS.map(f => <button key={f.id} className={"option " + (fit === f.id ? "active" : "")} onClick={() => setFit(f.id)} aria-pressed={fit === f.id} data-testid={"fit-" + f.id}><span className={"bg-preview " + (f.id === "blur" ? "bg-blur" : f.id === "pad" ? "bg-black" : "bg-crop")}><i/></span><strong>{f.label}</strong><small>{f.hint}</small></button>)}</div>
 
       <div className="settings-label">Teks opsional <span>catatan, belum dibakar ke video</span></div><label className="field-label">Hook / teks pembuka<input value={hook} maxLength={90} onChange={e=>setHook(e.target.value)} placeholder="Contoh: 3 hal yang baru saya sadari…"/></label><label className="field-label">Subtitle / transkrip<textarea value={transcript} maxLength={4000} onChange={e=>setTranscript(e.target.value)} rows={3} placeholder="Tempel teks transkrip sebagai referensi klip."/></label>
-      <div className="preview-card"><div className={"frame-preview fit-" + fit} style={{ aspectRatio: `${outW} / ${outH}` }}>{src && fit === "blur" && <video className="frame-bg" src={src} muted playsInline preload="metadata"/>}{src && <video className="frame-fg" src={src} muted playsInline preload="metadata"/>}<div className="portrait-overlay">{hook&&<strong>{hook}</strong>}{transcript&&<span>{transcript.slice(0,120)}</span>}</div><span className="preview-label">PRATINJAU</span></div><div className="preview-copy"><strong>Format output {aspect}</strong><span>{outW} × {outH} · MP4 H.264/AAC · 30 fps</span><small>Pratinjau komposisi. Hook dan subtitle tidak ikut dirender pada build ini.</small></div></div>
+      <div className="settings-label">Watermark video <span>teks sendiri, ikut tertanam di MP4</span></div>
+      <WatermarkPanel value={watermark} onChange={setWatermark} disabled={busy} />
+      <div className="preview-card"><div className={"frame-preview fit-" + fit} style={{ aspectRatio: `${outW} / ${outH}`, containerType: "inline-size" }}>{src && fit === "blur" && <video className="frame-bg" src={src} muted playsInline preload="metadata"/>}{src && <video className="frame-fg" src={src} muted playsInline preload="metadata"/>}<div className="portrait-overlay">{hook&&<strong>{hook}</strong>}{transcript&&<span>{transcript.slice(0,120)}</span>}</div>{wmBox ? <div data-testid="wm-preview" data-position={watermark.position} aria-hidden="true" style={{ position: "absolute", left: `${(wmBox.x / outW) * 100}%`, top: `${(wmBox.y / outH) * 100}%`, width: `${(wmBox.width / outW) * 100}%`, height: `${(wmBox.height / outH) * 100}%`, display: "flex", alignItems: "center", justifyContent: wmBox.align === "right" ? "flex-end" : "flex-start", whiteSpace: "nowrap", pointerEvents: "none", fontFamily: WATERMARK_FONT, fontWeight: WATERMARK_WEIGHT, fontSize: `${(wmBox.fontSize / outW) * 100}cqw`, lineHeight: 1, color: "#fff", opacity: watermark.opacity, textShadow: `0 ${(WATERMARK_SHADOW.offsetY / outW) * 100}cqw ${(WATERMARK_SHADOW.blur / outW) * 100}cqw ${WATERMARK_SHADOW.color}` }}>{cleanWatermarkText(watermark.text)}</div> : null}<span className="preview-label">PRATINJAU</span></div><div className="preview-copy"><strong>Format output {aspect}{file && isAudioFile(file) ? " · audio saja" : ""}</strong><span>{outW} × {outH} · MP4 H.264/AAC · 30 fps</span><small>Pratinjau komposisi. Watermark ikut dirender; hook dan subtitle tidak ikut dirender pada build ini.</small></div></div>
       <button className="secondary-button" disabled={!file||!duration||clips.length>=MAX_CLIPS||busy||asrBusy} onClick={addClip}><span>＋</span> Tambahkan rentang ke daftar klip <small>{clips.length}/{MAX_CLIPS}</small></button>
       {clips.length>0&&<div className="clip-list"><div className="clip-list-heading"><strong>Daftar klip</strong><button className="text-button" disabled={busy||asrBusy} onClick={()=>setClips([])}>Hapus semua</button></div>{clips.map((clip,i)=><div className="clip-row" key={clip.id}><span className="clip-number">{String(i+1).padStart(2,"0")}</span><div className="clip-meta"><strong>{clip.title || `Klip ${i+1}`}</strong><span>{formatTime(clip.start)} – {formatTime(clip.end)} · {formatTime(clip.end-clip.start)}</span></div><button className="text-button" onClick={()=>{setStart(formatTime(clip.start));setEnd(formatTime(clip.end));seek(clip.start);}}>Edit</button><button className="icon-button" aria-label="Hapus klip" disabled={busy||asrBusy} onClick={()=>setClips(old=>old.filter(c=>c.id!==clip.id))}>×</button><button className="text-button" disabled={busy||asrBusy} onClick={()=>sendToMotion(clip)} data-testid="clip-motion">Ke Motion</button><button className="row-export" disabled={busy||asrBusy} onClick={()=>runExport({ start: clip.start, duration: clip.end - clip.start })}>Ekspor</button></div>)}</div>}
 

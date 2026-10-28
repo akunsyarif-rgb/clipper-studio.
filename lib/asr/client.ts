@@ -1,5 +1,6 @@
 // Main-thread client for the Whisper worker. Browser-only.
 import { TRANSCRIBE_SAMPLE_RATE, transcriptFromSegments, transcriptFromWords, type AsrTimings, type LanguageId, type Transcript } from "../transcript";
+import { isMemoryError, memoryFallback } from "./device";
 import type { AsrMessage } from "./worker";
 
 /** Multilingual Whisper models (Indonesian supported), 8-bit quantised. Sizes are approximate download sizes. */
@@ -64,9 +65,50 @@ export function transcribe(audio: Float32Array, model: ModelId, language: Langua
     };
     worker.onerror = e => fail(new Error(`Worker gagal: ${e.message || "tanpa pesan"} (${e.filename || "?"}:${e.lineno || 0})`), reject);
     worker.onmessageerror = () => fail(new Error("Worker gagal: pesan tidak dapat dibaca"), reject);
-    // Transfer a copy-free buffer: the audio is not needed on this side afterwards.
-    worker.postMessage({ audio, model, language }, [audio.buffer]);
+    // The worker gets its own copy (transferred, so not duplicated again): the caller keeps the audio for a retry with a lighter model.
+    const copy = audio.slice();
+    worker.postMessage({ audio: copy, model, language }, [copy.buffer]);
   });
   // Stopping means ending the worker: an inference in progress cannot be interrupted any other way.
   return { result, cancel: () => { if (shared === worker) releaseAsr(); else worker.terminate(); rejectNow(new TranscribeCancelled()); } };
+}
+
+export type ResilientEvents = AsrEvents & {
+  /** The model ran out of memory and the transcription starts again with a lighter one. */
+  onFallback?: (from: ModelId, to: ModelId) => void;
+};
+export type ResilientHandle = { result: Promise<{ transcript: Transcript; timings: AsrTimings; model: ModelId }>; cancel: () => void };
+
+/** Pause before a retry, so the stopped worker's memory is actually returned before the lighter model loads. */
+const RETRY_PAUSE_MS = 400;
+
+/**
+ * Transcribes, and when the browser runs out of memory (typical on iPad Safari: "no available backend found / Out of
+ * memory") frees the worker and starts again with the next lighter model, down to the lightest. Other failures, and
+ * running out of memory with the lightest model, are thrown as they are. The result says which model was used.
+ */
+export function transcribeResilient(audio: Float32Array, model: ModelId, language: LanguageId, seconds: number, events: ResilientEvents): ResilientHandle {
+  let current: AsrHandle | null = null;
+  let stopped = false;
+  const result = (async () => {
+    let m = model;
+    for (;;) {
+      if (stopped) throw new TranscribeCancelled();
+      current = transcribe(audio, m, language, seconds, events);
+      try {
+        const r = await current.result;
+        return { ...r, model: m };
+      } catch (err) {
+        if (stopped) throw new TranscribeCancelled();
+        if (err instanceof TranscribeCancelled) throw err;
+        const next = memoryFallback(m) as ModelId | null;
+        if (!next || !isMemoryError(err instanceof Error ? err.message : String(err))) throw err;
+        events.onFallback?.(m, next);
+        releaseAsr();
+        await new Promise(r => setTimeout(r, RETRY_PAUSE_MS));
+        m = next;
+      }
+    }
+  })();
+  return { result, cancel: () => { stopped = true; current?.cancel(); } };
 }

@@ -22,15 +22,20 @@ export const SQUARE_CROP = { top: (HEIGHT - WIDTH) / 2, bottom: (HEIGHT + WIDTH)
  * Vertical box available to a scene's content, with or without burned-in captions. It never exceeds the active band
  * (ACTIVE_HEIGHT) and is centred in the safe area, so headlines sit where the eye is and clear every platform overlay.
  */
-export function contentBox(captions: boolean): { top: number; bottom: number; height: number; width: number } {
+export function contentBox(captions: boolean, insets: { top?: number; bottom?: number } = {}): { top: number; bottom: number; height: number; width: number } {
   const safeBottom = HEIGHT - SAFE.bottom;
-  if (captions) {
-    const bottom = Math.min(safeBottom - CAPTION_RESERVE, SAFE.top + ACTIVE_HEIGHT);
-    return { top: SAFE.top, bottom, height: bottom - SAFE.top, width: CONTENT_WIDTH };
-  }
-  const height = Math.min(ACTIVE_HEIGHT, safeBottom - SAFE.top);
-  const top = Math.round((SAFE.top + safeBottom - height) / 2);
-  return { top, bottom: top + height, height, width: CONTENT_WIDTH };
+  const box = (() => {
+    if (captions) {
+      const bottom = Math.min(safeBottom - CAPTION_RESERVE, SAFE.top + ACTIVE_HEIGHT);
+      return { top: SAFE.top, bottom };
+    }
+    const height = Math.min(ACTIVE_HEIGHT, safeBottom - SAFE.top);
+    const top = Math.round((SAFE.top + safeBottom - height) / 2);
+    return { top, bottom: top + height };
+  })();
+  // `insets`: space taken by something else (a watermark) at the top (px from the top edge) or bottom (px from the bottom edge).
+  const top = Math.max(box.top, insets.top ?? 0), bottom = Math.min(box.bottom, HEIGHT - (insets.bottom ?? 0));
+  return { top, bottom, height: bottom - top, width: CONTENT_WIDTH };
 }
 
 /** Motion tokens: one calm vocabulary shared by every composition family. */

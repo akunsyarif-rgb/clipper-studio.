@@ -21,8 +21,8 @@ const CAPTION_BLOCK = 170;
  * Vertical band of an overlay. "top" uses the empty space above the speaker's head; "lower" sits just above the
  * captions. Both stay inside the safe areas and never touch the caption band.
  */
-export function overlayBand(position: OverlayPosition): { top: number; height: number } {
-  if (position === "top") return { top: SAFE.top, height: OVERLAY_HEIGHT };
+export function overlayBand(position: OverlayPosition, topInset = 0): { top: number; height: number } {
+  if (position === "top") return { top: Math.max(SAFE.top, topInset), height: OVERLAY_HEIGHT };
   const bottom = HEIGHT - CAPTION_BOTTOM - CAPTION_BLOCK - CAPTION_GAP;
   return { top: bottom - OVERLAY_HEIGHT, height: OVERLAY_HEIGHT };
 }

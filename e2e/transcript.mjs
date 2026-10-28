@@ -1,7 +1,7 @@
 // End-to-end check of the auto-transcript flow: production server + Chromium + FFmpeg WASM.
 // Needs `npm run build` first and ffmpeg on PATH for the fixtures. The Whisper model is downloaded from the
 // Hugging Face Hub; when that host is unreachable (sandbox/CI), the test checks the clear error instead of a transcript.
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -66,6 +66,7 @@ try {
       assert(/Model ucapan gagal diunduh|Transkripsi gagal|Tidak ada ucapan/.test(text), "unexpected error text: " + text);
       assert(!(await page.getByTestId("asr-progress").isVisible()), "progress cleared after error");
       assert(await page.getByTestId("asr-run").isEnabled(), "can retry after error");
+      if (!/Tidak ada ucapan/.test(text)) assert(await page.getByTestId("asr-retry").isVisible(), "a clear retry button is offered after a failure");
       return "model unreachable here → " + text.slice(0, 60);
     }
     assert((await page.getByTestId("asr-seg").count()) > 0, "segments listed");
@@ -345,6 +346,48 @@ try {
     assert((await p.getByTestId("restore-offer").count()) === 0, "nothing offered after starting over");
     assert(errors.length === 0, errors.join(" | "));
     await ctx.close();
+  });
+
+  await step("motion studio takes an audio-only source: transcript, subtitles over the studio background, and an MP4 with its sound", async () => {
+    const audioFile = join(dir, "podcast.mp3");
+    execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "sine=frequency=300:duration=6", "-c:a", "libmp3lame", "-b:a", "64k", audioFile]);
+    const ctx = await browser.newContext({ acceptDownloads: true });
+    const p = await ctx.newPage();
+    p.on("pageerror", e => pageErrors.push(e.message));
+    await p.goto(BASE + "/motion"); await openFolds(p);
+    await p.getByTestId("source-video").setInputFiles(audioFile);
+    await p.getByTestId("asr-panel").waitFor({ timeout: 15000 });
+    await p.getByTestId("audio-only-note").waitFor({ timeout: 5000 });
+    await p.waitForTimeout(2500); // the source is written to storage, where the cached transcript key is read from
+    await p.evaluate(async t => {
+      const db = await new Promise((res, rej) => { const r = indexedDB.open("clipper-studio", 1); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+      const get = key => new Promise(res => { const q = db.transaction("kv").objectStore("kv").get(key); q.onsuccess = () => res(q.result); });
+      const src = await get("source");
+      const key = `asr2:${src.name}|${src.blob.size}|${src.lastModified}|0.00|${src.seconds.toFixed(2)}|Xenova/whisper-small|indonesian`;
+      await new Promise(res => { const tx = db.transaction("kv", "readwrite"); tx.objectStore("kv").put(t, key); tx.oncomplete = res; });
+    }, transcript);
+    await p.getByTestId("asr-model").selectOption("Xenova/whisper-small");
+    await p.getByTestId("asr-run").click();
+    await p.getByTestId("asr-list").waitFor({ timeout: 20000 });
+    await p.getByTestId("asr-use").click();
+    await p.getByTestId("voice-none").click().catch(() => undefined);
+    assert((await p.getByTestId("script").inputValue()).startsWith("Jangan tunggu"), "the transcript became the script");
+    await p.getByTestId("render").click();
+    await p.getByTestId("result").waitFor({ timeout: 240000 });
+    const [download] = await Promise.all([p.waitForEvent("download"), p.getByTestId("download").click()]);
+    const out = join(dir, "audio-source.mp4");
+    await download.saveAs(out);
+    const info = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type,codec_name,width,height:format=duration", "-of", "json", out]).toString());
+    const v = info.streams.find(s => s.codec_type === "video"), a = info.streams.find(s => s.codec_type === "audio");
+    assert(v?.codec_name === "h264" && v.width === 1080 && v.height === 1920, `video ${v?.codec_name} ${v?.width}x${v?.height}`);
+    assert(a?.codec_name === "aac", `the source's sound is in the MP4: ${a?.codec_name}`);
+    const dur = Number(info.format.duration);
+    assert(dur > 5 && dur < 6.4, `as long as the audio: ${dur}`);
+    const log = spawnSync("ffmpeg", ["-hide_banner", "-i", out, "-af", "volumedetect", "-f", "null", "-"], { encoding: "utf8" }).stderr;
+    const vol = Number(/mean_volume: (-?[\d.]+) dB/.exec(log)?.[1] ?? "-91");
+    assert(vol > -45, `the audio is audible, mean ${vol} dB`);
+    await ctx.close();
+    return `1080x1920 h264 + aac, ${dur.toFixed(1)} s, mean ${vol} dB`;
   });
 
   await step("a tablet gets the lighter model, and a run that took the page down is recognised", async () => {

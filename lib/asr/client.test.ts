@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ASR_IDLE_MS, releaseAsr, transcribe, TranscribeCancelled } from "./client";
+import { ASR_IDLE_MS, releaseAsr, transcribe, transcribeResilient, TranscribeCancelled } from "./client";
 import type { AsrMessage } from "./worker";
 
 // A Worker that records what it receives and lets the test play the worker's side.
@@ -108,5 +108,64 @@ describe("shared speech worker", () => {
 
   it("releaseAsr is safe to call when nothing is running", () => {
     expect(() => { releaseAsr(); releaseAsr(); }).not.toThrow();
+  });
+});
+
+describe("falling back when memory runs out", () => {
+  const oom = "no available backend found. ERR: [wasm] RangeError: Out of memory";
+  const resilient = (model: "Xenova/whisper-small" | "Xenova/whisper-base" | "Xenova/whisper-tiny", events = {}) =>
+    transcribeResilient(audio(), model, "indonesian", 4, { onDownload: () => undefined, onRunning: () => undefined, ...events });
+  const modelsPosted = () => FakeWorker.all.flatMap(w => w.posted as { model: string }[]).map(p => p.model);
+
+  it("retries with the next lighter model, keeps the audio, and says which model produced the transcript", async () => {
+    const fell: string[] = [];
+    const a = new Float32Array(16000 * 4); a[10] = 0.5;
+    const h = transcribeResilient(a, "Xenova/whisper-small", "indonesian", 4, { onDownload: () => undefined, onRunning: () => undefined, onFallback: (f, t) => fell.push(`${f}>${t}`) });
+    FakeWorker.all[0].say({ type: "error", detail: oom });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(FakeWorker.all).toHaveLength(2);
+    expect(FakeWorker.all[0].terminated).toBe(true);
+    FakeWorker.all[1].say({ type: "ready", loadSeconds: 5, reused: false });
+    finish(FakeWorker.all[1]);
+    const r = await h.result;
+    expect(r.model).toBe("Xenova/whisper-base");
+    expect(fell).toEqual(["Xenova/whisper-small>Xenova/whisper-base"]);
+    expect(modelsPosted()).toEqual(["Xenova/whisper-small", "Xenova/whisper-base"]);
+    // The caller's audio is still whole (it was copied, not handed over), and the second try got the same samples.
+    expect(a.length).toBe(16000 * 4);
+    expect(a[10]).toBe(0.5);
+    expect((FakeWorker.all[1].posted[0] as { audio: Float32Array }).audio[10]).toBe(0.5);
+    expect(r.transcript.language).toBe("id");
+    expect(r.transcript.segments.length).toBeGreaterThan(0);
+  });
+
+  it("goes down to the lightest model and then reports the failure", async () => {
+    const h = resilient("Xenova/whisper-base");
+    const settled = h.result.then(() => "ok", (e: Error) => e.message);
+    FakeWorker.all[0].say({ type: "error", detail: oom });
+    await vi.advanceTimersByTimeAsync(500);
+    FakeWorker.all[1].say({ type: "error", detail: oom });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(await settled).toContain("Out of memory");
+    expect(modelsPosted()).toEqual(["Xenova/whisper-base", "Xenova/whisper-tiny"]);
+  });
+
+  it("does not retry other failures", async () => {
+    const h = resilient("Xenova/whisper-small");
+    const settled = h.result.then(() => "ok", (e: Error) => e.message);
+    FakeWorker.all[0].say({ type: "error", detail: "Failed to fetch model files" });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(await settled).toContain("Failed to fetch");
+    expect(FakeWorker.all).toHaveLength(1);
+  });
+
+  it("cancelling during the pause stops without starting another worker", async () => {
+    const h = resilient("Xenova/whisper-small");
+    const settled = h.result.then(() => "ok", (e: Error) => e.constructor.name);
+    FakeWorker.all[0].say({ type: "error", detail: oom });
+    h.cancel();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(await settled).toBe("TranscribeCancelled");
+    expect(FakeWorker.all).toHaveLength(1);
   });
 });

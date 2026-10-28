@@ -46,11 +46,11 @@ function StageAt({ id, delay }: { id: string; delay: number }) {
   return <BrandStage id={id} node={brand.icon} f={frame - delay} />;
 }
 
-export function VideoOverlay({ scene, visual, colors, position, length, offset, brandMotion = "simple" }: { scene: Scene; visual: SceneVisual; colors: Colors; position: OverlayPosition; length: number; offset: number; brandMotion?: BrandMotion }) {
+export function VideoOverlay({ scene, visual, colors, position, length, offset, brandMotion = "simple", topInset = 0 }: { scene: Scene; visual: SceneVisual; colors: Colors; position: OverlayPosition; length: number; offset: number; brandMotion?: BrandMotion; /** Space (px from the top) a top watermark takes; a top band starts below it. */ topInset?: number }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const oc = overlayColors(colors);
-  const band = overlayBand(position);
+  const band = overlayBand(position, topInset);
   const fade = Math.min(interpolate(frame, [0, 6], [0, 1], { extrapolateRight: "clamp" }), interpolate(frame, [length - 8, length], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }));
   const pop = Math.min(1, spring({ frame, fps, config: MOTION.springCalm }));
   const slide = (1 - pop) * MOTION.rise * (position === "top" ? -1 : 1);
