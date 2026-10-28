@@ -58,6 +58,24 @@ try {
     assert(await page.getByTestId("end").inputValue() === "00:00:12", "end should clamp to the 12 s source");
   });
 
+  await step("the video and cut settings survive a visit to the motion studio and back", async () => {
+    await page.getByTestId("start").fill("00:00:02");
+    await page.getByTestId("end").fill("00:00:09");
+    await page.getByTestId("aspect-1:1").click();
+    await page.getByTestId("motion-link").click();
+    await page.waitForURL(/\/motion/, { timeout: 10000 });
+    await page.getByRole("link", { name: /clipper/i }).first().click();
+    await page.waitForURL(u => !u.pathname.startsWith("/motion"), { timeout: 10000 });
+    await page.getByTestId("end").waitFor({ timeout: 10000 });
+    await page.getByText("dipulihkan").first().waitFor({ timeout: 5000 });
+    await page.waitForFunction(() => document.querySelector("video")?.duration > 0, null, { timeout: 15000 });
+    assert(await page.getByTestId("start").inputValue() === "00:00:02" && await page.getByTestId("end").inputValue() === "00:00:09", "cut range is kept");
+    // Restore the defaults the following steps expect.
+    await page.getByTestId("aspect-9:16").click();
+    await page.getByTestId("start").fill("00:00:00");
+    await page.getByTestId("end").fill("00:00:12");
+  });
+
   await step("blocks an invalid range", async () => {
     await page.getByTestId("start").fill("00:00:08");
     await page.getByTestId("end").fill("00:00:04");

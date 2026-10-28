@@ -14,6 +14,7 @@ import YoutubeFlow from "./YoutubeFlow";
 import { lengthsMatch } from "@/lib/youtube";
 import { useGeminiAccess } from "./useGeminiAccess";
 import { saveClipHandoff } from "@/lib/session-store";
+import { clearClipperWork, loadClipperWork, saveClipperWork } from "@/lib/clipper-memory";
 import type { Transcript } from "@/lib/transcript";
 import { releaseAsr } from "@/lib/asr/client";
 import { ExportCancelled, exportClip, isEngineLoaded, terminateEngine } from "@/lib/engine";
@@ -51,6 +52,24 @@ export default function Home() {
   const [yt, setYt] = useState<YouTubeRef | null>(null);
   const [asrBusy, setAsrBusy] = useState(false);
   const busy = phase !== "idle";
+  // Coming back from another page (e.g. the motion studio): the video, cut list and settings are put back as they were.
+  const [restored, setRestored] = useState(false);
+  const keepRange = useRef(false);
+  useEffect(() => {
+    const w = loadClipperWork();
+    if (w) {
+      keepRange.current = true;
+      setFile(w.file); setSrc(URL.createObjectURL(w.file)); setDuration(w.duration);
+      setStart(w.start); setEnd(w.end); setAspect(w.aspect); setQuality(w.quality); setFit(w.fit); setHook(w.hook); setTranscript(w.transcript); setClips(w.clips);
+      setMessage("Video dan daftar klip Anda dipulihkan.");
+    }
+    setRestored(true);
+  }, []);
+  useEffect(() => {
+    if (!restored) return;
+    if (!file) { clearClipperWork(); return; }
+    saveClipperWork({ file, duration, start, end, aspect, quality, fit, hook, transcript, clips });
+  }, [restored, file, duration, start, end, aspect, quality, fit, hook, transcript, clips]);
 
   useEffect(() => { if (!src) return; return () => URL.revokeObjectURL(src); }, [src]);
   useEffect(() => { if (!result) return; const url = result.url; return () => URL.revokeObjectURL(url); }, [result]);
@@ -77,6 +96,7 @@ export default function Home() {
     if (!Number.isFinite(d) || d <= 0) return say("Durasi tidak dapat dibaca. Browser ini mungkin tidak mendukung codec video tersebut. Coba MP4 (H.264).", true);
     setDuration(d);
     if (d > 60 * 60) return say("Durasi video melebihi batas MVP 60 menit.", true);
+    if (keepRange.current) { keepRange.current = false; return; }
     setEnd(formatTime(Math.min(30, d)));
     say("Video siap. Sumber diproses lokal di browser, tidak diunggah ke server.");
   }
