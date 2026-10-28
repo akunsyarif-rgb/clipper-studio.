@@ -98,7 +98,8 @@ export function validateStoryboard(sb: Storyboard, o: ValidateOptions = {}): Iss
     const key = norm(s.narrationText);
     const prev = key ? seen.get(key) : undefined;
     if (prev) add("warning", "DUPLICATE_NARRATION", `Scene ${i + 1} mengulang narasi ${prev.id.replace("scene-", "scene ")}.`, s); else if (key) seen.set(key, s);
-    if (s.timing.frames < minFrames) add("error", "TOO_SHORT", `Scene ${i + 1} hanya ${s.timing.seconds} dtk (minimal ${MIN_SCENE_SECONDS} dtk).`, s);
+    // Only a suggestion: exact timing from a transcript or the end of a source video legitimately makes a scene short.
+    if (s.timing.frames < minFrames) add("warning", "TOO_SHORT", `Scene ${i + 1} hanya ${s.timing.seconds} dtk; scene sependek ini cepat berlalu dan sulit dibaca. Gabungkan dengan scene sebelumnya bila terasa terburu-buru.`, s);
     if (s.asset.image && !s.asset.image.available) add("error", "MISSING_ASSET", `Gambar scene ${i + 1} tidak tersedia lagi; pilih ulang atau hapus gambar.`, s);
     if (!sb.videoEdit && s.family === "editorial") {
       const fit = fitText(s.narrationText, estimateHeavy, { maxWidth: FULL_BOX.width * 0.97, maxHeight: FULL_BOX.height * 0.5, maxSize: 80, minSize: 46, lineHeight: 1.12 });

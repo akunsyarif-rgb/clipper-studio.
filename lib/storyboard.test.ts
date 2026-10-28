@@ -48,6 +48,11 @@ describe("validateStoryboard", () => {
     expect(issues.map(i => i.code)).toEqual(expect.arrayContaining(["MISSING_ASSET", "DURATION_MISMATCH"]));
     expect(issues.every(i => i.level === "error")).toBe(true);
   });
+  it("only suggests, never blocks, for a short scene that exact timing produced", () => {
+    const sc = scenes(FIVE); sc[4] = { ...sc[4], durationInFrames: 34 };
+    const issues = validateStoryboard(buildStoryboard(sc));
+    expect(issues.map(i => [i.code, i.level])).toEqual([["TOO_SHORT", "warning"]]);
+  });
   it("reports no scenes", () => { expect(validateStoryboard(buildStoryboard([]))[0].code).toBe("NO_SCENES"); });
 });
 
