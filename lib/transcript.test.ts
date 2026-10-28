@@ -368,3 +368,56 @@ describe("cleanupRequest (hand the transcript to Claude)", () => {
     expect(fixed!.wordStarts[0][0]).toBe(6);
   });
 });
+
+import { mergeShortScenes, scriptFromTranscript } from "./transcript";
+
+describe("timing survives tiny scenes", () => {
+  const w = (text: string, start: number, end: number) => ({ text, start, end });
+  /** A 12 s clip whose middle sentence, "Ya baik.", lasts only 0.8 s. */
+  const words = [
+    w("Orang", 0, 0.7), w("itu", 0.7, 1.2), w("merasa", 1.2, 2), w("sudah", 2, 2.6), w("kaya", 2.6, 3.3), w("sekali", 3.3, 4),
+    w("Ya", 4, 4.4), w("baik", 4.4, 4.8),
+    w("Padahal", 4.8, 5.6), w("ini", 5.6, 6), w("batu", 6, 6.8), w("loncatan", 6.8, 8), w("menuju", 8, 9), w("level", 9, 10), w("miliarder", 10, 12),
+  ];
+  const script = "Orang itu merasa sudah kaya sekali.\nYa baik.\nPadahal ini batu loncatan menuju level miliarder.";
+
+  it("keeps the timing when two scenes' first words share a frame, instead of dropping it", () => {
+    const same = [w("Ya", 0, 0.4), w("baik", 0.4, 0.4), w("lalu", 0.4, 1.5), w("kita", 1.5, 2.5), w("mulai", 2.5, 3)];
+    expect(sceneTimings(["Ya baik", "lalu kita mulai"], same, FPS, 3)).not.toBeNull();
+    const sharing = sceneTimings(["Ya", "baik", "lalu kita mulai"], same, FPS, 3);
+    expect(sharing).not.toBeNull();
+    expect(sharing!.seconds.every(x => x > 0)).toBe(true);
+    expect(sharing!.seconds.reduce((a, b) => a + b, 0)).toBeCloseTo(3, 1);
+  });
+  it("joins scenes shorter than 1.2 s to a neighbour, so none has to be lengthened", () => {
+    const before = sceneTimings(splitScript(script), words, FPS, 12)!;
+    expect(before.tooShort).toBe(1);
+    const merged = mergeShortScenes(script, words, FPS, 12);
+    const after = sceneTimings(splitScript(merged), words, FPS, 12)!;
+    expect(after.tooShort).toBe(0);
+    expect(after.seconds.reduce((a, b) => a + b, 0)).toBeCloseTo(12, 1);
+    const plain = (x: string) => x.replace(/[,.\n]/g, " ").split(/\s+/).filter(Boolean);
+    expect(plain(merged)).toEqual(plain(script));
+  });
+  it("turns the full stop between joined scenes into a comma and leaves a good script alone", () => {
+    expect(mergeShortScenes(script, words, FPS, 12)).toBe("Orang itu merasa sudah kaya sekali, Ya baik.\nPadahal ini batu loncatan menuju level miliarder.");
+    const fine = "Orang itu merasa sudah kaya sekali, Ya baik.\nPadahal ini batu loncatan menuju level miliarder.";
+    expect(mergeShortScenes(fine, words, FPS, 12)).toBe(fine);
+  });
+  it("never turns a question mark into a comma: it joins the short scene to the next one instead", () => {
+    const q = "Orang itu merasa sudah kaya sekali?\nYa baik.\nPadahal ini batu loncatan menuju level miliarder.";
+    expect(mergeShortScenes(q, words, FPS, 12)).toBe("Orang itu merasa sudah kaya sekali?\nYa baik, Padahal ini batu loncatan menuju level miliarder.");
+    const both = "Siapa itu?\nYa baik!\nPadahal ini batu loncatan menuju level miliarder.";
+    expect(mergeShortScenes(both, words, FPS, 12)).toContain("Ya baik!");
+  });
+  it("makes a clip's script from its transcript with every scene long enough", () => {
+    const t = { language: "indonesian", granularity: "word" as const, duration: 12, segments: [
+      { start: 0, end: 4, text: "Orang itu merasa sudah kaya sekali.", words: words.slice(0, 6) },
+      { start: 4, end: 4.8, text: "Ya baik.", words: words.slice(6, 8) },
+      { start: 4.8, end: 12, text: "Padahal ini batu loncatan menuju level miliarder.", words: words.slice(8) },
+    ] };
+    const s = scriptFromTranscript(t, FPS);
+    expect(s).not.toBe(transcriptText(t));
+    expect(sceneTimings(splitScript(s), allWords(t), FPS, 12)!.tooShort).toBe(0);
+  });
+});

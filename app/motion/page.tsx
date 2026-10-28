@@ -7,14 +7,14 @@ import { DEFAULT_MUSIC_VOLUME, encodeWav, MAX_RECORDING_SECONDS, MOODS, moodForS
 import { analyseNarration, decodeToMono, explainMicError, NarrationRecorder, recordingSupported, type Narration } from "@/lib/recorder";
 import { checkBrowserRender, environmentReport, RenderFailure, renderMp4 } from "@/lib/render";
 import {
-  buildTimeline, CONTENT_PRESETS, explainRenderError, FPS, HEIGHT, MAX_SECONDS, MIN_SCENE_SECONDS, PALETTES, slug, splitScript, splitScriptWithPauses, STYLES, validateAudioFile, validateTitle, WIDTH,
+  buildTimeline, CONTENT_PRESETS, explainRenderError, fitScenesToVideo, FPS, HEIGHT, MAX_SECONDS, MIN_SCENE_SECONDS, PALETTES, slug, splitScript, splitScriptWithPauses, STYLES, totalFrames, validateAudioFile, validateTitle, WIDTH,
   type ContentPresetId, type DurationMode, type PaletteId, type StyleId, type VideoProps,
 } from "@/lib/script";
 import { explainVoiceError, loadVoiceEngine, MODEL_BYTES, VOICES } from "@/lib/tts/browser";
 import { assembleNarration, clipKey, SPEEDS } from "@/lib/tts/narration";
 import { spokenText } from "@/lib/tts/numbers";
 import { TTS_LANGS, type TtsLang } from "@/lib/tts/supertonic";
-import { allWords, shiftWords, HANDOFF_KEY, parseHandoff, sceneTimings, transcriptText, type Transcript } from "@/lib/transcript";
+import { allWords, shiftWords, HANDOFF_KEY, parseHandoff, sceneTimings, scriptFromTranscript, mergeShortScenes, type Transcript } from "@/lib/transcript";
 import { ICONS, resolveVisual, sceneTopics, type Cut, stripMarks, TEMPLATES, type Template, type VisualOverride } from "@/lib/visuals";
 import { chooseFamily, FAMILY_LABELS } from "@/lib/composition";
 import { planNarrative } from "@/lib/narrative";
@@ -163,11 +163,11 @@ export default function MotionStudio() {
     void probeVideo(file).then(p => { if (!p.ok) { setSource(null); setVideoEdit(false); setHandoffNote(`Klip yang diterima tidak bisa diputar di browser ini. Kembali ke Clipper lalu ekspor ulang klipnya, atau pilih video langsung di sini. (Detail: ${p.detail})`); } });
     if (h.title) setTitle(h.title.slice(0, 48).trim());
     if (h.transcript && h.transcript.segments.length > 0) {
-      setScript(transcriptText(h.transcript)); setImported(h.transcript);
+      setScript(scriptFromTranscript(h.transcript, FPS)); setImported(h.transcript);
       setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptionOffset(0); setPalette("pearl"); setContentPreset("custom"); setOffer(null);
       setHandoffNote(h.transcript.granularity === "word"
         ? "Klip dari Clipper dimuat dengan subtitlenya."
-        : "Klip dari Clipper dimuat. Subtitle berasal dari AI dengan waktu per kalimat; untuk waktu kata yang lebih pas, buat ulang transkrip di panel Transkrip (di perangkat) lalu pilih Pakai transkrip.");
+        : "Klip dari Clipper dimuat. Subtitle berasal dari AI dengan waktu per kalimat. Untuk waktu yang paling presisi: buat transkrip di panel Transkrip (di perangkat), lalu pilih \"Pakai hanya waktunya\" (teks tidak berubah).");
     } else setHandoffNote("Klip dari Clipper dimuat. Belum ada subtitle: buat transkrip di panel Transkrip, atau tulis naskah.");
   }
   function onSourceVideo(e: ChangeEvent<HTMLInputElement>) {
@@ -209,6 +209,8 @@ export default function MotionStudio() {
   const mode: DurationMode = aiFresh ? { kind: "scenes", seconds: aiFresh.sceneSeconds }
     : timed ? { kind: "scenes", seconds: timed.seconds }
     : narration ? { kind: "audio", seconds: narration.seconds }
+    // Editing over a video whose captions have no usable timing: the scenes still span exactly the video, never more or less.
+    : videoEdit && source && splitScript(script).length * MIN_SCENE_SECONDS <= source.seconds ? { kind: "target", seconds: source.seconds }
     : target === "auto" || voiceMode === "ai" ? { kind: "auto" } : { kind: "target", seconds: Number(target) };
   const voiceBusy = voiceProgress !== null;
   const timeline = useMemo(() => buildTimeline(script, mode, FPS), [script, mode.kind, aiFresh, narration?.seconds, target, timed]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -228,7 +230,7 @@ export default function MotionStudio() {
     ? planAnimations(timeline.scenes.map((sc, i) => ({ text: sc.text, visual: sceneVisuals[i], seconds: sc.durationInFrames / FPS })), density, timeline.scenes.map(sc => aiScores[sc.text]))
     : { cuts: [], judgements: [] };
   const planned = animationPlan.cuts;
-  const sceneList = timeline.ok ? timeline.scenes.map((sc, i) => ({
+  const sceneList = timeline.ok ? (videoEdit && source ? (list: typeof timeline.scenes) => fitScenesToVideo(list, Math.round(source.seconds * FPS)) : (list: typeof timeline.scenes) => list)(timeline.scenes).map((sc, i) => ({
     ...sc, visual: sceneVisuals[i], narrative: narrativePlan[i], ...(timed && !aiFresh ? { wordStarts: timed.wordStarts[i], wordEnds: timed.wordEnds[i], pauseFrames: undefined } : {}),
     ...(videoEdit && source ? { cut: cutOverrides[sc.text] ?? planned[i], ...(cutOverrides[sc.text] === "clip" ? { clipFrom: clipStarts[sc.text] ?? 0 } : {}) } : {}),
   })) : [];
@@ -276,6 +278,14 @@ export default function MotionStudio() {
       setVideoEdit(s.videoEdit);
     } else setVideoEdit(false); // editing over the video needs the video itself
     setSaved(null); setSavedCloud(false); setAutosave(true);
+  }
+  /** A transcript's timing, with the creator's own script kept: used after a local (Whisper) transcript of the clip. */
+  function useTimingOnly(t: Transcript): string | null {
+    const words = shiftWords(allWords(t), captionOffset);
+    if (!sceneTimings(splitScript(script), words, FPS, t.duration)) return "Naskah terlalu berbeda dari hasil ini, jadi waktunya tidak bisa dipakai. Pilih \"Pakai transkrip\" untuk mengganti naskah dengan hasil ini.";
+    setScript(mergeShortScenes(script, allWords(t), FPS, t.duration));
+    setImported(t); setVoiceMode("none"); setNarration(null); setVideoEdit(true);
+    return null;
   }
   async function discardSession() { await clearSession(); setSavedCloud(false); setSaved(null); setSavedSource(null); setAutosave(true); }
 
@@ -484,7 +494,7 @@ export default function MotionStudio() {
       ...props,
       audioSrc: narration ? narration.file.name : null,
       music: music && musicTrack ? { ...music, src: musicTrack.file.name } : null,
-      fps: FPS, width: WIDTH, height: HEIGHT, durationInFrames: timeline.ok ? timeline.totalFrames : 0,
+      fps: FPS, width: WIDTH, height: HEIGHT, durationInFrames: props ? totalFrames(props.scenes) : 0,
     };
     const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -533,7 +543,7 @@ export default function MotionStudio() {
           </div>}
           {offer && !imported && <div className="notice" data-testid="transcript-offer">
             Transkrip dari Clipper tersedia: <strong>{offer.source}</strong> ({allWords(offer.transcript).length} kata, {Math.round(offer.transcript.duration)} dtk).{" "}
-            <button className="text-button" data-testid="transcript-import" onClick={() => { setScript(transcriptText(offer.transcript)); setImported(offer.transcript); setVoiceMode("manual"); setOffer(null); }}>Impor ke naskah</button>
+            <button className="text-button" data-testid="transcript-import" onClick={() => { setScript(scriptFromTranscript(offer.transcript, FPS)); setImported(offer.transcript); setVoiceMode("manual"); setOffer(null); }}>Impor ke naskah</button>
           </div>}
           {imported && <div className="notice" data-testid="transcript-status">
             {timed ? (videoEdit ? "Mode edit video: video asli (dengan suaranya) jadi dasar; subtitle mengikuti waktu kata, dan scene dengan kata kunci/angka berganti ke grafis. Atur per scene lewat \"Layar\"." : "Subtitle mengikuti waktu kata dari transkrip. Unggah audio asli video pada Voice over → Rekam / unggah agar suara dan subtitle sama.")
@@ -562,6 +572,10 @@ export default function MotionStudio() {
               <option value="full">Lengkap (meriah)</option>
             </select>
           </label>}
+          {imported && !timed && voiceMode !== "ai" && <div className="notice notice-error" data-testid="timing-lost">
+            Naskah sudah berbeda terlalu jauh dari transkrip, sehingga waktu subtitle memakai <b>perkiraan</b> (bukan waktu ucapan sebenarnya) dan video bisa lebih panjang dari sumbernya.{" "}
+            <button className="text-button" data-testid="timing-restore" onClick={() => setScript(scriptFromTranscript(imported, FPS))}>Kembalikan naskah dari transkrip</button>
+          </div>}
           {timed && timed.aligned && <div className="notice" data-testid="aligned-notice">Naskah sudah diedit setelah transkripsi; kata-katanya diselaraskan dengan ucapan asli, jadi waktu caption mungkin bergeser sedikit di bagian yang diubah.</div>}
           {timed && timed.tooShort > 0 && <div className="notice notice-error" data-testid="short-warning">{timed.tooShort} scene lebih pendek dari {MIN_SCENE_SECONDS} dtk, sehingga akan diperpanjang dan membuat subtitle sesudahnya bergeser. Gabungkan barisnya di kolom Naskah, tetapi pertahankan kata-katanya.</div>}
           <div className="field-label">Video sumber <span className="field-hint">opsional · unggah video, ucapannya jadi naskah &amp; subtitle otomatis (maks. 3 menit)</span></div>
@@ -570,8 +584,8 @@ export default function MotionStudio() {
             : <>
               <video ref={sourceVideo} src={source.url} controls playsInline preload="metadata" style={{ width: "100%", maxHeight: 220, borderRadius: 10, background: "#000" }} />
               <button className="text-button" disabled={asrBusy} onClick={() => { setSource(null); setImported(null); setVideoEdit(false); setCutOverrides({}); setClipStarts({}); }}>Ganti video ({source.file.name})</button>
-              <TranscriptPanel key={source.url} file={source.file} video={sourceVideo} range={{ start: 0, duration: source.seconds }} locked={false} onWorking={setAsrBusy} onCopy={setScript}
-                onUse={t => { setScript(transcriptText(t)); setImported(t); setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptionOffset(0); setPalette("pearl"); setContentPreset("custom"); setOffer(null); }} />
+              <TranscriptPanel key={source.url} file={source.file} video={sourceVideo} range={{ start: 0, duration: source.seconds }} locked={false} onWorking={setAsrBusy} onCopy={setScript} onUseTiming={useTimingOnly}
+                onUse={t => { setScript(scriptFromTranscript(t, FPS)); setImported(t); setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptionOffset(0); setPalette("pearl"); setContentPreset("custom"); setOffer(null); }} />
             </>}
           {sourceError && <p className="field-error" role="alert">{sourceError}</p>}
           <label className="field-label" htmlFor="motion-script">Naskah <span className="field-hint">satu baris/kalimat = satu scene · *kata* untuk menonjolkan</span></label>
@@ -707,9 +721,9 @@ export default function MotionStudio() {
         </section>
 
         <section className="preview-column">
-          <div className="panel-heading"><div><small>02 / PRATINJAU</small><h2>Preview video</h2></div><span className="preview-badge"><i /> {timeline.ok ? `${timeline.seconds.toFixed(1)}s · 9:16` : "—"}</span></div>
+          <div className="panel-heading"><div><small>02 / PRATINJAU</small><h2>Preview video</h2></div><span className="preview-badge"><i /> {props ? `${(totalFrames(props.scenes) / FPS).toFixed(1)}s · 9:16` : "—"}</span></div>
           <div className="player-wrap" style={{ background: `linear-gradient(145deg, ${colors.bg1}, ${colors.bg2})` }}>
-            {props ? <Player ref={player} component={ScriptVideo} inputProps={props} durationInFrames={timeline.ok ? timeline.totalFrames : 1} fps={FPS} compositionWidth={WIDTH} compositionHeight={HEIGHT} controls style={{ width: "100%", aspectRatio: "9 / 16" }} acknowledgeRemotionLicense />
+            {props ? <Player ref={player} component={ScriptVideo} inputProps={props} durationInFrames={props ? totalFrames(props.scenes) : 1} fps={FPS} compositionWidth={WIDTH} compositionHeight={HEIGHT} controls style={{ width: "100%", aspectRatio: "9 / 16" }} acknowledgeRemotionLicense />
               : <div className="player-empty">{blocker}</div>}
           </div>
           <p className="preview-disclaimer">Pratinjau memakai komposisi yang sama dengan hasil render, jadi teks, durasi scene, narasi, dan backsound identik dengan MP4.</p>

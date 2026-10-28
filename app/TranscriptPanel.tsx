@@ -19,7 +19,7 @@ type Range = { start: number; duration: number };
 type Phase = "idle" | "audio" | "download" | "running";
 
 /** Automatic transcript of the selected range: local Whisper, editable text, live caption preview, hand-off to /motion. */
-export default function TranscriptPanel({ file, video, range, locked, onWorking, onCopy, onUse, onPickRange }: {
+export default function TranscriptPanel({ file, video, range, locked, onWorking, onCopy, onUse, onUseTiming, onPickRange }: {
   file: File;
   video: RefObject<HTMLVideoElement | null>;
   /** Selected clip range, or null while the range is invalid. */
@@ -31,6 +31,8 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
   onCopy: (text: string) => void;
   /** On the motion page: use the transcript directly instead of linking there. */
   onUse?: (t: Transcript) => void;
+  /** On the motion page: take only this transcript's timing, keeping the script as it is. Returns a problem message, or null when applied. */
+  onUseTiming?: (t: Transcript) => string | null;
   /** On the clipper page: sets the clip's start and end (video seconds) from an AI-suggested moment. */
   onPickRange?: (start: number, end: number) => void;
 }) {
@@ -214,6 +216,7 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
       <button onClick={() => save(`${base}.srt`, toSrt(transcript.value), "application/x-subrip")} data-testid="asr-srt">Unduh .srt</button>
         <button onClick={() => save(`${base}.txt`, transcriptText(transcript.value), "text/plain")}>Unduh .txt</button>
       </div>
+      {onUseTiming && <button className="secondary-button" onClick={() => { const problem = onUseTiming(transcript.value); if (problem) { setError(problem); setInfo(""); } else { setError(""); setInfo("Waktu subtitle sekarang mengikuti ucapan hasil transkrip ini; teks naskah Anda tidak berubah."); } }} data-testid="asr-use-timing"><span>Pakai hanya waktunya (naskah saya tetap)</span><small>paling presisi</small></button>}
       {onUse
         ? <button className="primary-button" onClick={() => onUse(transcript.value)} data-testid="asr-use"><span>Pakai transkrip untuk naskah &amp; subtitle</span></button>
         : <Link className="motion-link" href="/motion" onClick={e => { if (toMotion() === false) e.preventDefault(); }} data-testid="asr-to-motion"><span className="bottom-icon">✳</span><span><strong>Kirim ke Motion Graphics</strong><small>Teks dan waktu kata dipakai untuk subtitle, ikon, dan angka pada video motion.</small></span><b>Buka →</b></Link>}
