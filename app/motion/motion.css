@@ -152,3 +152,15 @@ button.scene-row{width:100%;text-align:left;color:inherit;font:inherit;backgroun
 .fold>summary small{font-size:11px;color:var(--m-muted)}
 .fold>:not(summary){margin-left:14px;margin-right:14px}
 .fold>:last-child{margin-bottom:14px}
+.aff-research{display:flex;flex-direction:column;gap:8px;margin:10px 0;padding:10px;border:1px solid var(--m-line);border-radius:10px;background:#12142a}
+.aff-research .range-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.aff-advanced summary{cursor:pointer;color:var(--m-muted)}
+.aff-advanced input{margin-top:6px}
+.aff-result{display:flex;flex-direction:column;gap:8px}
+.aff-facts{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;font-size:12px}
+.aff-facts li{display:flex;flex-direction:column;gap:2px}
+.aff-facts label{display:flex;gap:8px;align-items:flex-start;cursor:pointer}
+.aff-facts input[type=checkbox]{width:18px;height:18px;margin-top:1px;flex:0 0 auto}
+.aff-facts small a,.aff-images small a,.aff-research a{color:#b8b0ff}
+.aff-images{display:flex;flex-direction:column;gap:8px}
+@media(max-width:520px){.aff-advanced input{font-size:16px}}

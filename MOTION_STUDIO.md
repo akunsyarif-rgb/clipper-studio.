@@ -486,3 +486,30 @@ Halaman Motion dimulai dengan saklar **[ Konten biasa | Affiliate ]**. Mesinnya 
 - **Langkah bernomor:** 1 Naskah (atau Produk dan naskah), 2 Tampilan, 3 Suara dan musik, 4 Render.
 - **Pengaturan dilipat** (terbuka dengan satu ketukan, ringkasannya tampil di judulnya): **Tampilan** (template, gaya, palet; biasanya diatur Sutradara AI), **Backsound**, dan **Durasi dan subtitle**. Voice over tetap terlihat karena harus dibuat sebelum render. Tidak ada pengaturan yang dihapus.
 - **Pengujian:** `e2e/motion.mjs` ("mode switch…": bawaan Konten biasa, tiap panel hanya di mode-nya, naskah dan pengaturan terbawa, aturan jualan hanya di Affiliate, mode diingat setelah muat ulang, lipatan tertutup dengan ringkasan dan tetap terbuka saat diedit) dan `e2e/clipflow.mjs` (klip dengan video membuka sebagai Konten biasa dan Affiliate nonaktif). Tes lain yang memakai pengaturan terlipat membukanya dulu lewat bantu `openFolds`.
+
+## Riset produk otomatis untuk affiliate (spesifikasi, gambar asli produk)
+
+Di mode Affiliate, di bawah Nama produk ada **"Tautan halaman produk (opsional)"** dan tombol **"Cari info produk dengan AI"**. Tujuannya: informasi yang tepat guna tanpa mengetik semua spesifikasi, dengan gambar asli produk.
+
+**Yang dikerjakan**
+1. **Halaman yang Anda tempel dibaca** (toko resmi atau merek paling akurat): server membaca data terstruktur halaman itu (schema.org Product: nama, merek, harga, spesifikasi, bahan, warna, gambar; lalu Open Graph) tanpa menebak apa pun yang tidak tertulis.
+2. **AI mencari di web** (model pencari lewat kunci OpenRouter Anda; bawaan `perplexity/sonar`) dan melaporkan spesifikasi **beserta alamat halaman sumbernya**. Hanya halaman yang benar-benar dikembalikan oleh pencarian yang dibaca lanjut (maks. 2 tambahan); alamat karangan model tidak pernah dibuka.
+3. **Hasil riset** tampil: merek, kategori, dan daftar fakta dengan kotak centang dan sumbernya.
+   - Fakta dari halaman itu sendiri dan fakta yang sumbernya terbukti ada di hasil pencarian **tercentang** otomatis.
+   - Fakta yang sumbernya tidak bisa dipastikan, atau tanpa sumber, **tidak tercentang** dan diberi peringatan.
+   - Fakta berkata promosi atau klaim (terbaik, nomor 1, klaim kesehatan) **ditahan**, tidak tercentang.
+   - **Pakai N fakta yang dicentang** menambahkannya ke "Manfaat dan fakta nyata" (maks. 8, tanpa duplikat). Naskah AI dan pemeriksa klaim memakai fakta itu seperti biasa.
+4. **Harga hanya petunjuk:** harga yang ditemukan tampil dengan sumbernya dan peringatan bahwa harga berubah; **tidak pernah terisi sendiri**. Ketuk "Pakai harga ini" bila sudah Anda periksa.
+5. **Gambar dari halaman produk** (gambar yang dipakai toko atau merek itu sendiri): ketuk satu, server mengambilnya (aturan hotlink toko tidak jadi masalah), lalu dipasang di scene yang menyebut produk dan scene terakhir. **Sumbernya tampil di bawah scene** (tautan ke halamannya). Foto Anda sendiri ("Pasang foto produk saya") tetap pilihan paling aman.
+
+**Fungsi server baru `product`** (`supabase/functions/product/`): hanya untuk pengguna yang masuk, tidak butuh kunci atau tabel. Pengaman: alamat harus https publik tanpa kredensial, port, IP, `localhost`, atau nama `.local`/`.internal`; setiap pengalihan diperiksa ulang seperti alamat pertama (maks. 3); halaman maks. 1,5 MB dan gambar maks. 12 MB; hanya JPG/PNG/WebP yang diserahkan. Sebelum dibuka untuk pengguna lain, tambahkan batas pemakaian per akun.
+
+**Batas yang jujur**
+- **Akurasi:** AI bisa salah. Sumber ditampilkan agar Anda bisa memeriksa; fakta yang menurut Anda keliru cukup tidak dicentang. Anda tetap penanggung jawab isi video.
+- **Marketplace sering menolak dibaca otomatis** (Shopee, Tokopedia, dsb.); app mengatakannya dan melanjutkan dengan sumber lain. Tautan toko resmi atau merek paling andal.
+- **Hak cipta gambar:** gambar produk milik toko atau merek. App mengingatkan dan mencantumkan sumbernya, tetapi hak pakainya Anda yang menilai (mis. materi dari program afiliasi atau penjual).
+- **Pencarian web memakai saldo OpenRouter** (biaya pencarian per permintaan, kecil). Nama model pencari bisa berubah di OpenRouter; bila muncul "model tidak ditemukan", ganti nama di **Lanjutan: model pencarian web** (tersimpan di perangkat). Tanpa kunci OpenRouter di akun, hanya halaman yang Anda tempel yang dibaca.
+- **Belum diuji terhadap OpenRouter, situs toko, atau Perplexity sungguhan** dari lingkungan pengembangan (tidak terjangkau); format jawaban dibaca dari pengetahuan umum API tersebut, dan dibaca longgar (anotasi `url_citation`, `citations`, `search_results`).
+- **Pemasangan di produksi:** fungsi `product` harus di-deploy sekali (tanpa perubahan database). Sebelum itu muncul "Fungsi pembaca halaman produk belum dipasang di server."
+
+**Pengujian:** `lib/product-function.test.ts` (15: keamanan alamat, pengalihan, batas ukuran, parser JSON-LD/Open Graph), `lib/product.test.ts` (7), `lib/product-research.test.ts` (26: prompt, verifikasi sumber terhadap kutipan pencarian, fakta promosi ditahan, alamat karangan tidak dibaca, penggabungan, kegagalan sebagian) dan `e2e/motion.mjs` ("affiliate research…": tautan diperbaiki, satu pencarian dengan model pencari, halaman ditempel dibaca pertama, halaman karangan tidak pernah dibaca, halaman yang menolak dilaporkan, fakta bersumber tercentang dan yang tidak bersumber tidak, harga tidak terisi sendiri, gambar lewat server dipasang di 2 scene dengan kredit, kegagalan pencarian mempertahankan fakta halaman, data diingat).

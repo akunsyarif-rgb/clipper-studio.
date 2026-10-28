@@ -11,6 +11,8 @@ const { chromium } = createRequire(import.meta.url)("playwright");
 
 const PORT = Number(process.env.E2E_PORT || 3211);
 const BASE = `http://localhost:${PORT}/motion`;
+// Waits (up to 8 s) until a condition holds; used right after a reload, when the page is still restoring what it remembered.
+async function until(check, message) { for (let i = 0; i < 80; i++) { if (await check().catch(() => false)) return; await new Promise(r => setTimeout(r, 100)); } throw new Error(message); }
 // The optional groups (look, backsound, duration) start folded, as for the creator; tests that use their controls open them.
 const openFolds = p => p.evaluate(() => document.querySelectorAll("details.fold").forEach(d => { d.open = true; }));
 
@@ -656,7 +658,7 @@ try {
     assert(templates.at(-1) === "Ajakan", `buying prompt closes the video: ${templates}`);
     // The product facts are remembered on this device.
     await p.reload();
-    assert(await p.getByTestId("aff-product").inputValue() === "Botol Minum Termos Aqualux 750 ml" && /Rp 89\.000/.test(await p.getByTestId("aff-price").inputValue()), "facts remembered after a reload");
+    await until(async () => (await p.getByTestId("aff-product").inputValue()) === "Botol Minum Termos Aqualux 750 ml" && /Rp 89\.000/.test(await p.getByTestId("aff-price").inputValue()), "facts remembered after a reload");
     assert(await p.getByTestId("aff-disclosure").isVisible(), "disclosure reminder shown");
     await ctxA.close();
     // Without an AI key the claim guard still works.
@@ -730,13 +732,133 @@ try {
     // The last mode is remembered.
     await m.getByTestId("mode-affiliate").click();
     await m.reload();
-    assert(await checked("mode-affiliate") === "true" && await m.getByTestId("affiliate-panel").isVisible(), "affiliate remembered after a reload");
-    assert(await m.getByTestId("aff-product").inputValue() === "Botol Termos", "product data remembered too");
+    await until(async () => (await checked("mode-affiliate")) === "true" && await m.getByTestId("affiliate-panel").isVisible(), "affiliate remembered after a reload");
+    await until(async () => (await m.getByTestId("aff-product").inputValue()) === "Botol Termos", "product data remembered too");
     await m.getByTestId("mode-normal").click();
     await m.reload();
-    assert(await checked("mode-normal") === "true" && await m.locator(".field-label.normal-only", { hasText: "Video sumber" }).isVisible(), "ordinary remembered after a reload");
+    await until(async () => (await checked("mode-normal")) === "true" && await m.locator(".field-label.normal-only", { hasText: "Video sumber" }).isVisible(), "ordinary remembered after a reload");
     await ctxM.close();
     return "default ordinary; product data and video source each only in their own mode; script and settings carried over; selling rules only in affiliate mode; last mode remembered; folds closed with summaries";
+  });
+
+  await step("affiliate research: sourced specifications, a price hint, the product's own pictures on the scenes, with credits", async () => {
+    const SB = "https://smwealrfgnzxquqqscxs.supabase.co";
+    const OFFICIAL = "https://www.aqualux.example/produk/termos-750";
+    const STORE = "https://tokoresmi.example/aqualux-750";
+    const orange = join(dir, "produk-asli.jpg");
+    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=orange:s=1080x1920", "-frames:v", "1", orange]);
+    const jpgBytes = readFileSync(orange);
+    const seen = { research: [], pages: [], images: [], generate: 0, failSearch: false };
+    const researchAnswer = {
+      official_name: "Aqualux Termos 750 ml", brand: "Aqualux", category: "botol minum termos",
+      facts: [
+        { text: "Kapasitas 750 ml", source_url: OFFICIAL }, { text: "Bahan stainless steel 304", source_url: OFFICIAL },
+        { text: "Menjaga dingin 12 jam", source_url: "https://dikarang.example/x" }, { text: "Termos terbaik nomor 1", source_url: OFFICIAL },
+      ],
+      price: { text: "Rp 89.000", source_url: OFFICIAL },
+      pages: [{ url: OFFICIAL, kind: "official", title: "Aqualux" }, { url: STORE, kind: "store", title: "Toko" }, { url: "https://dikarang.example/p", kind: "store", title: "?" }],
+    };
+    const ctxR = await browser.newContext({ acceptDownloads: true });
+    await ctxR.route("https://cdn.aqualux.example/**", r => r.fulfill({ status: 200, contentType: "image/jpeg", body: jpgBytes, headers: { "access-control-allow-origin": "*" } }));
+    await ctxR.route(SB + "/**", async route => {
+      const req = route.request(), u = new URL(req.url());
+      const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "POST, GET, OPTIONS" };
+      if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+      const send = (status, body) => route.fulfill({ status, headers: cors, contentType: "application/json", body: JSON.stringify(body) });
+      if (u.pathname === "/auth/v1/token") return send(200, { access_token: "AT", refresh_token: "RT", expires_in: 3600, user: { email: "saya@contoh.id" } });
+      if (u.pathname.startsWith("/rest/v1/")) return send(200, []);
+      const m = JSON.parse(req.postData() ?? "{}");
+      if (u.pathname === "/functions/v1/gemini") {
+        if (m.action === "status") return send(200, { hasKey: true, provider: "openai", baseUrl: "https://openrouter.ai/api/v1", model: "google/gemini-x" });
+        const prompt = m.body.messages[0].content;
+        if (m.model === "perplexity/sonar") {
+          seen.research.push({ model: m.model, prompt });
+          if (seen.failSearch) return send(402, { error: { message: "insufficient credits" } });
+          return send(200, { choices: [{ message: { content: "```json\n" + JSON.stringify(researchAnswer) + "\n```", annotations: [{ type: "url_citation", url_citation: { url: OFFICIAL } }, { type: "url_citation", url_citation: { url: STORE + "?ref=x" } }] } }] });
+        }
+        seen.generate++;
+        const lines = ["Air cepat hangat saat kerja?", "Termos Aqualux muat 750 ml.", "Bahannya stainless steel 304.", "Cek keranjang kuning sekarang."];
+        return send(200, { choices: [{ message: { content: JSON.stringify({ title: "Termos Aqualux", lines }) } }] });
+      }
+      if (u.pathname !== "/functions/v1/product") return send(404, {});
+      if (m.action === "page") {
+        seen.pages.push(m.url);
+        if (m.url.startsWith("https://tokoresmi.example")) return send(502, { error: { status: "PAGE_BLOCKED", message: "Situs menolak dibaca otomatis." } });
+        return send(200, { page: { url: m.url, host: new URL(m.url).hostname, title: "Termos Aqualux 750 ml", brand: "Aqualux", description: "", price: { amount: "89000", currency: "IDR" }, specs: ["Kapasitas: 750 ml", "Warna: Hitam"], images: ["https://cdn.aqualux.example/1.jpg", "https://cdn.aqualux.example/2.jpg"] } });
+      }
+      if (m.action === "image") { seen.images.push(m.url); return route.fulfill({ status: 200, headers: { ...cors, "content-type": "image/jpeg" }, body: jpgBytes }); }
+      return send(400, {});
+    });
+    const p = await ctxR.newPage();
+    p.on("pageerror", e => pageErrors.push(e.message));
+    await p.goto(BASE); await openFolds(p);
+    await p.getByTestId("voice-none").click();
+    await p.getByTestId("duration").selectOption("15");
+    await p.getByTestId("mode-affiliate").click();
+    await p.getByTestId("cloud-open").click();
+    await p.getByTestId("cloud-email").fill("saya@contoh.id");
+    await p.getByTestId("cloud-password").fill("benar-sekali");
+    await p.getByTestId("cloud-signin").click();
+    await p.getByTestId("aff-product").fill("Termos Aqualux 750 ml");
+    // A link that is not an address is called out and blocks nothing else.
+    await p.getByTestId("aff-link").fill("termos aqualux");
+    await p.getByTestId("aff-link-problem").waitFor({ timeout: 5000 });
+    assert(await p.getByTestId("aff-research-run").isDisabled(), "research waits for a proper link");
+    await p.getByTestId("aff-link").fill("www.aqualux.example/produk/termos-750");
+    await p.getByTestId("aff-research-run").click();
+    await p.getByTestId("aff-result").waitFor({ timeout: 15000 });
+    // What was asked, and of which model.
+    assert(seen.research.length === 1 && seen.research[0].model === "perplexity/sonar", "one web search with the search model");
+    assert(seen.research[0].prompt.includes("Termos Aqualux 750 ml") && seen.research[0].prompt.includes(OFFICIAL), "the product and the pasted page are in the request");
+    assert(seen.pages[0] === OFFICIAL, `the pasted page was read first (address completed): ${seen.pages[0]}`);
+    assert(seen.pages.length === 2 && seen.pages.includes(STORE) && !seen.pages.some(x => x.includes("dikarang")), `found pages were read, an invented one never: ${seen.pages}`);
+    assert(/menolak dibaca otomatis/.test(await p.getByTestId("aff-note").first().textContent()), "a page that refused is reported");
+    assert(/Merek: Aqualux/.test(await p.getByTestId("aff-brand").textContent()), "brand and category shown");
+    // Facts with their sources; only sourced, non-promotional ones are ticked.
+    const facts = await p.getByTestId("aff-fact").allTextContents();
+    const ticked = await p.locator('[data-testid="aff-fact"] input').evaluateAll(els => els.map(e => e.checked));
+    const textOf = i => facts[i];
+    const idx = t => facts.findIndex(x => x.includes(t));
+    assert(idx("Kapasitas: 750 ml") === 0 && ticked[0], "the page's own specification comes first and is ticked");
+    assert(!ticked[idx("Menjaga dingin 12 jam")] && /tidak bisa dipastikan/.test(textOf(idx("Menjaga dingin 12 jam"))), "a fact whose source the search never returned is not ticked and says so");
+    assert(!ticked[idx("terbaik nomor 1")] && /Kata promosi/.test(textOf(idx("terbaik nomor 1"))), "promotional wording is held back");
+    assert(ticked[idx("Bahan stainless steel 304")] && /aqualux\.example/.test(textOf(idx("Bahan stainless steel 304"))), "a sourced fact shows its source");
+    assert(facts.filter(x => /Kapasitas/.test(x)).length === 1, "the same fact from the page and from the search appears once");
+    await p.getByTestId("aff-use-facts").click();
+    const benefits = await p.getByTestId("aff-benefits").inputValue();
+    assert(/Kapasitas: 750 ml/.test(benefits) && /Warna: Hitam/.test(benefits) && /stainless steel 304/.test(benefits), `ticked facts were added: ${benefits}`);
+    assert(!/Menjaga dingin/.test(benefits) && !/terbaik/.test(benefits), "unticked facts were not added");
+    // The price is only a hint until the creator uses it.
+    assert(await p.getByTestId("aff-price").inputValue() === "", "the price is never filled in by itself");
+    assert(/Rp 89000/.test(await p.getByTestId("aff-price-hint").textContent()) || /89.000/.test(await p.getByTestId("aff-price-hint").textContent()), "the price hint shows what was found");
+    await p.getByTestId("aff-use-price").click();
+    assert((await p.getByTestId("aff-price").inputValue()).length > 0, "the price goes into the field when asked");
+    // The script is written from these facts, then the product's own picture goes on its scenes.
+    await p.getByTestId("aff-write").click();
+    await p.getByTestId("aff-draft").waitFor({ timeout: 10000 });
+    await p.getByTestId("aff-use").click();
+    assert(await p.getByTestId("aff-image").count() === 2, "the page's pictures are offered");
+    await p.getByTestId("aff-image").first().click();
+    await p.getByTestId("aff-research-msg").filter({ hasText: "dipasang" }).waitFor({ timeout: 15000 });
+    assert(seen.images.length === 1 && seen.images[0] === "https://cdn.aqualux.example/1.jpg", `the picture came through the server: ${seen.images}`);
+    assert(/2 scene/.test(await p.getByTestId("aff-research-msg").textContent()), `message: ${await p.getByTestId("aff-research-msg").textContent()}`);
+    assert(await p.locator(".scene-thumb").count() === 2, "two scenes got the product picture");
+    const credit = p.getByTestId("scene-credit").first();
+    assert(/Gambar: www\.aqualux\.example|Gambar: aqualux\.example/.test(await credit.textContent()), `credit names the source: ${await credit.textContent()}`);
+    assert((await credit.locator("a").getAttribute("href")) === OFFICIAL, "the credit links to the page the picture came from");
+    // A failing search still keeps what the pasted page gives, and says why.
+    seen.failSearch = true;
+    await p.getByTestId("aff-research-run").click();
+    await p.getByTestId("aff-note").filter({ hasText: "Saldo" }).waitFor({ timeout: 15000 });
+    assert(await p.getByTestId("aff-fact").count() >= 2, "the pasted page's facts are kept when the search fails");
+    // The model can be changed (names on the router change) and the product data is remembered.
+    await p.locator(".aff-advanced summary").click();
+    await p.getByTestId("aff-research-model").fill("perplexity/sonar-pro");
+    await p.reload();
+    await until(async () => (await p.getByTestId("aff-link").inputValue()) === "www.aqualux.example/produk/termos-750", "the link is remembered");
+    await until(async () => /Kapasitas: 750 ml/.test(await p.getByTestId("aff-benefits").inputValue()), "the facts are remembered");
+    await ctxR.close();
+    return `sourced facts ticked only when verified, ${seen.pages.length} pages read (invented one never), price only on request, 1 real picture through the server on 2 scenes with credit, search failure keeps the page's facts`;
   });
 
   await step("no horizontal scroll on iPhone-size viewport", async () => {
