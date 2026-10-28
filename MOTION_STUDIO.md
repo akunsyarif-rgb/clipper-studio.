@@ -544,3 +544,11 @@ Klip dari Clipper datang dengan subtitle AI yang waktunya per kalimat. Selama it
 ## Platform safe zone (1080×1920)
 
 `lib/layout.ts` is the single source: top inset 220 px (tabs, logo), bottom 380 px (username, description, audio bar), side 130 px both sides (the right action rail needs 120–150; the left would need only 40–60 but equal insets keep centred layouts centred). Main content stays in a centred band of at most 1200 px (`ACTIVE_HEIGHT`). Burned-in captions over a source video end 520 px above the bottom edge (`CAPTION_BOTTOM`, 500–600 px), and "lower" overlays sit above them. Information that must survive a 1:1 crop belongs in the centred 1080×1080 square (`SQUARE_CROP`). The preview has a "panduan area aman" toggle that draws all of these; it is never part of the MP4.
+
+## Watermark video
+
+`lib/watermark.ts` holds the settings (on/off, text up to 32 characters, corner, size 3–9 % of the width, transparency 10–100 %) and the one geometry function `watermarkBox`. The Remotion layer (`remotion/Watermark.tsx`, preview and browser-rendered MP4) and the clipper export (`lib/watermark-canvas.ts` draws the same text and box into a PNG that FFmpeg lays over the frame) both use it, so preview and file agree. On 9:16 it keeps the safe-area insets (below the top tabs, above the description zone, clear of the right button rail); text scenes and top overlays shrink away from it, and bottom corners sit below the subtitle line. Off or empty text means nothing is drawn or baked in. Settings are kept in `sessionStorage` for the editing session and shared by the clipper and the motion studio. A clip handed from the clipper to the motion studio is exported without a watermark, so it is never drawn twice.
+
+## Speech recognition on iPad Safari
+
+"no available backend found / RangeError: Out of memory" came from the WebAssembly runtime failing to allocate while starting: the larger asyncify ONNX build was chosen on Safari 26+, the session used default memory arenas, and the model was never freed after a failure. Now the worker always uses the plain CPU build with low-memory session options, drops a failed model, and `transcribeResilient` retries automatically with the next lighter model (small → base → tiny), keeping Indonesian and timestamps; the panel shows what happened and offers "Coba lagi" / "Pakai model lebih ringan".
