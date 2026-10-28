@@ -15,7 +15,7 @@ export const FAMILY_LABELS: Record<Family, string> = {
 };
 
 /** Route meaning to a visual grammar, not just to a style preset. Always retain safe fallbacks for old project JSON. */
-export function chooseFamily(visual: SceneVisual, narrative?: Pick<NarrativePlan, "role" | "strategy" | "intent">, fallbackRole: NarrativeRole = "continuation"): Family {
+export function chooseFamily(visual: SceneVisual, narrative?: Pick<NarrativePlan, "role" | "strategy"> & Partial<Pick<NarrativePlan, "intent">>, fallbackRole: NarrativeRole = "continuation"): Family {
   const role = narrative?.role ?? fallbackRole;
   const strategy = narrative?.strategy;
   const intent = narrative?.intent;
