@@ -448,7 +448,7 @@ Melengkapi Sutradara AI untuk video faceless: AI memilih kata kunci, Pexels meny
 
 ## Mode konten affiliate (TikTok Shop, Shopee, dsb.)
 
-Panel **"Konten affiliate"** di atas kolom Naskah (halaman Motion, mode tanpa video sumber). Tujuannya: naskah jualan yang dibuat cepat oleh AI **tanpa mengarang klaim**, dengan pemeriksa yang menunjuk kalimat berisiko.
+Mode **Affiliate** di halaman Motion (saklar di bagian atas; lihat "Dua jenis konten" di bawah), untuk video tanpa video sumber. Tujuannya: naskah jualan yang dibuat cepat oleh AI **tanpa mengarang klaim**, dengan pemeriksa yang menunjuk kalimat berisiko.
 
 **Alur**
 1. Isi **data produk** yang benar: nama produk, harga dan promo (opsional, hanya yang nyata), 1–5 manfaat/fakta nyata (satu per baris), platform (TikTok Shop, Shopee, Tokopedia, Lazada, lainnya), gaya bicara, target penonton. Data disimpan **di perangkat ini saja** (localStorage), tidak dikirim ke server akun.
@@ -468,3 +468,21 @@ Panel **"Konten affiliate"** di atas kolom Naskah (halaman Motion, mode tanpa vi
 **Belum ada:** pencarian data produk otomatis dari tautan toko (sengaja: data harus datang dari Anda agar benar); skor "kekuatan hook"; video affiliate di atas video sumber (mode edit video memakai transkrip, bukan data produk); AI belum diuji dengan model sungguhan dari lingkungan pengembangan, jadi mutu tulisan dan kepatuhannya pada aturan perlu Anda nilai.
 
 **Pengujian:** `lib/affiliate.test.ts` (23: data produk, prompt hanya berisi fakta yang diisi, parser termasuk format OpenRouter, satu permintaan tanpa kunci, semua kategori klaim, pembebasan lewat data, format angka Indonesia, kata nama produk) dan `e2e/motion.mjs` ("affiliate mode…": naskah dari data, ditandai, tulis ulang dengan masukan, dipakai, temuan dihapus, foto produk di 2 scene, Sutradara AI mendapat aturan jualan, data diingat setelah muat ulang, pemeriksa jalan tanpa kunci AI).
+
+## Dua jenis konten: Konten biasa dan Affiliate (saklar mode)
+
+Halaman Motion dimulai dengan saklar **[ Konten biasa | Affiliate ]**. Mesinnya sama (naskah → scene → render); yang berbeda hanya titik mulai dan alat yang tampil, supaya layar tidak penuh.
+
+| | **Konten biasa** (bawaan) | **Affiliate** |
+|---|---|---|
+| Langkah 1 | **Naskah**: video sumber dan transkrip, naskah, judul | **Produk dan naskah**: data produk, naskah AI, pemeriksa klaim, foto produk, naskah, judul |
+| Tampil | video sumber dan semua pengaturan edit video | panel data produk dan pemeriksa klaim |
+| Disembunyikan | panel data produk | video sumber dan transkrip (affiliate selalu tanpa video sumber) |
+| Sutradara AI | aturan umum | aturan jualan (hook manfaat nyata, harga sebagai angka, ajakan di scene terakhir) |
+
+- **Terhubung:** naskah, scene, gambar, gaya, palet, suara, dan musik adalah satu proyek yang sama; pindah mode tidak menghapus apa pun (bagian yang disembunyikan tetap aktif di belakang layar, mis. transkrip yang sedang berjalan tidak terputus). Data produk tetap tersimpan saat Anda kembali ke Konten biasa, tetapi aturan jualan Sutradara AI hanya dipakai di mode Affiliate.
+- **Mode terakhir diingat** di perangkat ini (`clipper:motion:mode:v1`).
+- **Video sumber berarti konten biasa:** saat mengedit di atas video (mis. klip dari Clipper), tombol Affiliate nonaktif dengan penjelasan, dan halaman terbuka sebagai Konten biasa walau mode terakhir Anda Affiliate. Setelah video dilepas ("Ganti video"), mode pilihan Anda kembali.
+- **Langkah bernomor:** 1 Naskah (atau Produk dan naskah), 2 Tampilan, 3 Suara dan musik, 4 Render.
+- **Pengaturan dilipat** (terbuka dengan satu ketukan, ringkasannya tampil di judulnya): **Tampilan** (template, gaya, palet; biasanya diatur Sutradara AI), **Backsound**, dan **Durasi dan subtitle**. Voice over tetap terlihat karena harus dibuat sebelum render. Tidak ada pengaturan yang dihapus.
+- **Pengujian:** `e2e/motion.mjs` ("mode switch…": bawaan Konten biasa, tiap panel hanya di mode-nya, naskah dan pengaturan terbawa, aturan jualan hanya di Affiliate, mode diingat setelah muat ulang, lipatan tertutup dengan ringkasan dan tetap terbuka saat diedit) dan `e2e/clipflow.mjs` (klip dengan video membuka sebagai Konten biasa dan Affiliate nonaktif). Tes lain yang memakai pengaturan terlipat membukanya dulu lewat bantu `openFolds`.

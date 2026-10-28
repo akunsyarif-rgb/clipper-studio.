@@ -11,6 +11,9 @@ const { chromium } = createRequire(import.meta.url)("playwright");
 
 const PORT = Number(process.env.E2E_PORT || 3211);
 const BASE = `http://localhost:${PORT}/motion`;
+// The optional groups (look, backsound, duration) start folded, as for the creator; tests that use their controls open them.
+const openFolds = p => p.evaluate(() => document.querySelectorAll("details.fold").forEach(d => { d.open = true; }));
+
 const dir = mkdtempSync(join(tmpdir(), "motion-e2e-"));
 const narration = join(dir, "narasi.wav");
 execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "sine=frequency=300:duration=6", "-ac", "1", "-ar", "44100", narration]);
@@ -63,7 +66,7 @@ try {
   // @remotion/web-renderer reports license usage to remotion.pro without catching network errors.
   // Where that host is unreachable (sandbox, ad blockers) this surfaces as "Failed to fetch"; it does not affect the render.
   page.on("requestfailed", r => { if (r.url().startsWith("https://www.remotion.pro/")) telemetryBlocked = true; });
-  await page.goto(BASE);
+  await page.goto(BASE); await openFolds(page);
 
   async function renderAndCheck(label, expectAudio, expectedSeconds) {
     await page.getByTestId("render").click();
@@ -162,7 +165,7 @@ try {
         return configure.call(this, config);
       };
     }, failWhen);
-    await p.goto(BASE);
+    await p.goto(BASE); await openFolds(p);
     await p.getByTestId("voice-none").click();
     await p.getByTestId("script").fill("Uji fallback encoder.\nSelesai.");
     await p.getByTestId("style").selectOption("cinematic");
@@ -207,7 +210,7 @@ try {
       FakeSymbol.prototype = S.prototype;
       globalThis.Symbol = FakeSymbol;
     });
-    await p.goto(BASE);
+    await p.goto(BASE); await openFolds(p);
     const key = await p.evaluate(() => Symbol.dispose === Symbol.for("Symbol.dispose"));
     assert(key, "page polyfill should define Symbol.dispose as Symbol.for('Symbol.dispose')");
     await p.getByTestId("voice-none").click();
@@ -429,7 +432,7 @@ try {
         : { style: "kinetic", palette: "obsidian", note: "Pembuka tegas, angka jadi sorotan, ajakan di akhir.", scenes: [{ index: 0, template: "number", reason: "Angka 80% jadi sorotan", imageIdea: "jam pasir, orang sibuk" }, { index: 1, template: "question", reason: "Pertanyaan memancing jawaban", imageIdea: "persimpangan jalan" }, { index: 2, template: "cta", reason: "Ajakan di akhir", imageIdea: "tombol ikuti" }] };
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(plan) }] } }] }) });
     });
-    await ai.goto(BASE);
+    await ai.goto(BASE); await openFolds(ai);
     await ai.getByTestId("voice-none").click();
     await ai.getByTestId("script").fill("Kamu rugi 80% waktu tiap hari.\nPilih jalan lama atau jalan baru?\nIkuti untuk tips berikutnya!");
     await ai.getByTestId("duration").selectOption("15");
@@ -471,7 +474,7 @@ try {
     assert(await ai.getByTestId("scene-director").count() === 0, "failure applies nothing");
     // Without a key the panel says what is needed.
     const noKey = await (await browser.newContext()).newPage();
-    await noKey.goto(BASE);
+    await noKey.goto(BASE); await openFolds(noKey);
     await noKey.getByTestId("director-needs-key").waitFor({ timeout: 5000 });
     await ai.close(); await noKey.close();
     return `3 scenes arranged with reasons, feedback pass, undo, error explained, no-key message`;
@@ -520,7 +523,7 @@ try {
     });
     const p = await ctx2.newPage();
     p.on("pageerror", e => pageErrors.push(e.message));
-    await p.goto(BASE);
+    await p.goto(BASE); await openFolds(p);
     await p.getByTestId("voice-none").click();
     await p.getByTestId("style").selectOption("hybrid");
     await p.getByTestId("script").fill("Kopi pagi membuatmu semangat.\nLaptop siap untuk bekerja.");
@@ -599,10 +602,10 @@ try {
     });
     const p = await ctxA.newPage();
     p.on("pageerror", e => pageErrors.push(e.message));
-    await p.goto(BASE);
+    await p.goto(BASE); await openFolds(p);
     await p.getByTestId("voice-none").click();
     await p.getByTestId("duration").selectOption("15");
-    await p.getByTestId("affiliate-panel").locator("summary").click();
+    await p.getByTestId("mode-affiliate").click();
     await p.getByTestId("aff-product").fill("Botol Minum Termos Aqualux 750 ml");
     await p.getByTestId("aff-price").fill("Rp 89.000");
     await p.getByTestId("aff-promo").fill("Diskon 10% sampai akhir bulan");
@@ -659,8 +662,8 @@ try {
     // Without an AI key the claim guard still works.
     const ctxB = await browser.newContext();
     const q = await ctxB.newPage();
-    await q.goto(BASE);
-    await q.getByTestId("affiliate-panel").locator("summary").click();
+    await q.goto(BASE); await openFolds(q);
+    await q.getByTestId("mode-affiliate").click();
     await q.getByTestId("aff-needs-key").waitFor({ timeout: 5000 });
     await q.getByTestId("aff-product").fill("Serum Wajah Glow");
     await q.getByTestId("aff-benefits").fill("Tekstur ringan");
@@ -669,6 +672,71 @@ try {
     assert(await q.getByTestId("aff-finding").count() === 2, `health claims flagged without an AI key: ${await q.getByTestId("aff-finding").count()}`);
     await ctxB.close();
     return `AI script from facts (6 lines, 2 flagged), rewrite with feedback, 3 findings then removable, product photo on 2 scenes, director told, facts remembered, guard works without a key`;
+  });
+
+  await step("mode switch: ordinary and affiliate content each have their own place, the work carries over, the last mode is remembered", async () => {
+    const ctxM = await browser.newContext();
+    await ctxM.addInitScript(() => localStorage.setItem("clipper:gemini:v1", JSON.stringify({ apiKey: "k".repeat(30), model: "gemini-flash-latest", consent: true })));
+    const prompts = [];
+    await ctxM.route("https://generativelanguage.googleapis.com/**", async route => {
+      prompts.push(JSON.parse(route.request().postData() ?? "{}").contents?.[0]?.parts?.[0]?.text ?? "");
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ style: "kinetic", palette: "obsidian", note: "Ok.", scenes: [{ index: 0, template: "statement", icon: "none", reason: "Tenang" }, { index: 1, template: "statement", icon: "none", reason: "Tenang" }] }) }] } }] }) });
+    });
+    const m = await ctxM.newPage();
+    m.on("pageerror", e => pageErrors.push(e.message));
+    await m.goto(BASE);
+    const checked = id => m.getByTestId(id).getAttribute("aria-checked");
+    const runDirector = async () => {
+      const n = prompts.length;
+      await m.getByTestId("director-run").click();
+      await m.waitForFunction(() => !document.querySelector('[data-testid="director-run"]')?.textContent?.includes("menyusun"));
+      for (let i = 0; i < 50 && prompts.length === n; i++) await m.waitForTimeout(100);
+      assert(prompts.length === n + 1, "one AI request per run");
+      await m.getByTestId("director-note").waitFor({ timeout: 10000 });
+      return prompts.at(-1);
+    };
+    // Ordinary content is the default: the video source is there, the product data is not.
+    assert(await checked("mode-normal") === "true" && await checked("mode-affiliate") === "false", "ordinary content by default");
+    assert(await m.getByTestId("source-video").count() === 1 && await m.locator(".field-label.normal-only", { hasText: "Video sumber" }).isVisible(), "video source shown for ordinary content");
+    assert(!(await m.getByTestId("affiliate-panel").isVisible()), "product data hidden for ordinary content");
+    assert(/Naskah/.test(await m.getByTestId("step-1").textContent()) && !/Produk/.test(await m.getByTestId("step-1").textContent()), "step 1 is the script");
+    // The optional groups start folded and say what they hold.
+    for (const id of ["fold-look", "fold-music", "fold-duration"]) assert(await m.getByTestId(id).evaluate(d => d.open) === false, `${id} starts folded`);
+    assert(/Hybrid/.test(await m.getByTestId("fold-look").locator("summary").textContent()), "look summary names the style");
+    await m.getByTestId("fold-look").locator("summary").click();
+    await m.getByTestId("style").selectOption("popup");
+    assert(await m.getByTestId("fold-look").evaluate(d => d.open) === true, "an opened group stays open while editing");
+    assert(/Pop-up/.test(await m.getByTestId("fold-look").locator("summary").textContent()), "summary follows the choice");
+    await m.getByTestId("voice-none").click();
+    await m.getByTestId("script").fill("Kalimat pertama saya.\nKalimat kedua saya.");
+    assert(!(await runDirector()).includes("AFFILIATE"), "ordinary content gets no selling rules");
+    // Affiliate has its own place; the script and the settings come along.
+    await m.getByTestId("mode-affiliate").click();
+    assert(await checked("mode-affiliate") === "true", "affiliate selected");
+    await m.getByTestId("affiliate-panel").waitFor({ state: "visible", timeout: 5000 });
+    assert(!(await m.locator(".field-label.normal-only", { hasText: "Video sumber" }).isVisible()), "video source hidden in affiliate mode");
+    assert(/Produk dan naskah/.test(await m.getByTestId("step-1").textContent()), "step 1 becomes product and script");
+    assert(await m.getByTestId("script").inputValue() === "Kalimat pertama saya.\nKalimat kedua saya.", "the script carried over");
+    assert(await m.getByTestId("style").inputValue() === "kinetic", "the AI pass's settings carried over");
+    await m.getByTestId("aff-product").fill("Botol Termos");
+    await m.getByTestId("aff-benefits").fill("Menjaga air tetap dingin");
+    const selling = await runDirector();
+    assert(selling.includes("video AFFILIATE") && selling.includes("Botol Termos"), "affiliate mode tells the director it is a selling video");
+    // Back to ordinary: the product data is kept but the selling rules stop.
+    await m.getByTestId("mode-normal").click();
+    assert(await m.getByTestId("script").inputValue() === "Kalimat pertama saya.\nKalimat kedua saya.", "the script is still there");
+    assert(!(await m.getByTestId("affiliate-panel").isVisible()), "product data hidden again");
+    assert(!(await runDirector()).includes("AFFILIATE"), "ordinary content gets no selling rules even with product data filled in");
+    // The last mode is remembered.
+    await m.getByTestId("mode-affiliate").click();
+    await m.reload();
+    assert(await checked("mode-affiliate") === "true" && await m.getByTestId("affiliate-panel").isVisible(), "affiliate remembered after a reload");
+    assert(await m.getByTestId("aff-product").inputValue() === "Botol Termos", "product data remembered too");
+    await m.getByTestId("mode-normal").click();
+    await m.reload();
+    assert(await checked("mode-normal") === "true" && await m.locator(".field-label.normal-only", { hasText: "Video sumber" }).isVisible(), "ordinary remembered after a reload");
+    await ctxM.close();
+    return "default ordinary; product data and video source each only in their own mode; script and settings carried over; selling rules only in affiliate mode; last mode remembered; folds closed with summaries";
   });
 
   await step("no horizontal scroll on iPhone-size viewport", async () => {

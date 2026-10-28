@@ -10,6 +10,7 @@ import { join } from "node:path";
 const { chromium } = createRequire(import.meta.url)("playwright");
 const PORT = Number(process.env.E2E_PORT || 3212);
 const BASE = `http://localhost:${PORT}`;
+const openFolds = p => p.evaluate(() => document.querySelectorAll("details.fold").forEach(d => { d.open = true; }));
 const dir = mkdtempSync(join(tmpdir(), "transcript-e2e-"));
 const withAudio = join(dir, "dengan-suara.mp4");
 const silent = join(dir, "tanpa-suara.mp4");
@@ -82,7 +83,7 @@ try {
   });
 
   await step("motion studio imports the transcript with word timing", async () => {
-    await page.goto(BASE + "/motion");
+    await page.goto(BASE + "/motion"); await openFolds(page);
     await page.evaluate(t => sessionStorage.setItem("clipper:transcript:v1", JSON.stringify({ v: 1, source: "dengan-suara.mp4", transcript: t })), transcript);
     await page.reload();
     await page.getByTestId("transcript-offer").waitFor({ timeout: 10000 });
@@ -94,7 +95,7 @@ try {
   });
 
   await step("motion studio accepts a video upload and offers the transcript there", async () => {
-    await page.goto(BASE + "/motion");
+    await page.goto(BASE + "/motion"); await openFolds(page);
     await page.getByTestId("source-video").setInputFiles(withAudio);
     await page.getByTestId("asr-panel").waitFor({ timeout: 15000 });
     await page.screenshot({ path: process.env.E2E_SHOT || join(dir, "motion-upload.png"), fullPage: false });
@@ -111,7 +112,7 @@ try {
     const p = await ctx.newPage();
     const errors = [];
     p.on("pageerror", e => errors.push(e.message));
-    await p.goto(BASE + "/motion");
+    await p.goto(BASE + "/motion"); await openFolds(p);
     await p.getByTestId("script").fill("Naskah saya yang pertama.\nKalimat kedua di sini.");
     await p.getByTestId("title").fill("Judul tersimpan");
     await p.getByTestId("palette").selectOption("pearl");
@@ -408,7 +409,7 @@ try {
     // Device A: wrong password is explained, then signing in, then writing a script is saved to the account.
     const a = await browser.newContext(); await mock(a);
     const pa = await a.newPage();
-    await pa.goto(BASE + "/motion");
+    await pa.goto(BASE + "/motion"); await openFolds(pa);
     await pa.getByTestId("cloud-open").click();
     await pa.getByTestId("cloud-email").fill("saya@contoh.id");
     await pa.getByTestId("cloud-password").fill("salah-banget");
@@ -429,7 +430,7 @@ try {
     const b = await browser.newContext(); await mock(b);
     const pb = await b.newPage();
     seen.length = 0;
-    await pb.goto(BASE + "/motion");
+    await pb.goto(BASE + "/motion"); await openFolds(pb);
     await pb.getByTestId("cloud-open").waitFor({ timeout: 10000 });
     await pb.waitForTimeout(1500);
     assert(seen.length === 0, "signed out: no request to the service: " + seen.join(", "));
