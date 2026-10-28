@@ -44,7 +44,7 @@ describe("planNarrative", () => {
     expect(plan[2].strategy).toBe("diagram");
     expect(plan[4].strategy).toBe("metaphor");
     expect(plan.every(p => p.visualCue.length > 20 && p.confidence.length > 0)).toBe(true);
-    expect(plan[1].continuity).toEqual({ previousRelated: null, nextRelated: 2 });
+    expect(plan[1].continuity).toEqual({ previousRelated: 0, nextRelated: 2 });
   });
 
   it("handles empty and single-scene scripts", () => {
