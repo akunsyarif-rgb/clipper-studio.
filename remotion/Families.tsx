@@ -320,7 +320,7 @@ function DataFigure({ scene, visual, role, colors, box }: FamilyProps) {
 }
 
 /** Process grammar: a cause/effect split when available, otherwise a clear ordered progression without invented copy. */
-function Process({ scene, visual, role, colors, box }: FamilyProps) {
+function Process({ scene, visual, colors, box }: FamilyProps) {
   const text = stripMarks(scene.text);
   const cause = splitCause(text);
   const p = useAppear(0, MOTION.springFirm);
