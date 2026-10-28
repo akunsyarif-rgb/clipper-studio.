@@ -37,7 +37,7 @@ const patterns = {
   comparison: /\b(dibandingkan|berbeda|sementara|daripada|lebih .* daripada|bukan .* melainkan|vs\.?|versus|compare|compared|whereas|rather than|instead of|unlike)\b/i,
   cause: /\b(karena|sebab|sehingga|akibat|mempengaruhi|menyebabkan|dampak|oleh karena|berujung|because|causes?|leads? to|affects?|impact|result|therefore|as a result)\b/i,
   process: /\b(pertama|kedua|ketiga|selanjutnya|setelah itu|kemudian|terakhir|langkah|tahap|proses|urutan|first|second|next|then|finally|step|stage|process|sequence)\b/i,
-  data: /\b(\d+(?:[.,]\d+)?\s*(?:%|persen|percent|rupiah|rp\.?|dolar|usd|juta|miliar|million|billion|kali|x\b|tahun|bulan|hari|minggu))\b/i,
+  data: /\\b\\d+(?:[.,]\\d+)?\\s*(?:%|persen|percent|rupiah|rp\\.?|dolar|usd|juta|miliar|million|billion|kali|x|tahun|bulan|hari|minggu)(?=$|\\s|[.,;:!?])/i,
   question: /\?\s*$/,
   story: /\b(suatu hari|waktu itu|ketika|dahulu|pernah|kisah|cerita|akhirnya ia|pada suatu|one day|once|when i|when we|story|remember when)\b/i,
   reflection: /\b(iman|syukur|sabar|ikhlas|doa|hati|hidup|makna|mengingat|merenung|jiwa|tujuan hidup|faith|gratitude|patience|prayer|heart|life|meaning|reflect)\b/i,
