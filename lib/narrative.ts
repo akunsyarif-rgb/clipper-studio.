@@ -112,7 +112,15 @@ function roleOf(intent: NarrativeIntent, first: boolean, last: boolean, text: st
 /** Analyze a sequence of scene texts, preserving order and returning an explainable plan per beat. */
 export function planNarrative(texts: string[]): NarrativePlan[] {
   const clean = texts.map(raw => raw.replace(/\*([^*]+)\*/g, "$1").replace(/\s+/g, " ").trim());
-  const topics = clean.map(topicOf);
+  const explicitTopics = clean.map(topicOf);
+  // Carry a topic across explicit references ("hal ini", "cara tersebut") instead of
+  // treating every pronoun-like beat as an unrelated subject. Never infer across a new topic.
+  const topics: (string | null)[] = [];
+  const refersBack = /\\b(hal ini|hal tersebut|cara ini|cara tersebut|langkah ini|langkah tersebut|masalah ini|masalah tersebut|solusi ini|solusi tersebut|kebiasaan ini|kebiasaan tersebut|this approach|that approach|this problem|that problem|these steps|those steps|the same)\\b/i;
+  for (let i = 0; i < clean.length; i++) {
+    const explicit = explicitTopics[i];
+    topics.push(explicit ?? (i > 0 && refersBack.test(clean[i]) ? topics[i - 1] ?? null : null));
+  }
   return clean.map((text, index) => {
     const first = index === 0;
     const last = index === clean.length - 1;
