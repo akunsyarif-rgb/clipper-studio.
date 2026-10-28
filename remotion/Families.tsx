@@ -2,7 +2,7 @@
 // Every animation is a function of the frame (springs/interpolate only); no timers, no randomness.
 import React from "react";
 import { Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
-import { splitCause, type Family } from "../lib/composition";
+import { splitCause, type Family, type Layout } from "../lib/composition";
 import { estimateHeavy, fitText, MOTION, TYPE, type FitOptions, type Measure } from "../lib/layout";
 import type { NarrativeRole } from "../lib/narrative";
 import { spokenFrames, type Scene, type StyleId } from "../lib/script";
@@ -155,12 +155,46 @@ export type FamilyProps = {
   style: StyleId;
   colors: Colors;
   box: { width: number; height: number };
+  layout?: Layout;
 };
 
 const KICKER_BLOCK = 30 + 40;
 
 /** 1. Editorial / cinematic: hook, reflection, conclusion. Centred, generous space, one rule. */
-function Editorial({ scene, visual, role, title, colors, box }: FamilyProps) {
+function Editorial(props: FamilyProps) {
+  if (props.layout === "impact") return <EditorialImpact {...props} />;
+  if (props.layout === "quiet-offset") return <EditorialOffset {...props} />;
+  return <EditorialCentered {...props} />;
+}
+
+/** Hook / impact beat: oversized type spoken word by word, one accent bar, no kicker or rule. */
+function EditorialImpact({ scene, visual, colors, box }: FamilyProps) {
+  const p = useAppear(0, MOTION.springFirm);
+  const bar = useAppear(8, MOTION.springFirm);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 56, transform: `scale(${1.05 - 0.05 * p})` }}>
+      <Headline text={stripMarks(scene.text)} width={box.width} height={box.height * 0.8} maxSize={168} minSize={64} lineHeight={1.02}
+        align="center" colors={colors} focus={focusSet(visual, 1)} reveal="words" scene={scene} />
+      <div style={{ width: 240, height: 12, background: colors.accent, transform: `scaleX(${bar})`, transformOrigin: "center" }} />
+    </div>
+  );
+}
+
+/** Calm beat, offset: left-aligned small type anchored low, concept marker above, vertical rule. */
+function EditorialOffset({ scene, visual, colors, box }: FamilyProps) {
+  const icon = visual.icon ? ICONS[visual.icon] : null;
+  const head = useAppear(0);
+  return (
+    <div data-layout="quiet-offset" style={{ height: box.height, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "flex-start", gap: 44, borderLeft: `3px solid ${colors.accent}66`, paddingLeft: 40, marginLeft: -43, boxSizing: "border-box" }}>
+      {icon ? <div data-visual={"icon-" + visual.icon} style={{ opacity: head }}><LineIcon node={icon.icon} size={84} color={colors.accent} delay={4} strokeWidth={1.8} /></div> : null}
+      <Headline text={stripMarks(scene.text)} width={box.width - 43} height={box.height * 0.5} maxSize={80} minSize={46} lineHeight={1.12} weight={800}
+        align="left" colors={colors} focus={focusSet(visual, 1)} reveal="lines" scene={scene} delay={6} />
+    </div>
+  );
+}
+
+/** Calm beat, centred: kicker, rule, restrained headline (also used for conclusions, quotes and questions). */
+function EditorialCentered({ scene, visual, role, title, colors, box }: FamilyProps) {
   const text = stripMarks(scene.text);
   const quote = visual.template === "quote";
   const resolution = role === "resolution";

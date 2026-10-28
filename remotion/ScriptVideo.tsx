@@ -4,7 +4,7 @@ import { AbsoluteFill, Easing, Img, interpolate, Sequence, spring, staticFile, u
 import { kenBurns } from "../lib/scene-image";
 import { musicGain } from "../lib/audio";
 import { activeWordIndex, clipPlan, phraseLine, spokenFrames, PALETTES, totalFrames, type Scene, type StyleId, type VideoProps } from "../lib/script";
-import { chooseFamily } from "../lib/composition";
+import { chooseFamily, planLayouts, type Layout } from "../lib/composition";
 import { contentBox, MOTION, SAFE } from "../lib/layout";
 import { detectVisual, stripMarks } from "../lib/visuals";
 import { overlayWindows } from "../lib/overlay";
@@ -103,8 +103,8 @@ function SceneImage({ src, index, length, colors }: { src: string; index: number
   );
 }
 
-function SceneView({ scene, index, count, title, style, colors }: {
-  scene: Scene; index: number; count: number; title: string; style: StyleId;
+function SceneView({ scene, index, count, title, style, colors, layout }: {
+  layout: Layout; scene: Scene; index: number; count: number; title: string; style: StyleId;
   colors: (typeof PALETTES)[keyof typeof PALETTES];
 }) {
   const frame = useCurrentFrame();
@@ -130,7 +130,7 @@ function SceneView({ scene, index, count, title, style, colors }: {
       {scene.image ? <SceneImage src={scene.image} index={index} length={d} colors={colors} /> : null}
       {/* Everything stays inside the platform safe area; the full safe box is used because text scenes carry no caption band. */}
       <div data-family={family} style={{ position: "absolute", top: box.top, left: SAFE.side, width: box.width, height: box.height, display: "flex", flexDirection: "column", justifyContent: "center", color: colors.text, transform: `translateY(${drift}px) scale(${popScale})`, filter: blur ? `blur(${blur}px)` : undefined }}>
-        <FamilyView family={family} scene={scene} visual={visual} role={role} index={index} count={count} title={title} style={style} colors={colors} box={{ width: box.width, height: box.height - 12 }} />
+        <FamilyView family={family} scene={scene} visual={visual} role={role} index={index} count={count} title={title} style={style} colors={colors} layout={layout} box={{ width: box.width, height: box.height - 12 }} />
       </div>
     </AbsoluteFill>
   );
@@ -153,6 +153,11 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
     const size = i % 4 === 0 ? 4 : 2;
     return { x, y, drift, opacity, size, key: i };
   }) : [];
+  // One layout per scene, planned across the whole timeline so adjacent calm scenes alternate.
+  const layouts = planLayouts(scenes.map((sc, i) => {
+    const role = sc.narrative?.role ?? (i === 0 ? "hook" : i === scenes.length - 1 ? "resolution" : "continuation");
+    return { family: chooseFamily(sc.visual ?? detectVisual(sc.text), sc.narrative, role), role, intensity: sc.narrative?.intensity };
+  }));
   let from = 0;
   return (
     <AbsoluteFill style={{ background: `linear-gradient(145deg, ${colors.bg1} 0%, ${colors.bg2} 100%)`, overflow: "hidden" }}>
@@ -190,7 +195,7 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
                 {/* Cutaway: an opaque graphic over the speaker (at most 4 s); the video underneath keeps playing, so audio never breaks. */}
                 {scene.cut === "graphic" ? <Sequence from={0} durationInFrames={Math.min(scene.durationInFrames, 120)}><Cutaway scene={scene} colors={colors} length={Math.min(scene.durationInFrames, 120)} /></Sequence> : null}
               </>
-              : <SceneView scene={scene} index={i} count={scenes.length} title={title} style={style} colors={colors} />}
+              : <SceneView scene={scene} index={i} count={scenes.length} title={title} style={style} colors={colors} layout={layouts[i]} />}
           </Sequence>
         );
       })}
