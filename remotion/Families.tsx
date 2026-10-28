@@ -11,6 +11,7 @@ import { LineIcon } from "./SceneVisuals";
 
 export type Colors = { bg1: string; bg2: string; accent: string; text: string };
 
+/** Storyboard/review labels only: a scene's role is production metadata and is never drawn on the video. */
 export const ROLE_LABELS: Record<NarrativeRole, string> = {
   hook: "PEMBUKA", tension: "KONFLIK", explanation: "PENJELASAN", reveal: "INTI TEMUAN", application: "LANGKAH NYATA", resolution: "KESIMPULAN", continuation: "LANJUTAN",
 };
@@ -122,6 +123,7 @@ export function Headline(p: HeadlineProps) {
 
 function Kicker({ text, colors, align, delay = 0 }: { text: string; colors: Colors; align: "left" | "center"; delay?: number }) {
   const p = useAppear(delay);
+  if (!text) return null;
   return (
     <div style={{ fontFamily: TYPE.sans, fontWeight: 700, fontSize: TYPE.kicker, letterSpacing: TYPE.kickerSpacing, textTransform: "uppercase", color: colors.accent, textAlign: align, opacity: p, width: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{text}</div>
   );
@@ -199,7 +201,7 @@ function EditorialCentered({ scene, visual, role, title, colors, box }: FamilyPr
   const text = stripMarks(scene.text);
   const quote = visual.template === "quote";
   const resolution = role === "resolution";
-  const label = role === "hook" && title ? title : quote ? "KUTIPAN" : visual.template === "question" ? "PERTANYAAN" : ROLE_LABELS[role];
+  const label = role === "hook" && title ? title : "";
   // Negative space is part of the layout: the headline never takes more than ~60% of the box.
   const pinned = visual.iconPinned && visual.icon ? 136 : 0;
   const room = Math.min(box.height - KICKER_BLOCK - 80 - pinned, box.height * 0.62);
@@ -221,7 +223,6 @@ function Kinetic({ scene, visual, role, colors, box }: FamilyProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 40 }}>
       <PinnedIcon visual={visual} colors={colors} />
-      <Kicker text={ROLE_LABELS[role]} colors={colors} align="left" />
       <Headline text={stripMarks(scene.text)} width={box.width} height={box.height - KICKER_BLOCK - 40 - (visual.iconPinned && visual.icon ? 136 : 0)} maxSize={116} minSize={52} lineHeight={1.04}
         align="left" colors={colors} focus={focusSet(visual)} reveal="words" scene={scene} />
     </div>
@@ -235,7 +236,7 @@ function Explainer({ scene, visual, role, colors, box }: FamilyProps) {
   const icon = visual.icon ? ICONS[visual.icon] : null;
   const head = useAppear(0, MOTION.springFirm);
   const words = text.split(/\s+/).filter(Boolean);
-  const label = visual.template === "list" ? (visual.listLabel ? visual.listLabel.toUpperCase() : visual.listIndex == null ? "LANGKAH" : `LANGKAH ${visual.listIndex}`) : ROLE_LABELS[role];
+  const label = visual.template === "list" ? (visual.listLabel ? visual.listLabel.toUpperCase() : visual.listIndex == null ? "LANGKAH" : `LANGKAH ${visual.listIndex}`) : "";
   const HEADER = 128;
   const marker = visual.template === "list" && visual.listIndex != null
     ? <div data-visual="list" style={{ width: HEADER, height: HEADER, borderRadius: "50%", border: `4px solid ${colors.accent}`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: TYPE.display, fontSize: 64, color: colors.accent }}>{visual.listIndex}</div>
@@ -249,7 +250,7 @@ function Explainer({ scene, visual, role, colors, box }: FamilyProps) {
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 48, borderLeft: `3px solid ${colors.accent}55`, paddingLeft: 36, marginLeft: -39 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 28, opacity: head, transform: `translateX(${(1 - head) * -16}px)` }}>
         {marker}
-        <span style={{ fontFamily: TYPE.sans, fontWeight: 700, fontSize: TYPE.kicker, letterSpacing: TYPE.kickerSpacing, color: colors.accent }}>{label}</span>
+        {label ? <span style={{ fontFamily: TYPE.sans, fontWeight: 700, fontSize: TYPE.kicker, letterSpacing: TYPE.kickerSpacing, color: colors.accent }}>{label}</span> : null}
       </div>
       {cause ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -314,7 +315,6 @@ function DataAction({ scene, visual, role, colors, box }: FamilyProps) {
   const PILL = 112;
   return (
       <div data-visual="cta" style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 44 }}>
-        <Kicker text={ROLE_LABELS[role]} colors={colors} align="left" />
         <Headline text={text} width={box.width} height={box.height - KICKER_BLOCK - PILL - 88} maxSize={96} minSize={48} align="left" colors={colors} focus={focusSet(visual, 1)} reveal="lines" scene={scene} />
         <div style={{ height: PILL, display: "flex", alignItems: "center", gap: 18, padding: "0 46px", borderRadius: 999, background: colors.accent, color: colors.bg1, fontFamily: TYPE.display, fontSize: 42, letterSpacing: 2, opacity: p, transform: `translateY(${(1 - p) * MOTION.rise}px)`, maxWidth: box.width, boxSizing: "border-box", whiteSpace: "nowrap" }}>
           {visual.cta ?? "MULAI"}
@@ -340,7 +340,6 @@ function DataFigure({ scene, visual, role, colors, box }: FamilyProps) {
   const LABEL = 44;
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 36 }}>
-      <Kicker text={ROLE_LABELS[role]} colors={colors} align="left" />
       <div data-visual="number"><div style={{ fontFamily: TYPE.display, fontWeight: 900, fontSize: fig.fontSize, lineHeight: 1, letterSpacing: "-0.03em", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", color: colors.accent, opacity: p, transform: `translateY(${(1 - p) * MOTION.rise}px)` }}>
         {formatNumber(shown, decimals, prefix) + suffix}
       </div></div>
