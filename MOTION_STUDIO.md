@@ -537,7 +537,7 @@ Klip dari Clipper datang dengan subtitle AI yang waktunya per kalimat. Selama it
 
 ## Script-First Visual Director
 
-The scene plan now separates **narrative intent** from **visual treatment**. It is a deterministic, local heuristic—not an AI model and not a guarantee of the author's meaning. The scene list exposes its intent, visual cue, confidence level, reason, and continuity hint so the creator can review the recommendation before rendering.
+The scene plan now separates **narrative intent** from **visual treatment**. It is a deterministic, local heuristic—not an AI model and not a guarantee of the author's meaning. The scene list exposes its intent, visual cue, confidence level, reason, and continuity hint so the creator can review the recommendation before rendering. Topic continuity also follows a small set of explicit references such as “hal ini” and “cara tersebut”; this remains a conservative heuristic, not full coreference resolution.
 
 Intent classes include question, contrast, cause/effect, process, evidence, insight, instruction, story, reflection, resolution, and statement. Composition selection can use distinct grammars for:
 - **Process / cause → effect:** a connected flow; a real cause/effect split is shown only when the text contains a safe split.
