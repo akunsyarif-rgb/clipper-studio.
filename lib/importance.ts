@@ -129,6 +129,9 @@ export function blendAi(rules: Judgement[], ai?: (AiScore | undefined)[]): Judge
   });
 }
 
+/** Shortest scene that may get an animation or a full-screen graphic. */
+export const MIN_ANIMATED_SECONDS = 1;
+
 export type AnimationPlan = { cuts: Cut[]; judgements: Judgement[] };
 
 /**
@@ -144,7 +147,8 @@ export function planAnimations(scenes: SceneInput[], density: Density, ai?: (AiS
   for (const s of scenes) { starts.push(at); at += s.seconds; }
   const budget = Math.max(ANIMATION_SECONDS, at * maxCoverage);
   const chosen: number[] = [];
-  const order = judgements.map((j, i) => i).filter(i => judgements[i].score >= threshold).sort((a, b) => judgements[b].score - judgements[a].score || a - b);
+  // A scene under a second (kept exact so captions stay in step with the speech) is too brief to show anything: it stays on the speaker.
+  const order = judgements.map((j, i) => i).filter(i => judgements[i].score >= threshold && scenes[i].seconds >= MIN_ANIMATED_SECONDS).sort((a, b) => judgements[b].score - judgements[a].score || a - b);
   for (const i of order) {
     if ((chosen.length + 1) * ANIMATION_SECONDS > budget) break;
     if (chosen.some(j => Math.abs(starts[i] - starts[j]) < minGapSeconds)) continue;

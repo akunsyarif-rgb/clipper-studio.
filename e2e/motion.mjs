@@ -872,6 +872,27 @@ try {
     return `${seen.searches.length} searches by the app, ${seen.pages.length} pages read, the AI only summarized (1 fabricated quote dropped), price only on request, 1 real picture through the server on 2 scenes with credit, AI and search failures keep the pages' own facts`;
   });
 
+  await step("there is no limit on the number of scenes, and a long script still renders its timeline", async () => {
+    const ctxL = await browser.newContext();
+    const L = await ctxL.newPage();
+    L.on("pageerror", e => pageErrors.push(e.message));
+    await L.goto(BASE); await openFolds(L);
+    await L.getByTestId("voice-none").click();
+    const many = Array.from({ length: 60 }, (_, i) => `Kalimat nomor ${i + 1} di sini.`).join("\n");
+    await L.getByTestId("script").fill(many);
+    await until(async () => (await L.getByTestId("scene-item").count()) === 60, "60 scenes listed");
+    assert(await L.getByTestId("blocker").count() === 0, `no blocker for 60 scenes: ${await L.getByTestId("blocker").allTextContents()}`);
+    assert(!(await L.content()).includes("Batas 20 scene"), "the old limit message is gone");
+    const badge = await L.locator(".preview-badge").innerText();
+    assert(/\d+\.\ds/.test(badge), `the preview has a length: ${badge}`);
+    // The player really plays it.
+    await L.locator(".player-wrap").hover();
+    await L.locator(".player-wrap button").first().click();
+    await L.waitForTimeout(800);
+    await ctxL.close();
+    return `60 scenes accepted, ${badge.trim()}`;
+  });
+
   await step("no horizontal scroll on iPhone-size viewport", async () => {
     const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
     await phone.goto(BASE);

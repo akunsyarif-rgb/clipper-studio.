@@ -4,7 +4,7 @@ The script-to-video studio is at `/motion`.
 
 ## Workflow
 
-1. **Script**: write the narration text. Each line or sentence becomes a scene. Very long sentences are split at commas/words, and one-word fragments are merged into the previous scene. Limits: 3,000 characters, 20 scenes, 180 seconds.
+1. **Script**: write the narration text. Each line or sentence becomes a scene. Very long sentences are split at commas/words, and one-word fragments are merged into the previous scene. Limits: 3,000 characters and 180 seconds (there is no limit on the number of scenes; each needs at least 1.2 s when the length is shared out, so the length is what bounds them).
 2. **Title, style, palette**: opening text (max 48 characters); Hybrid / Kinetic typography / Pop-up / Cinematic; Violet-Cyan / Midnight-Gold / Pearl-Black / Forest-Sage / Obsidian-Electric. Forest-Sage suits calm, nature and Islamic-reflection videos; Obsidian-Electric suits technology, AI and business explainers.
    - Cinematic style adds a lightweight ambient particle layer generated from deterministic CSS-positioned elements. It uses no external images, random state or new package; other styles do not render this layer.
    - In a source-video edit the particle layer is not drawn, so the speaker stays clear.
@@ -520,3 +520,16 @@ Di mode Affiliate, di bawah Nama produk ada **"Tautan halaman produk (opsional)"
 - **Pemasangan di produksi:** fungsi `product` harus di-deploy sekali (tanpa perubahan database). Sebelum itu muncul "Fungsi pembaca halaman produk belum dipasang di server."
 
 **Pengujian:** `lib/product-function.test.ts` (26: keamanan alamat, pengalihan, batas ukuran, parser JSON-LD/tabel/Open Graph, hasil DuckDuckGo tanpa iklan dan alamat internal, mesin pencari yang membatasi), `lib/product.test.ts` (10), `lib/product-research.test.ts` (kualitas pemilihan halaman, kutipan yang harus ada, angka yang harus ada di kutipan, kegagalan sebagian) dan `e2e/motion.mjs` ("affiliate research…": dua pencarian oleh app, halaman ditempel dibaca pertama, media sosial dan halaman ganda tidak dibaca, AI hanya meringkas dengan model biasa, kutipan palsu dibuang dan dilaporkan, fakta berkutipan dan baris klaim, harga tidak terisi sendiri, gambar lewat server di 2 scene dengan kredit, AI gagal dan pencarian dibatasi tetap menyisakan fakta halaman).
+
+## Tanpa batas jumlah scene, dan subtitle tepat sampai akhir (perbaikan)
+
+- **Batas 20 scene dihapus.** Naskah dengan banyak kalimat (mis. klip 2–3 menit dari Clipper) kini diterima; yang membatasi hanya panjang total (maks. 180 detik) dan 3.000 karakter. Bila durasi dibagi otomatis, tiap scene tetap butuh minimal 1,2 detik, jadi pesan "durasi terlalu pendek untuk N scene" tetap muncul bila waktunya tidak cukup.
+- **Penyebab subtitle dan animasi tidak presisi di akhir klip:** waktu scene dari transkrip dipaksa minimal 1,2 detik. Scene yang lebih pendek (mis. "Ya.", "Jadi begitu.") diperpanjang, sehingga *semua scene sesudahnya bergeser terlambat* dan selisihnya menumpuk makin ke akhir (dengan 7 scene pendek bisa lebih dari beberapa detik). Subtitle dan animasi di awal tampak benar, di akhir meleset.
+- **Perbaikan:** waktu yang berasal dari transkrip kini dipakai **apa adanya** (`DurationMode` `scenes` dengan `exact`, minimal 1 frame), jadi setiap scene mulai tepat saat kata pertamanya diucapkan dan total video sama dengan panjang sumbernya. Suara otomatis (TTS) tetap memakai minimum 1,2 detik karena audionya memang diisi sampai panjang itu.
+- **Scene sangat pendek:** teksnya tampil sebentar saja; peringatan kuning menawarkan menggabung barisnya (kata-kata tidak berubah). Scene di bawah 1 detik tidak pernah dipilih untuk animasi atau layar grafis (hanya akan berkedip) dan tetap di pembicara.
+- **Yang tidak berubah:** ketepatan waktu *di dalam* sebuah kalimat bergantung pada sumber waktunya. Waktu dari AI (per kalimat) bisa meleset beberapa detik, terutama di video panjang; untuk ketepatan per kata gunakan "Pakai hanya waktunya" di panel Transkrip (Whisper di perangkat).
+- **Pengujian:** `lib/script.test.ts` (banyak scene diterima, durasi eksak, tetap diperpanjang untuk suara otomatis), `lib/transcript.test.ts` (40 kalimat dengan kalimat pendek tersebar: setiap scene mulai di kata pertamanya dan total sama dengan sumber; versi lama terlambat lebih dari 1 detik), `lib/importance.test.ts` (scene di bawah 1 detik tidak dianimasikan) dan `e2e/motion.mjs` (60 scene diterima dan dimainkan).
+
+### Presisikan waktu subtitle dengan satu ketukan
+
+Klip dari Clipper datang dengan subtitle AI yang waktunya per kalimat. Selama itu masih berlaku, panel Transkrip menampilkan tombol utama **Presisikan waktu subtitle**. Satu ketukan menjalankan seluruh langkah: mengambil audio asli klip, membuat transkrip di perangkat (Whisper), lalu langsung memakai waktunya pada naskah Anda. Teks naskah tidak berubah. Bila hasil tersimpan dari proses sebelumnya ada, itu yang dipakai tanpa memproses ulang. Setelah waktu per kata terpasang, tombol hilang. Bila naskah terlalu berbeda dari ucapan, ada pesan yang jelas dan waktu lama tetap dipakai. Model diunduh sekali; di iPad bagian pendek lebih aman untuk memori.
