@@ -55,6 +55,7 @@ describe("planNarrative", () => {
     ]);
     expect(plan[0].reviewFlags).toContain("Sinyal makna lemah; periksa pilihan visual secara manual.");
     expect(plan[1].reviewFlags).toContain("Naskah cukup panjang; pertimbangkan membaginya menjadi dua beat.");
+    expect(plan[2].intent).toBe("evidence");
     expect(plan[2].reviewFlags).toContain("Pastikan sumber angka atau klaim tersedia sebelum publikasi.");
   });
 
