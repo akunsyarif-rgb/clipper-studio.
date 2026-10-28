@@ -1,9 +1,7 @@
-// Picks one of five composition families for a scene from its narrative role, visual strategy and
-// detected visual. Pure and deterministic, so the choice can be shown in the UI and unit tested.
 import type { NarrativePlan, NarrativeRole } from "./narrative";
 import type { SceneVisual } from "./visuals";
 
-export type Family = "editorial" | "kinetic" | "explainer" | "comparison" | "data";
+export type Family = "editorial" | "kinetic" | "explainer" | "comparison" | "data" | "process" | "metaphor" | "story";
 
 export const FAMILY_LABELS: Record<Family, string> = {
   editorial: "Editorial",
@@ -11,30 +9,33 @@ export const FAMILY_LABELS: Record<Family, string> = {
   explainer: "Explainer",
   comparison: "Perbandingan",
   data: "Data / produk",
+  process: "Alur / proses",
+  metaphor: "Metafora visual",
+  story: "Story beats",
 };
 
-/**
- * Data first (a number or call-to-action needs its own stage), then a real two-sided comparison,
- * then structure (steps, cause → effect, applied actions), then contrast/insight beats as selective
- * kinetic emphasis. Hooks, reflections and conclusions stay editorial.
- */
-export function chooseFamily(visual: SceneVisual, narrative?: Pick<NarrativePlan, "role" | "strategy">, fallbackRole: NarrativeRole = "continuation"): Family {
+/** Route meaning to a visual grammar, not just to a style preset. Always retain safe fallbacks for old project JSON. */
+export function chooseFamily(visual: SceneVisual, narrative?: Pick<NarrativePlan, "role" | "strategy" | "intent">, fallbackRole: NarrativeRole = "continuation"): Family {
   const role = narrative?.role ?? fallbackRole;
   const strategy = narrative?.strategy;
+  const intent = narrative?.intent;
+
+  // Specific data structures take precedence only when the detector supplied the data they need.
   if (visual.template === "number" && visual.number && !visual.number.year) return "data";
   if (visual.template === "cta" && role !== "hook") return "data";
   if (visual.template === "compare" && visual.compare) return "comparison";
-  if (visual.template === "list" || strategy === "diagram" || role === "explanation" || role === "application") return "explainer";
-  if (role === "tension" || role === "reveal") return "kinetic";
+  if (intent === "story") return "story";
+  if (intent === "cause-effect" || intent === "process" || strategy === "diagram") return "process";
+  if (intent === "reflection" || strategy === "metaphor") return "metaphor";
+  if (visual.template === "list" || role === "explanation" || role === "application") return "explainer";
+  if (role === "tension" || role === "reveal" || intent === "contrast" || intent === "insight") return "kinetic";
+  if (strategy === "footage") return "editorial";
   return "editorial";
 }
 
 const CAUSE_LINK = /^(karena|sebab|sehingga|akibatnya|maka|jadi|because|so|therefore)$/i;
 
-/**
- * Splits "A karena B" / "A sehingga B" into two blocks for a cause → effect diagram.
- * Returns null unless both sides keep at least two words, so the diagram never shows fragments.
- */
+/** Splits a cause/effect statement without inventing either side. */
 export function splitCause(text: string): { before: string; link: string; after: string } | null {
   const words = text.split(/\s+/).filter(Boolean);
   for (let i = 2; i < words.length - 1; i++) {
