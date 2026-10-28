@@ -103,7 +103,7 @@ function SceneImage({ src, index, length, colors }: { src: string; index: number
   );
 }
 
-function SceneView({ scene, index, count, title, style, colors, captions }: {
+function SceneView({ scene, index, count, title, style, colors }: {
   scene: Scene; index: number; count: number; title: string; style: StyleId;
   colors: (typeof PALETTES)[keyof typeof PALETTES];
 }) {
