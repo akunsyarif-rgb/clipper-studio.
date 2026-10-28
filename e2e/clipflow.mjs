@@ -129,6 +129,8 @@ try {
     assert(await page.getByTestId("mode-normal").getAttribute("aria-checked") === "true", "a clip with its video opens as ordinary content");
     assert(await page.getByTestId("mode-affiliate").isDisabled() && /tidak tersedia/.test(await page.getByTestId("mode-hint").textContent()), "affiliate is switched off with a reason while a source video is used");
     assert(!(await page.getByTestId("affiliate-panel").isVisible()), "the product data is not shown over a source video");
+    assert(await page.getByTestId("asr-precise").isVisible(), "sentence-level captions offer the one-tap precise timing");
+    assert(/Presisikan waktu subtitle/.test(await page.getByTestId("handoff-note").innerText()), "the note points to that button");
     const script = await page.getByTestId("script").inputValue();
     assert(/catat semua pengeluaran/.test(script) && !/Halo semuanya/.test(script), "the clip's own subtitles became the script: " + script);
     assert((await page.getByTestId("title").inputValue()) === "Tiga tips keuangan", "the title came along");

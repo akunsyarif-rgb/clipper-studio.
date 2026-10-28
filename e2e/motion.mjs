@@ -11,6 +11,8 @@ const { chromium } = createRequire(import.meta.url)("playwright");
 
 const PORT = Number(process.env.E2E_PORT || 3211);
 const BASE = `http://localhost:${PORT}/motion`;
+// Waits (up to 8 s) until a condition holds; used right after a reload, when the page is still restoring what it remembered.
+async function until(check, message) { for (let i = 0; i < 80; i++) { if (await check().catch(() => false)) return; await new Promise(r => setTimeout(r, 100)); } throw new Error(message); }
 // The optional groups (look, backsound, duration) start folded, as for the creator; tests that use their controls open them.
 const openFolds = p => p.evaluate(() => document.querySelectorAll("details.fold").forEach(d => { d.open = true; }));
 
@@ -656,7 +658,7 @@ try {
     assert(templates.at(-1) === "Ajakan", `buying prompt closes the video: ${templates}`);
     // The product facts are remembered on this device.
     await p.reload();
-    assert(await p.getByTestId("aff-product").inputValue() === "Botol Minum Termos Aqualux 750 ml" && /Rp 89\.000/.test(await p.getByTestId("aff-price").inputValue()), "facts remembered after a reload");
+    await until(async () => (await p.getByTestId("aff-product").inputValue()) === "Botol Minum Termos Aqualux 750 ml" && /Rp 89\.000/.test(await p.getByTestId("aff-price").inputValue()), "facts remembered after a reload");
     assert(await p.getByTestId("aff-disclosure").isVisible(), "disclosure reminder shown");
     await ctxA.close();
     // Without an AI key the claim guard still works.
@@ -730,13 +732,34 @@ try {
     // The last mode is remembered.
     await m.getByTestId("mode-affiliate").click();
     await m.reload();
-    assert(await checked("mode-affiliate") === "true" && await m.getByTestId("affiliate-panel").isVisible(), "affiliate remembered after a reload");
-    assert(await m.getByTestId("aff-product").inputValue() === "Botol Termos", "product data remembered too");
+    await until(async () => (await checked("mode-affiliate")) === "true" && await m.getByTestId("affiliate-panel").isVisible(), "affiliate remembered after a reload");
+    await until(async () => (await m.getByTestId("aff-product").inputValue()) === "Botol Termos", "product data remembered too");
     await m.getByTestId("mode-normal").click();
     await m.reload();
-    assert(await checked("mode-normal") === "true" && await m.locator(".field-label.normal-only", { hasText: "Video sumber" }).isVisible(), "ordinary remembered after a reload");
+    await until(async () => (await checked("mode-normal")) === "true" && await m.locator(".field-label.normal-only", { hasText: "Video sumber" }).isVisible(), "ordinary remembered after a reload");
     await ctxM.close();
     return "default ordinary; product data and video source each only in their own mode; script and settings carried over; selling rules only in affiliate mode; last mode remembered; folds closed with summaries";
+  });
+
+  await step("there is no limit on the number of scenes, and a long script still renders its timeline", async () => {
+    const ctxL = await browser.newContext();
+    const L = await ctxL.newPage();
+    L.on("pageerror", e => pageErrors.push(e.message));
+    await L.goto(BASE); await openFolds(L);
+    await L.getByTestId("voice-none").click();
+    const many = Array.from({ length: 60 }, (_, i) => `Kalimat nomor ${i + 1} di sini.`).join("\n");
+    await L.getByTestId("script").fill(many);
+    await until(async () => (await L.getByTestId("scene-item").count()) === 60, "60 scenes listed");
+    assert(await L.getByTestId("blocker").count() === 0, `no blocker for 60 scenes: ${await L.getByTestId("blocker").allTextContents()}`);
+    assert(!(await L.content()).includes("Batas 20 scene"), "the old limit message is gone");
+    const badge = await L.locator(".preview-badge").innerText();
+    assert(/\d+\.\ds/.test(badge), `the preview has a length: ${badge}`);
+    // The player really plays it.
+    await L.locator(".player-wrap").hover();
+    await L.locator(".player-wrap button").first().click();
+    await L.waitForTimeout(800);
+    await ctxL.close();
+    return `60 scenes accepted, ${badge.trim()}`;
   });
 
   await step("no horizontal scroll on iPhone-size viewport", async () => {

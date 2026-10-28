@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  activeWordIndex, buildTimeline, captionLine, explainRenderError, FPS, MAX_SCENE_CHARS, MAX_SCENES, MAX_SECONDS, MIN_SCENE_SECONDS,
+  activeWordIndex, buildTimeline, captionLine, explainRenderError, FPS, MAX_SCENE_CHARS, MAX_SECONDS, MIN_SCENE_SECONDS,
   clipPlan, MAX_CLIP_FRAMES, slug, splitScript, splitScriptWithPauses, spokenFrames, totalFrames, validateAudioFile, validateTitle,
 } from "./script";
 
@@ -61,7 +61,6 @@ describe("buildTimeline", () => {
     ["", { kind: "auto" as const }, /kosong/],
     ["   \n  ", { kind: "auto" as const }, /kosong/],
     ["x".repeat(3001), { kind: "auto" as const }, /terlalu panjang/],
-    [Array.from({ length: MAX_SCENES + 1 }, (_, i) => `Kalimat nomor ${i} di sini.`).join("\n"), { kind: "auto" as const }, /scene/],
     [script, { kind: "audio" as const, seconds: MAX_SECONDS + 1 }, /melebihi batas/],
     [script, { kind: "audio" as const, seconds: 2 }, /terlalu pendek/],
     [script, { kind: "audio" as const, seconds: NaN }, /tidak dapat dibaca/],
@@ -223,5 +222,40 @@ describe("scenes cut to the source video", () => {
     expect(scenes[1].durationInFrames).toBe(100);
     expect(fitScenesToVideo(scenes, NaN)).toBe(scenes);
     expect(fitScenesToVideo(scenes, 0)).toBe(scenes);
+  });
+});
+
+describe("no limit on the number of scenes", () => {
+  it("accepts a long script as many scenes, bounded only by the total length", () => {
+    const text = Array.from({ length: 90 }, (_, i) => `Kalimat nomor ${i} di sini.`).join("\n");
+    const t = buildTimeline(text, { kind: "target", seconds: 170 });
+    expect(t.ok).toBe(true);
+    if (t.ok) { expect(t.scenes).toHaveLength(90); expect(t.totalFrames).toBe(170 * FPS); }
+    const auto = buildTimeline(Array.from({ length: 21 }, (_, i) => `Kalimat nomor ${i} di sini.`).join("\n"), { kind: "auto" });
+    expect(auto.ok).toBe(true);
+  });
+  it("still refuses when the scenes cannot fit in the time", () => {
+    const t = buildTimeline(Array.from({ length: 200 }, (_, i) => `Kalimat nomor ${i} di sini.`).join("\n"), { kind: "target", seconds: 100 });
+    expect(t.ok).toBe(false);
+  });
+});
+
+describe("exact scene durations (timing taken from a transcript)", () => {
+  const text = "Satu dua tiga.\nEmpat lima enam tujuh delapan.\nSembilan sepuluh sebelas.\nDua belas tiga belas.";
+  const seconds = [0.3, 5, 0.5, 2.2];
+  it("uses each duration as it is, so no later scene is pushed late", () => {
+    const t = buildTimeline(text, { kind: "scenes", seconds, exact: true });
+    expect(t.ok).toBe(true);
+    if (!t.ok) return;
+    expect(t.scenes.map(s => s.durationInFrames)).toEqual([9, 150, 15, 66]);
+    expect(t.totalFrames).toBe(240);
+  });
+  it("still stretches short scenes by default (speech made per scene is padded to the minimum)", () => {
+    const t = buildTimeline(text, { kind: "scenes", seconds });
+    expect(t.ok && t.scenes.map(s => s.durationInFrames)).toEqual([36, 150, 36, 66]);
+  });
+  it("gives a scene at least one frame", () => {
+    const t = buildTimeline("Satu dua tiga.\nEmpat lima enam.", { kind: "scenes", seconds: [0.001, 1], exact: true });
+    expect(t.ok && t.scenes[0].durationInFrames).toBe(1);
   });
 });
