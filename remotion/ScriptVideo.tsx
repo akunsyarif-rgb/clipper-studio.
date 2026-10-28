@@ -1,6 +1,7 @@
 import React from "react";
 import { Audio, Video } from "@remotion/media";
-import { AbsoluteFill, interpolate, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig, type CalculateMetadataFunction } from "remotion";
+import { AbsoluteFill, Easing, Img, interpolate, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig, type CalculateMetadataFunction } from "remotion";
+import { kenBurns } from "../lib/scene-image";
 import { musicGain } from "../lib/audio";
 import { activeWordIndex, clipPlan, phraseLine, spokenFrames, PALETTES, totalFrames, type Scene, type StyleId, type VideoProps } from "../lib/script";
 import { chooseFamily } from "../lib/composition";
@@ -86,6 +87,22 @@ function Cutaway({ scene, colors, length }: { scene: Scene; colors: Colors; leng
   );
 }
 
+/**
+ * The creator's picture behind a scene: full-bleed with a slow Ken Burns move, under a scrim in the palette's
+ * own background colour so the palette's text colour keeps its contrast on any photo. Kept lighter at the
+ * top so the picture reads, denser where the text sits.
+ */
+function SceneImage({ src, index, length, colors }: { src: string; index: number; length: number; colors: Colors }) {
+  const frame = useCurrentFrame();
+  const k = kenBurns(index, frame, length);
+  return (
+    <AbsoluteFill style={{ overflow: "hidden" }}>
+      <Img src={resolveAudio(src)} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${k.scale}) translate(${k.x}%, ${k.y}%)` }} />
+      <AbsoluteFill style={{ background: `linear-gradient(180deg, ${colors.bg1}66 0%, ${colors.bg1}b8 34%, ${colors.bg1}d9 62%, ${colors.bg1}e6 100%)` }} />
+    </AbsoluteFill>
+  );
+}
+
 function SceneView({ scene, index, count, title, style, colors, captions }: {
   scene: Scene; index: number; count: number; title: string; style: StyleId;
   colors: (typeof PALETTES)[keyof typeof PALETTES]; captions: boolean;
@@ -99,7 +116,7 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
   const fadeOut = interpolate(frame, [d - 8, d], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   // The first scene is visible from frame 0 so the video thumbnail is never blank.
   const fadeIn = index === 0 ? 1 : interpolate(frame, [0, calm ? 10 : style === "cinematic" ? 14 : 6], [0, 1], { extrapolateRight: "clamp" });
-  const drift = interpolate(frame, [0, d], calm ? [6, 0] : style === "cinematic" ? [24, -18] : [14, -4], { extrapolateRight: "clamp" });
+  const drift = interpolate(frame, [0, d], calm ? [6, 0] : style === "cinematic" ? [24, -18] : [14, -4], { easing: Easing.bezier(0.33, 0, 0.2, 1), extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const blur = style === "cinematic" && !calm && index > 0 ? interpolate(frame, [0, 14], [10, 0], { extrapolateRight: "clamp" }) : 0;
   const popScale = style === "popup" && intensity === "impact" ? interpolate(spring({ frame, fps, config: MOTION.springFirm }), [0, 1], [0.94, 1]) : 1;
 
@@ -111,6 +128,7 @@ function SceneView({ scene, index, count, title, style, colors, captions }: {
 
   return (
     <AbsoluteFill style={{ opacity: Math.min(fadeIn, fadeOut) }}>
+      {scene.image ? <SceneImage src={scene.image} index={index} length={d} colors={colors} /> : null}
       {/* Everything stays inside the platform safe area; the box shrinks when captions take the lower band. */}
       <div data-family={family} style={{ position: "absolute", top: box.top, left: SAFE.side, width: box.width, height: box.height, display: "flex", flexDirection: "column", justifyContent: "center", color: colors.text, transform: `translateY(${drift}px) scale(${popScale})`, filter: blur ? `blur(${blur}px)` : undefined }}>
         <FamilyView family={family} scene={scene} visual={visual} role={role} index={index} count={count} title={title} style={style} colors={colors} box={{ width: box.width, height: box.height - 12 }} />
@@ -149,7 +167,6 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
       {!quiet && <AbsoluteFill style={{ background: `radial-gradient(circle at 80% 20%, ${colors.accent}22 0%, transparent 38%)`, opacity: wash }} />}
       {particles.map(p => <div key={p.key} aria-hidden="true" style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: p.size, height: p.size, borderRadius: "50%", background: colors.accent, opacity: p.opacity, transform: `translateY(${p.drift}px)`, pointerEvents: "none" }} />)}
       {!quiet && <div style={{ position: "absolute", width: 700, height: 700, border: `1px solid ${colors.accent}45`, borderRadius: "50%", right: -380, top: 250, transform: `rotate(${frame * 0.3}deg)` }} />}
-      {!video && !quiet && <div style={{ position: "absolute", left: 70, right: 70, top: 72, display: "flex", justifyContent: "space-between", color: `${colors.accent}cc`, font: "bold 18px monospace", letterSpacing: 3 }}><span>CLIPPER / MOTION</span><span>30 FPS</span></div>}
       {video ? <AbsoluteFill><Video src={resolveAudio(video.src)} objectFit="cover" /></AbsoluteFill> : null}
       {audioSrc ? <Audio src={resolveAudio(audioSrc)} /> : null}
       {music ? (

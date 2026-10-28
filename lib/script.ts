@@ -64,6 +64,8 @@ export type Scene = {
   cut?: Cut;
   /** cut "clip" only: second of the source video at which the clip starts (the clip plays on from there, muted). */
   clipFrom?: number;
+  /** Faceless videos only: the creator's picture behind the scene (blob:/http(s):/data: URL, or a file name inside public/ for CLI renders). */
+  image?: string;
 };
 
 export type VideoProps = {

@@ -1,5 +1,5 @@
 import React from "react";
-import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import type { IconNode } from "lucide";
 import { ICONS, type SceneVisual } from "../lib/visuals";
 
@@ -80,7 +80,7 @@ export function TopVisual({ visual, colors, sceneFrames }: { visual: SceneVisual
     const count = interpolate(frame, [4, Math.min(sceneFrames * 0.6, fps * 1.4)], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
     const eased = 1 - Math.pow(1 - count, 3);
     const shown = year ? value : decimals ? value * eased : Math.round(value * eased);
-    const bar = interpolate(frame, [6, fps * 1.2], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+    const bar = interpolate(frame, [6, fps * 1.2], [0, 1], { easing: Easing.out(Easing.cubic), extrapolateLeft: "clamp", extrapolateRight: "clamp" });
     const text = year ? String(value) : formatNumber(shown, decimals, prefix) + suffix;
     const finalText = year ? String(value) : formatNumber(value, decimals, prefix) + suffix;
     return (
