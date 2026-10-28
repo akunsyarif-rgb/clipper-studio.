@@ -39,7 +39,7 @@ describe("planNarrative", () => {
       "Aku pernah gagal berkali-kali sebelum menemukan cara ini.",
       "Intinya, perubahan kecil lebih mudah dipertahankan.",
     ]);
-    expect(plan.map(p => p.intent)).toEqual(["question", "cause-effect", "process", "insight", "story", "statement"]);
+    expect(plan.map(p => p.intent)).toEqual(["question", "cause-effect", "process", "insight", "story", "resolution"]);
     expect(plan[1].strategy).toBe("diagram");
     expect(plan[2].strategy).toBe("diagram");
     expect(plan[4].strategy).toBe("metaphor");
