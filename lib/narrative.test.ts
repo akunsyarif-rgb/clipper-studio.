@@ -47,6 +47,14 @@ describe("planNarrative", () => {
     expect(plan[1].continuity).toEqual({ previousRelated: 0, nextRelated: 2 });
   });
 
+  it("carries topic continuity across explicit references without rewriting the script", () => {
+    const texts = ["Kebiasaan sulit dijaga setiap hari.", "Hal ini membuat perubahan terasa berat."];
+    const plan = planNarrative(texts);
+    expect(plan[1].continuity.previousRelated).toBe(0);
+    expect(plan[1].continuityCue).toContain("habit");
+    expect(texts[1]).toBe("Hal ini membuat perubahan terasa berat.");
+  });
+
   it("flags weak interpretation, long beats, and claims needing source checks", () => {
     const plan = planNarrative([
       "Ini sangat penting untuk semuanya.",
