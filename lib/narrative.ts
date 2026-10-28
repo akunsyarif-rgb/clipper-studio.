@@ -31,7 +31,7 @@ const patterns = {
   explanation: /\b(karena|sebab|sehingga|akibatnya|artinya|berarti|yaitu|misalnya|contohnya|maksudnya|disebabkan|mengakibatkan|because|therefore|thus|means|for example|such as|how|due to|as a result)\b/i,
   reveal: /\b(ternyata|sebenarnya|kuncinya|jawabannya|faktanya|yang terjadi|rahasianya|intinya adalah|in fact|actually|the key|the answer|revealed|the truth)\b/i,
   application: /\b(mulai|lakukan|gunakan|coba|praktikkan|terapkan|langkah|pilih|buatlah|susun|pertama|kedua|ketiga|terakhir|berikutnya|start|use|try|apply|practice|step|choose|build|first|second|next|finally)\b/i,
-  resolution: /\b(kesimpulannya|intinya|jadi|akhirnya|ingatlah|pesan utamanya|penutupnya|takeaway|in conclusion|in short|remember|ultimately|the lesson)\b/i,
+  resolution: /^\s*(?:kesimpulannya|intinya|jadi|akhirnya|ingatlah|pesan utamanya|penutupnya|takeaway|in conclusion|in short|remember|ultimately|the lesson)\b/i,
   comparison: /\b(dibandingkan|berbeda|sementara|daripada|lebih .* daripada|bukan .* melainkan|vs\.?|versus|compare|compared|whereas|rather than|instead of|unlike)\b/i,
   cause: /\b(karena|sebab|sehingga|akibat|mempengaruhi|menyebabkan|dampak|oleh karena|berujung|because|causes?|leads? to|affects?|impact|result|therefore|as a result)\b/i,
   process: /\b(pertama|kedua|ketiga|selanjutnya|setelah itu|kemudian|terakhir|langkah|tahap|proses|urutan|first|second|next|then|finally|step|stage|process|sequence)\b/i,
