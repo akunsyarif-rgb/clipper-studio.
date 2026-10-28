@@ -319,12 +319,85 @@ function DataFigure({ scene, visual, role, colors, box }: FamilyProps) {
   );
 }
 
+/** Process grammar: a cause/effect split when available, otherwise a clear ordered progression without invented copy. */
+function Process({ scene, visual, role, colors, box }: FamilyProps) {
+  const text = stripMarks(scene.text);
+  const cause = splitCause(text);
+  const p = useAppear(0, MOTION.springFirm);
+  const stages = cause ? [cause.before, cause.after] : [text];
+  const connector = cause?.link ?? "LANGKAH";
+  const height = Math.max(150, Math.min(260, (box.height - 220) / stages.length));
+  return (
+    <div data-visual="process" style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 24, width: "100%" }}>
+      <Kicker text={cause ? "SEBAB → AKIBAT" : visual.listIndex ? `LANGKAH ${visual.listIndex}` : "ALUR GAGASAN"} colors={colors} align="left" />
+      {cause ? stages.map((stage, i) => (
+        <React.Fragment key={i}>
+          {i === 1 ? <div style={{ display: "flex", alignItems: "center", gap: 16, paddingLeft: 12, color: colors.accent, fontFamily: TYPE.sans, fontSize: 26, fontWeight: 800, letterSpacing: 3, opacity: p }}><DownArrow color={colors.accent} />{connector.toUpperCase()}</div> : null}
+          <div style={{ borderLeft: `5px solid ${colors.accent}`, borderRadius: "0 22px 22px 0", padding: "24px 30px", background: `${colors.accent}${i ? "20" : "0d"}`, opacity: p, transform: `translateX(${(1 - p) * (i ? 20 : -20)}px)` }}>
+            <Headline text={stage} width={box.width - 64} height={height} maxSize={76} minSize={38} align="left" colors={colors} focus={focusSet(visual, 1)} reveal="lines" scene={scene} delay={i * 8} />
+          </div>
+        </React.Fragment>
+      )) : (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 26, opacity: p, transform: `translateY(${(1 - p) * MOTION.rise}px)` }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, paddingTop: 12 }}>
+            <div style={{ width: 24, height: 24, borderRadius: "50%", background: colors.accent }} />
+            <div style={{ width: 3, height: Math.max(120, box.height * 0.42), background: `${colors.accent}66` }} />
+            <div style={{ width: 16, height: 16, border: `3px solid ${colors.accent}`, borderRadius: "50%" }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <Headline text={text} width={box.width - 70} height={box.height - 100} maxSize={92} minSize={44} align="left" colors={colors} focus={focusSet(visual, 2)} reveal="lines" scene={scene} />
+            <div style={{ marginTop: 24, color: colors.accent, fontFamily: TYPE.sans, fontWeight: 800, fontSize: 24, letterSpacing: 4 }}>{visual.listLabel?.toUpperCase() ?? "URUTAN GAGASAN"}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Metaphor/reflection grammar: one symbolic focal point, a quiet orbit and the actual narration. */
+function Metaphor({ scene, visual, role, colors, box }: FamilyProps) {
+  const p = useAppear(0, MOTION.springCalm);
+  const icon = visual.icon ? ICONS[visual.icon] : null;
+  const text = stripMarks(scene.text);
+  return (
+    <div data-visual="metaphor" style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 34, width: "100%" }}>
+      <div style={{ width: 250, height: 250, borderRadius: "50%", border: `2px solid ${colors.accent}77`, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", opacity: p, transform: `scale(${0.9 + 0.1 * p})`, boxShadow: `0 0 0 22px ${colors.accent}0b` }}>
+        <div style={{ position: "absolute", inset: 18, border: `1px solid ${colors.accent}33`, borderRadius: "50%" }} />
+        {icon ? <LineIcon node={icon.icon} size={112} color={colors.accent} delay={4} strokeWidth={1.5} /> : <div style={{ fontFamily: TYPE.serif, fontSize: 150, color: colors.accent, lineHeight: 1 }}>“</div>}
+      </div>
+      <Kicker text={role === "resolution" ? "RENUNGAN" : "GAGASAN INTI"} colors={colors} align="center" />
+      <Headline text={text} width={box.width} height={box.height - 340} maxSize={88} minSize={44} align="center" colors={colors} focus={focusSet(visual, 1)} font={TYPE.serif} weight={700} letterSpacing={0} lineHeight={1.14} reveal="lines" scene={scene} delay={8} />
+    </div>
+  );
+}
+
+/** Story grammar: shows this beat's place in the full narrative without fabricating story details. */
+function Story({ scene, visual, role, index, count, colors, box }: FamilyProps) {
+  const p = useAppear(0, MOTION.springFirm);
+  const text = stripMarks(scene.text);
+  const label = role === "hook" ? "AWAL CERITA" : role === "resolution" ? "PENUTUP" : role === "reveal" ? "TITIK BALIK" : "ALUR CERITA";
+  return (
+    <div data-visual="story" style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 40, width: "100%" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", color: colors.accent, fontFamily: TYPE.sans, fontWeight: 800, fontSize: 24, letterSpacing: 4 }}>
+        <span>{label}</span><span>{String(index + 1).padStart(2, "0")} / {String(count).padStart(2, "0")}</span>
+      </div>
+      <div style={{ height: 5, background: `${colors.text}25`, borderRadius: 4, overflow: "hidden" }}><div style={{ height: "100%", width: `${((index + 1) / Math.max(1, count)) * 100}%`, background: colors.accent, transform: `scaleX(${p})`, transformOrigin: "left" }} /></div>
+      <div style={{ borderLeft: `4px solid ${colors.accent}`, paddingLeft: 34, opacity: p, transform: `translateX(${(1 - p) * 18}px)` }}>
+        <Headline text={text} width={box.width - 44} height={box.height - 150} maxSize={104} minSize={48} align="left" colors={colors} focus={focusSet(visual, 2)} font={TYPE.display} weight={900} letterSpacing={-0.02} reveal="lines" scene={scene} delay={6} />
+      </div>
+    </div>
+  );
+}
+
 export function FamilyView(props: FamilyProps) {
   switch (props.family) {
     case "kinetic": return <Kinetic {...props} />;
     case "explainer": return <Explainer {...props} />;
     case "comparison": return <Comparison {...props} />;
     case "data": return props.visual.template === "cta" ? <DataAction {...props} /> : <DataFigure {...props} />;
+    case "process": return <Process {...props} />;
+    case "metaphor": return <Metaphor {...props} />;
+    case "story": return <Story {...props} />;
     default: return <Editorial {...props} />;
   }
 }
