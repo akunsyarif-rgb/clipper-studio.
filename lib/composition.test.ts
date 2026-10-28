@@ -44,6 +44,40 @@ describe("chooseFamily", () => {
   });
 });
 
+describe("sample motion timeline", () => {
+  it("keeps the five supplied scenes visually distinct by family", () => {
+    const scenes = [
+      {
+        text: "Jangan tunggu semangat datang.",
+        visual: { template: "statement", icon: "wait", emphasis: ["tunggu"] },
+        narrative: { role: "hook", strategy: "typography" },
+      },
+      {
+        text: "Mulailah, meski langkahmu kecil.",
+        visual: { template: "statement", icon: "start", emphasis: ["mulailah"] },
+        narrative: { role: "tension", strategy: "comparison" },
+      },
+      {
+        text: "Disiplin membuatmu tetap bergerak.",
+        visual: { template: "statement", icon: "discipline", emphasis: ["disiplin"] },
+        narrative: { role: "continuation", strategy: "minimal" },
+      },
+      {
+        text: "Satu langkah hari ini lebih baik dari rencana sempurna.",
+        visual: { template: "compare", icon: "step", emphasis: ["langkah"], compare: { bad: "rencana sempurna", good: "Satu langkah hari ini", neutral: false } },
+        narrative: { role: "application", strategy: "diagram" },
+      },
+      {
+        text: "Mulai sekarang.",
+        visual: { template: "cta", icon: "start", emphasis: ["mulai"], cta: "MULAI SEKARANG" },
+        narrative: { role: "application", strategy: "diagram" },
+      },
+    ];
+    expect(scenes.map((scene, i) => chooseFamily(scene.visual as never, scene.narrative as never, i === 0 ? "hook" : "continuation")))
+      .toEqual(["editorial", "kinetic", "editorial", "comparison", "data"]);
+  });
+});
+
 describe("splitCause", () => {
   it("splits cause and effect at the connector", () => {
     expect(splitCause("Otak menolak perubahan karena energi terbatas.")).toEqual({ before: "Otak menolak perubahan", link: "karena", after: "energi terbatas." });
