@@ -19,7 +19,7 @@ type Range = { start: number; duration: number };
 type Phase = "idle" | "audio" | "download" | "running";
 
 /** Automatic transcript of the selected range: local Whisper, editable text, live caption preview, hand-off to /motion. */
-export default function TranscriptPanel({ file, video, range, locked, onWorking, onCopy, onUse, onUseTiming, onPickRange }: {
+export default function TranscriptPanel({ file, video, range, locked, onWorking, onCopy, onUse, onUseTiming, preciseTiming, onPickRange }: {
   file: File;
   video: RefObject<HTMLVideoElement | null>;
   /** Selected clip range, or null while the range is invalid. */
@@ -33,6 +33,8 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
   onUse?: (t: Transcript) => void;
   /** On the motion page: take only this transcript's timing, keeping the script as it is. Returns a problem message, or null when applied. */
   onUseTiming?: (t: Transcript) => string | null;
+  /** On the motion page: true while the captions still carry sentence-level timing, so one tap can make the transcript and apply its timing. */
+  preciseTiming?: boolean;
   /** On the clipper page: sets the clip's start and end (video seconds) from an AI-suggested moment. */
   onPickRange?: (start: number, end: number) => void;
 }) {
@@ -110,7 +112,14 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
     return () => { cancelAnimationFrame(raf); for (const ev of ["play", "seeked", "timeupdate", "pause"]) el.removeEventListener(ev, start); };
   }, [transcript, video]);
 
-  async function run() {
+  /** Applies a transcript's timing to the script and reports the outcome in the panel. */
+  function applyTiming(value: Transcript) {
+    const problem = onUseTiming?.(value) ?? null;
+    if (problem) { setError(problem); setInfo(""); }
+    else { setError(""); setInfo("Waktu subtitle sekarang mengikuti ucapan hasil transkrip ini; teks naskah Anda tidak berubah."); }
+  }
+
+  async function run(thenTiming = false) {
     const limit = range ? validateTranscribeRange(range.duration) : "Pilih bagian video yang valid terlebih dahulu.";
     if (!range || limit) { setError(limit ?? ""); return; }
     cancelled.current = false;
@@ -121,6 +130,7 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
       if (cached) {
         setTranscript({ value: cached, range });
         setInfo("Memakai hasil yang tersimpan dari proses sebelumnya (video, bagian, model, dan bahasa sama), tanpa memproses ulang.");
+        if (thenTiming) applyTiming(cached);
         return;
       }
       await loadEngine();
@@ -139,7 +149,8 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
       const { transcript: value, timings } = await h.result;
       setTranscript({ value, range }); setFreshRun(n => n + 1);
       void saveCachedTranscript(file, range, model, language, value);
-      setInfo([value.granularity === "word"
+      if (thenTiming) applyTiming(value);
+      else setInfo([value.granularity === "word"
         ? `${value.segments.length} segmen siap. Waktu tiap kata dari audio asli.`
         : `${value.segments.length} segmen siap. Model ini hanya memberi waktu per segmen; waktu kata diperkirakan merata.`, `Waktu: ${asrTimingSummary(timings)}.`, asrSlowHint(model, timings)].filter(Boolean).join(" "));
     } catch (err) {
@@ -181,7 +192,8 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
     {oneOff && !working && <div className="notice" data-testid="asr-preview-hint">Alamat ini khusus satu versi (preview). Setiap versi baru punya penyimpanan sendiri, sehingga model diunduh lagi dan sesi tidak ikut. Gunakan alamat tetap (yang memuat &quot;-git-&quot;, atau domain utama) agar model tersimpan.</div>}
     {crashed && <div className="notice notice-error" role="status" data-testid="asr-crashed">Transkripsi sebelumnya terhenti di tengah jalan (biasanya karena memori perangkat habis). Model otomatis diganti ke yang lebih ringan; bagian video yang lebih pendek juga membantu.</div>}
     {touch && /small/.test(model) && !working && <div className="notice" data-testid="asr-heavy-hint">Model ini berat; di iPad atau ponsel Safari bisa menutup aplikasi karena memori. Disarankan &quot;Akurat (base)&quot;.</div>}
-    <button className="secondary-button" disabled={working || locked || !range} onClick={run} data-testid="asr-run"><span>✎</span> {working ? "Sedang membuat transkrip…" : transcript ? "Buat ulang transkrip bagian terpilih" : "Buat transkrip bagian terpilih"}<small>maks. 3 menit</small></button>
+    {preciseTiming && onUseTiming && <button className="primary-button" disabled={working || locked || !range} onClick={() => void run(true)} data-testid="asr-precise"><span>Presisikan waktu subtitle</span><small>satu ketukan: dibuat di perangkat dari suara asli, teks naskah tidak berubah</small></button>}
+    <button className="secondary-button" disabled={working || locked || !range} onClick={() => void run()} data-testid="asr-run"><span>✎</span> {working ? "Sedang membuat transkrip…" : transcript ? "Buat ulang transkrip bagian terpilih" : "Buat transkrip bagian terpilih"}<small>maks. 3 menit</small></button>
     {working && <div className="progress-wrap" data-testid="asr-progress">
       <div className="progress-label"><span>{phase === "audio" ? "Mengambil audio asli dari video…"
         : phase === "download" ? (download.total === 0 ? "Memuat model ucapan…" : download.loaded < download.total ? "Mengunduh model ucapan (sekali, lalu disimpan)…" : "Menyiapkan model (bisa beberapa menit di perangkat kecil)…")
@@ -216,7 +228,7 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
       <button onClick={() => save(`${base}.srt`, toSrt(transcript.value), "application/x-subrip")} data-testid="asr-srt">Unduh .srt</button>
         <button onClick={() => save(`${base}.txt`, transcriptText(transcript.value), "text/plain")}>Unduh .txt</button>
       </div>
-      {onUseTiming && <button className="secondary-button" onClick={() => { const problem = onUseTiming(transcript.value); if (problem) { setError(problem); setInfo(""); } else { setError(""); setInfo("Waktu subtitle sekarang mengikuti ucapan hasil transkrip ini; teks naskah Anda tidak berubah."); } }} data-testid="asr-use-timing"><span>Pakai hanya waktunya (naskah saya tetap)</span><small>paling presisi</small></button>}
+      {onUseTiming && <button className="secondary-button" onClick={() => applyTiming(transcript.value)} data-testid="asr-use-timing"><span>Pakai hanya waktunya (naskah saya tetap)</span><small>paling presisi</small></button>}
       {onUse
         ? <button className="primary-button" onClick={() => onUse(transcript.value)} data-testid="asr-use"><span>Pakai transkrip untuk naskah &amp; subtitle</span></button>
         : <Link className="motion-link" href="/motion" onClick={e => { if (toMotion() === false) e.preventDefault(); }} data-testid="asr-to-motion"><span className="bottom-icon">✳</span><span><strong>Kirim ke Motion Graphics</strong><small>Teks dan waktu kata dipakai untuk subtitle, ikon, dan angka pada video motion.</small></span><b>Buka →</b></Link>}

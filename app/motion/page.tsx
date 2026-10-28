@@ -196,7 +196,7 @@ export default function MotionStudio() {
       setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptionOffset(0); setPalette("pearl"); setContentPreset("custom"); setOffer(null);
       setHandoffNote(h.transcript.granularity === "word"
         ? "Klip dari Clipper dimuat dengan subtitlenya."
-        : "Klip dari Clipper dimuat. Subtitle berasal dari AI dengan waktu per kalimat. Untuk waktu yang paling presisi: buat transkrip di panel Transkrip (di perangkat), lalu pilih \"Pakai hanya waktunya\" (teks tidak berubah).");
+        : "Klip dari Clipper dimuat. Subtitle berasal dari AI dengan waktu per kalimat. Untuk waktu yang paling presisi, ketuk \"Presisikan waktu subtitle\" di panel Transkrip (satu ketukan, dibuat di perangkat; teks tidak berubah).");
     } else setHandoffNote("Klip dari Clipper dimuat. Belum ada subtitle: buat transkrip di panel Transkrip, atau tulis naskah.");
   }
   function onSourceVideo(e: ChangeEvent<HTMLInputElement>) {
@@ -684,7 +684,7 @@ export default function MotionStudio() {
             : <div className="normal-only">
               <video ref={sourceVideo} src={source.url} controls playsInline preload="metadata" style={{ width: "100%", maxHeight: 220, borderRadius: 10, background: "#000" }} />
               <button className="text-button" disabled={asrBusy} onClick={() => { setSource(null); setImported(null); setVideoEdit(false); setCutOverrides({}); setClipStarts({}); }}>Ganti video ({source.file.name})</button>
-              <TranscriptPanel key={source.url} file={source.file} video={sourceVideo} range={{ start: 0, duration: source.seconds }} locked={false} onWorking={setAsrBusy} onCopy={setScript} onUseTiming={useTimingOnly}
+              <TranscriptPanel key={source.url} file={source.file} video={sourceVideo} range={{ start: 0, duration: source.seconds }} locked={false} onWorking={setAsrBusy} onCopy={setScript} onUseTiming={useTimingOnly} preciseTiming={!!imported && imported.granularity !== "word" && videoEdit}
                 onUse={t => { setScript(scriptFromTranscript(t, FPS)); setImported(t); setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptionOffset(0); setPalette("pearl"); setContentPreset("custom"); setOffer(null); }} />
             </div>}
           {sourceError && <p className="field-error normal-only" role="alert">{sourceError}</p>}
