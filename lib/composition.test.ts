@@ -21,6 +21,15 @@ describe("chooseFamily", () => {
     expect(familyFor(texts)).toEqual(["editorial", "comparison", "kinetic", "process", "data", "editorial"]);
   });
 
+  it("detects a natural contrast clause as a neutral comparison", () => {
+    expect(detectVisual("Kita punya niat, tetapi sering kembali ke pola lama.").compare).toEqual({
+      bad: "Kita punya niat",
+      good: "sering kembali ke pola lama",
+      neutral: true,
+    });
+    expect(familyFor(["Pembuka.", "Kita punya niat, tetapi sering kembali ke pola lama."])[1]).toBe("comparison");
+  });
+
   it("uses process grammar for numbered steps", () => {
     expect(familyFor(["Hook pembuka.", "Pertama, tentukan target yang jelas."])[1]).toBe("process");
   });
