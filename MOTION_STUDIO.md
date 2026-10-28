@@ -533,3 +533,18 @@ Di mode Affiliate, di bawah Nama produk ada **"Tautan halaman produk (opsional)"
 ### Presisikan waktu subtitle dengan satu ketukan
 
 Klip dari Clipper datang dengan subtitle AI yang waktunya per kalimat. Selama itu masih berlaku, panel Transkrip menampilkan tombol utama **Presisikan waktu subtitle**. Satu ketukan menjalankan seluruh langkah: mengambil audio asli klip, membuat transkrip di perangkat (Whisper), lalu langsung memakai waktunya pada naskah Anda. Teks naskah tidak berubah. Bila hasil tersimpan dari proses sebelumnya ada, itu yang dipakai tanpa memproses ulang. Setelah waktu per kata terpasang, tombol hilang. Bila naskah terlalu berbeda dari ucapan, ada pesan yang jelas dan waktu lama tetap dipakai. Model diunduh sekali; di iPad bagian pendek lebih aman untuk memori.
+
+
+## Script-First Visual Director
+
+The scene plan now separates **narrative intent** from **visual treatment**. It is a deterministic, local heuristic—not an AI model and not a guarantee of the author's meaning. The scene list exposes its intent, visual cue, confidence level, reason, and continuity hint so the creator can review the recommendation before rendering.
+
+Intent classes include question, contrast, cause/effect, process, evidence, insight, instruction, story, reflection, resolution, and statement. Composition selection can use distinct grammars for:
+- **Process / cause → effect:** a connected flow; a real cause/effect split is shown only when the text contains a safe split.
+- **Metaphor / reflection:** one symbolic focal point, restrained movement, and the original narration text.
+- **Story beats:** a progress marker for the scene's position in the complete script, without inventing story details.
+- Existing comparison, data, explainer, kinetic and editorial compositions remain available as fallbacks.
+
+The planner never rewrites the narration. It does not require a paid API, network call, new dependency, or server-side render. Existing audio timing, captions, per-scene visual overrides, Remotion preview, and browser MP4 render remain the source of truth. Low-confidence recommendations should be treated as suggestions; users can still adjust the visual template and icon manually.
+
+Automated unit tests cover semantic classification and composition routing. Real-device Safari/iPad rendering still requires a manual smoke test; passing CI alone does not prove device memory and WebCodecs compatibility.
