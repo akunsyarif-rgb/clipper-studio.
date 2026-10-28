@@ -55,7 +55,7 @@ const MOTION_INTENSITY_LABELS: Record<string, string> = {
   quiet: "Tenang", emphasis: "Penekanan", impact: "Dampak kuat",
 };
 const NARRATIVE_INTENT_LABELS: Record<string, string> = {
-  question: "Pertanyaan", contrast: "Kontras", "cause-effect": "Sebab-akibat", process: "Proses", evidence: "Bukti", insight: "Insight", instruction: "Instruksi", story: "Cerita", reflection: "Refleksi", statement: "Pernyataan",
+  question: "Pertanyaan", contrast: "Kontras", "cause-effect": "Sebab-akibat", process: "Proses", evidence: "Bukti", insight: "Insight", instruction: "Instruksi", story: "Cerita", reflection: "Refleksi", statement: "Pernyataan", resolution: "Kesimpulan",
 };
 const CONFIDENCE_LABELS: Record<string, string> = { low: "sinyal lemah", medium: "sinyal sedang", high: "sinyal kuat" };
 
