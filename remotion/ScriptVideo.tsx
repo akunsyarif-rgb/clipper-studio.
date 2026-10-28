@@ -65,7 +65,7 @@ function ClipCutaway({ src, startFrame, length }: { src: string; startFrame: num
 }
 
 /** Graphic cutaway over the speaker: centred visual for the scene's template/icon with the phrase caption beneath. */
-function Cutaway({ scene, colors, length }: { scene: Scene; colors: Colors; length: number }) {
+function Cutaway({ scene, colors, length, index }: { scene: Scene; colors: Colors; length: number; index: number }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const visual = scene.visual ?? detectVisual(scene.text);
@@ -75,6 +75,7 @@ function Cutaway({ scene, colors, length }: { scene: Scene; colors: Colors; leng
   const bottom = visual.template === "compare" || visual.template === "cta" || (visual.template === "statement" && !!visual.icon);
   return (
     <AbsoluteFill style={{ background: `linear-gradient(145deg, ${colors.bg1} 0%, ${colors.bg2} 100%)`, opacity: fade }}>
+      {scene.image ? <SceneImage src={scene.image} index={index} length={length} colors={colors} /> : null}
       <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", padding: "0 80px", color: colors.text, transform: `scale(${0.92 + 0.08 * Math.min(1, enter)})` }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", width: "100%" }}>
           {bottom ? <div style={{ transform: "scale(1.35)", margin: "0 0 40px" }}><BottomVisual visual={{ ...visual, template: visual.template }} colors={colors} /></div> : <TopVisual visual={visual} colors={colors} sceneFrames={length} />}
@@ -193,7 +194,7 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
                 {clip && video ? <Sequence from={0} durationInFrames={clip.lengthFrames}><ClipCutaway src={video.src} startFrame={clip.startFrame} length={clip.lengthFrames} /></Sequence> : null}
                 {captions ? <VideoCaption scene={scene} /> : null}
                 {/* Cutaway: an opaque graphic over the speaker (at most 4 s); the video underneath keeps playing, so audio never breaks. */}
-                {scene.cut === "graphic" ? <Sequence from={0} durationInFrames={Math.min(scene.durationInFrames, 120)}><Cutaway scene={scene} colors={colors} length={Math.min(scene.durationInFrames, 120)} /></Sequence> : null}
+                {scene.cut === "graphic" ? <Sequence from={0} durationInFrames={Math.min(scene.durationInFrames, 120)}><Cutaway scene={scene} colors={colors} length={Math.min(scene.durationInFrames, 120)} index={i} /></Sequence> : null}
               </>
               : <SceneView scene={scene} index={i} count={scenes.length} title={title} style={style} colors={colors} layout={layouts[i]} />}
           </Sequence>

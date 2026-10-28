@@ -13,6 +13,8 @@ const BASE = `http://localhost:${PORT}`;
 const dir = mkdtempSync(join(tmpdir(), "clipflow-e2e-"));
 const video = join(dir, "video-panjang.mp4");
 const shortVideo = join(dir, "video-pendek.mp4");
+const photo = join(dir, "foto.png");
+execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=0x228844:s=270x480", "-frames:v", "1", photo]);
 for (const [path, seconds] of [[video, 100], [shortVideo, 30]]) execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", `testsrc=size=320x240:rate=30:duration=${seconds}`, "-f", "lavfi", "-i", `sine=frequency=300:duration=${seconds}`, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", path]);
 
 const server = spawn("npx", ["next", "start", "-p", String(PORT)], { stdio: ["ignore", "pipe", "pipe"], detached: true });
@@ -32,6 +34,7 @@ const LINES = [
   { start: 30, end: 50, text: "Tips pertama adalah catat semua pengeluaran Anda." },
   { start: 55, end: 80, text: "Tips kedua sisihkan tabungan di awal bulan." },
 ];
+async function until(check, message) { for (let i = 0; i < 80; i++) { if (await check().catch(() => false)) return; await new Promise(r => setTimeout(r, 100)); } throw new Error(message); }
 const seen = { audio: [], moments: 0, status: 0, captions: 0, ytMomentLines: 0 };
 /** Captions of a 100 s video, a line every 5 s. */
 const CAPTIONS = Array.from({ length: 20 }, (_, i) => ({ start: i * 5, end: i * 5 + 4, text: `Kalimat ke ${i} tentang topik penting.` }));
@@ -147,6 +150,12 @@ try {
     assert((await page.getByTestId("timing-lost").count()) === 0, "timing follows the transcript again");
     const seconds = await page.locator("video").first().evaluate(v => new Promise(res => { if (v.readyState >= 1) res(v.duration); else v.onloadedmetadata = () => res(v.duration); }));
     assert(seconds > 36 && seconds < 42, "the video is the cut clip (about 40 s): " + seconds);
+    // Pictures (own or Pexels) also work over a source video: choosing one makes that scene a full-screen cutaway.
+    assert(await page.getByTestId("scene-image").count() > 0 && await page.getByTestId("scene-image-pexels").first().isVisible(), "picture controls and Pexels are offered over a source video");
+    await page.getByTestId("scene-image-input").nth(1).setInputFiles(photo);
+    await page.getByTestId("scene-credit").count();
+    await until(async () => (await page.getByTestId("scene-cut").nth(1).inputValue()) === "graphic", "a scene with a picture becomes a cutaway");
+    assert(await page.getByTestId("scene-image-remove").count() === 1, "the picture is attached to that scene only");
     await page.reload();
     assert((await page.getByTestId("handoff-note").count()) === 0, "the hand-off is used once");
   });
