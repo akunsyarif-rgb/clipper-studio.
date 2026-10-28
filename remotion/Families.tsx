@@ -173,7 +173,8 @@ function EditorialImpact({ scene, visual, colors, box }: FamilyProps) {
   const bar = useAppear(8, MOTION.springFirm);
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 56, transform: `scale(${1.05 - 0.05 * p})` }}>
-      <Headline text={stripMarks(scene.text)} width={box.width} height={box.height * 0.8} maxSize={168} minSize={64} lineHeight={1.02}
+      <PinnedIcon visual={visual} colors={colors} />
+      <Headline text={stripMarks(scene.text)} width={box.width} height={box.height * (visual.iconPinned && visual.icon ? 0.6 : 0.8)} maxSize={168} minSize={64} lineHeight={1.02}
         align="center" colors={colors} focus={focusSet(visual, 1)} reveal="words" scene={scene} />
       <div style={{ width: 240, height: 12, background: colors.accent, transform: `scaleX(${bar})`, transformOrigin: "center" }} />
     </div>
