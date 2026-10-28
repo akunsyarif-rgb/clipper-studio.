@@ -90,7 +90,7 @@ export function extractionPrompt(product: string, pages: PageForAi[]): string {
     `Produk yang dimaksud: ${product.replace(/\s+/g, " ").trim().slice(0, 120)}`,
     "",
     "Aturan keras:",
-    "1. Ambil spesifikasi atau fitur konkret (ukuran, bahan, kapasitas, daya, fitur, isi paket, kompatibilitas, garansi resmi bila tertulis) tentang produk yang dimaksud saja; abaikan produk lain di halaman.",
+    "1. Ambil informasi umum yang berguna bagi calon pembeli tentang produk yang dimaksud: spesifikasi dan fitur konkret (ukuran, bahan, kapasitas, daya, kompatibilitas), isi paket, untuk siapa atau untuk apa produk ini, garansi resmi, dan kelebihan atau kekurangan yang DITULIS halaman itu (laporkan apa adanya, jangan menilai sendiri). Abaikan produk lain di halaman.",
     "2. Setiap fakta wajib punya \"quote\": potongan kata PERSIS dari teks halaman (salin apa adanya, 3 sampai 160 karakter) dan \"page\": nomor halaman tempat kutipan itu berada.",
     "3. \"text\" adalah ringkasan satu kalimat pendek bahasa Indonesia (maks. 100 karakter) yang isinya sama dengan kutipan. Angka di \"text\" harus ada di kutipan.",
     "4. Jangan kata promosi (terbaik, nomor 1, paling...), klaim kesehatan, rating, testimoni, jumlah terjual, atau perbandingan dengan merek lain. Jangan menebak.",

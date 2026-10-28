@@ -52,6 +52,8 @@ describe("extractionPrompt", () => {
     expect(p).toContain("\"quote\"");
     expect(p).toContain("Angka di \"text\" harus ada di kutipan");
     expect(p).toContain("Jangan kata promosi");
+    expect(p).toContain("informasi umum yang berguna bagi calon pembeli");
+    expect(p).toContain("jangan menilai sendiri");
   });
   it("sends a bounded excerpt of each page", () => {
     expect(p.length).toBeLessThan(5000);

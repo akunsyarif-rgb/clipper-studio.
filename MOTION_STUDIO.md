@@ -498,7 +498,7 @@ Di mode Affiliate, di bawah Nama produk ada **"Tautan halaman produk (opsional)"
 4. **Membaca tiap halaman:** data terstruktur (schema.org Product: nama, merek, harga, bahan, warna, gambar, properti), **tabel spesifikasi dan daftar definisi** halaman, Open Graph, dan teks halaman yang terbaca.
 
 **Yang dikerjakan AI (opsional, hanya merangkum)**
-- Bila ada kunci AI, teks halaman diberikan ke model **biasa** Anda (bukan model pencari web, tanpa plugin pencarian). AI menulis fakta pendek berbahasa Indonesia, dan **setiap fakta wajib membawa kutipan persis dari halaman** serta nomor halamannya.
+- Bila ada kunci AI, teks halaman diberikan ke model **biasa** Anda (bukan model pencari web, tanpa plugin pencarian). AI menulis fakta pendek berbahasa Indonesia tentang **informasi umum yang berguna bagi calon pembeli** (spesifikasi, fitur, isi paket, untuk siapa produk ini, garansi resmi, serta kelebihan atau kekurangan yang *ditulis halaman itu*, tanpa menilai sendiri), dan **setiap fakta wajib membawa kutipan persis dari halaman** serta nomor halamannya. Anda yang menilai hasilnya: hanya fakta yang Anda centang yang dipakai.
 - Verifikasi oleh kode: fakta **dibuang** bila kutipannya tidak ditemukan di teks halaman yang disebut, atau bila angka di ringkasannya tidak ada di kutipan. Jumlah yang dibuang dilaporkan. Jadi AI tidak bisa menambah fakta dari ingatannya.
 - Tanpa kunci AI, atau bila AI gagal (saldo habis, dsb.), spesifikasi yang tertulis di halaman tetap dipakai dan alasannya dilaporkan.
 
