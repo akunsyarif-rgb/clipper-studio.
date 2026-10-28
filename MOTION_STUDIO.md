@@ -533,3 +533,14 @@ Di mode Affiliate, di bawah Nama produk ada **"Tautan halaman produk (opsional)"
 ### Presisikan waktu subtitle dengan satu ketukan
 
 Klip dari Clipper datang dengan subtitle AI yang waktunya per kalimat. Selama itu masih berlaku, panel Transkrip menampilkan tombol utama **Presisikan waktu subtitle**. Satu ketukan menjalankan seluruh langkah: mengambil audio asli klip, membuat transkrip di perangkat (Whisper), lalu langsung memakai waktunya pada naskah Anda. Teks naskah tidak berubah. Bila hasil tersimpan dari proses sebelumnya ada, itu yang dipakai tanpa memproses ulang. Setelah waktu per kata terpasang, tombol hilang. Bila naskah terlalu berbeda dari ucapan, ada pesan yang jelas dan waktu lama tetap dipakai. Model diunduh sekali; di iPad bagian pendek lebih aman untuk memori.
+
+## AI Director: layouts, storyboard, revisions
+
+- **Layout planner** (`lib/composition.ts` `planLayouts`): editorial scenes pick `impact` (hook / impact beats: oversized word-by-word type, no kicker), `quiet-center` or `quiet-offset` (calm beats; adjacent calm scenes alternate). Comparison and CTA keep their own families.
+- **Storyboard** (`lib/storyboard.ts`): `buildStoryboard` turns the scenes into an inspectable plan (family, layout, assets, caption policy, timing, continuity); `validateStoryboard` flags empty/duplicate narration, production notes, too-short scenes, missing pictures, text that cannot fit, repeated composition and audio/scene length mismatch. Errors block rendering; the panel is under the preview. After rendering, `validateExport` checks file size, 1080×1920 and duration where the browser can report them.
+- **Revisions** (`lib/revision.ts`): "scene 2 lebih dinamis", "ending lebih kuat", "scene 2-4 …" restrict the AI pass to those scenes (also enforced on the answer; style/palette are global-only). The script text is never sent for rewriting. Every revision is a version (20 kept) with undo and redo.
+- Known gaps: version history lives in memory (lost on reload, not in the saved session); no per-scene lock UI (the API supports a locked set); no pixel-level frame inspection or Safari run in CI.
+
+## Platform safe zone (1080×1920)
+
+`lib/layout.ts` is the single source: top inset 220 px (tabs, logo), bottom 380 px (username, description, audio bar), side 130 px both sides (the right action rail needs 120–150; the left would need only 40–60 but equal insets keep centred layouts centred). Main content stays in a centred band of at most 1200 px (`ACTIVE_HEIGHT`). Burned-in captions over a source video end 520 px above the bottom edge (`CAPTION_BOTTOM`, 500–600 px), and "lower" overlays sit above them. Information that must survive a 1:1 crop belongs in the centred 1080×1080 square (`SQUARE_CROP`). The preview has a "panduan area aman" toggle that draws all of these; it is never part of the MP4.
