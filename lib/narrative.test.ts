@@ -47,6 +47,17 @@ describe("planNarrative", () => {
     expect(plan[1].continuity).toEqual({ previousRelated: 0, nextRelated: 2 });
   });
 
+  it("flags weak interpretation, long beats, and claims needing source checks", () => {
+    const plan = planNarrative([
+      "Ini sangat penting untuk semuanya.",
+      "Langkah pertama adalah memahami dasar. ".repeat(5),
+      "73% orang berhasil menurut laporan ini.",
+    ]);
+    expect(plan[0].reviewFlags).toContain("Sinyal makna lemah; periksa pilihan visual secara manual.");
+    expect(plan[1].reviewFlags).toContain("Naskah cukup panjang; pertimbangkan membaginya menjadi dua beat.");
+    expect(plan[2].reviewFlags).toContain("Pastikan sumber angka atau klaim tersedia sebelum publikasi.");
+  });
+
   it("handles empty and single-scene scripts", () => {
     expect(planNarrative([])).toEqual([]);
     expect(planNarrative(["Mulai sekarang."])).toHaveLength(1);
