@@ -552,3 +552,7 @@ Klip dari Clipper datang dengan subtitle AI yang waktunya per kalimat. Selama it
 ## Speech recognition on iPad Safari
 
 "no available backend found / RangeError: Out of memory" came from the WebAssembly runtime failing to allocate while starting: the larger asyncify ONNX build was chosen on Safari 26+, the session used default memory arenas, and the model was never freed after a failure. Now the worker always uses the plain CPU build with low-memory session options, drops a failed model, and `transcribeResilient` retries automatically with the next lighter model (small → base → tiny), keeping Indonesian and timestamps; the panel shows what happened and offers "Coba lagi" / "Pakai model lebih ringan".
+
+## Audio-only sources
+
+Every source picker (the clipper, the motion studio's source, the file chosen for a YouTube link) accepts audio as well as video (`SOURCE_ACCEPT`, `isAudioFile` in `lib/clip.ts`). In the clipper an audio range is exported as an ordinary MP4: a plain dark frame of the output size (`AUDIO_ONLY_BACKDROP`) with the chosen sound and, if set, the watermark, so it plays everywhere and can go on to the motion studio. In the motion studio an audio source is played with `<Audio>` over the studio background (`video.audioOnly`), with its transcript, subtitles and animations; there is no footage, so "clip" cutaways are skipped. Voice-over upload already accepted audio.

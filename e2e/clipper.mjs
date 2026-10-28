@@ -1,6 +1,6 @@
 // End-to-end check of the real export path: production server + Chromium + ffmpeg.wasm.
 // Needs `npm run build` first, plus ffmpeg/ffprobe on PATH to create and verify fixture videos.
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -158,6 +158,31 @@ try {
     await page.getByTestId("file-input").setInputFiles(source);
     await page.getByText("00:00:12").first().waitFor({ timeout: 15000 });
     return `file change: bottom-right ${brOnBR.toFixed(1)}, top-left ${tlOnTL.toFixed(1)}, empty ${emptyOnBR.toFixed(2)}, cross-talk ${tlOnBR.toFixed(2)}`;
+  });
+
+  await step("an audio-only file can be chosen, previewed and exported as an MP4 with a dark frame and its sound", async () => {
+    const audioFile = join(dir, "suara.mp3");
+    execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=8", "-c:a", "libmp3lame", "-b:a", "64k", audioFile]);
+    await page.getByTestId("file-input").setInputFiles(audioFile);
+    await page.getByText("Audio siap").waitFor({ timeout: 15000 });
+    assert(await page.getByTestId("end").inputValue() === "00:00:08", "end clamps to the 8 s audio");
+    const out = await exportAndCheck("audio-only", { start: "0:01", end: "0:05", aspect: "9:16", quality: "480", fit: "pad", width: 480, height: 854 });
+    const file = join(dir, "audio-only.mp4");
+    const p = probe(file);
+    assert(p.video === "h264" && p.audio === "aac", `codecs ${p.video}/${p.audio}`);
+    // The picture is the plain dark backdrop (no content from the source), the sound is the tone.
+    const px = execFileSync("ffmpeg", ["-v", "error", "-ss", "1", "-i", file, "-frames:v", "1", "-vf", "crop=100:100:190:350,scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+    assert(px[0] < 50 && px[1] < 50 && px[2] < 60, `dark backdrop, got rgb ${[...px]}`);
+    const log = spawnSync("ffmpeg", ["-hide_banner", "-i", file, "-af", "volumedetect", "-f", "null", "-"], { encoding: "utf8" }).stderr;
+    const vol = Number(/mean_volume: (-?[\d.]+) dB/.exec(log)?.[1] ?? "-91");
+    assert(vol > -40, `the tone is audible in the MP4, mean ${vol} dB`);
+    return `${out}; backdrop rgb ${[...px]}`;
+  });
+
+  // Back to the video for the steps that follow.
+  await step("the video is chosen again after the audio-only check", async () => {
+    await page.getByTestId("file-input").setInputFiles(source);
+    await page.getByText("Video siap").waitFor({ timeout: 15000 });
   });
 
   await step("cancels a running export and retries it", async () => {

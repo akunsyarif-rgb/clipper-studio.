@@ -169,7 +169,7 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
       {!quiet && <AbsoluteFill style={{ background: `radial-gradient(circle at 80% 20%, ${colors.accent}22 0%, transparent 38%)`, opacity: wash }} />}
       {particles.map(p => <div key={p.key} aria-hidden="true" style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: p.size, height: p.size, borderRadius: "50%", background: colors.accent, opacity: p.opacity, transform: `translateY(${p.drift}px)`, pointerEvents: "none" }} />)}
       {!quiet && <div style={{ position: "absolute", width: 700, height: 700, border: `1px solid ${colors.accent}45`, borderRadius: "50%", right: -380, top: 250, transform: `rotate(${frame * 0.3}deg)` }} />}
-      {video ? <AbsoluteFill><Video src={resolveAudio(video.src)} objectFit="cover" /></AbsoluteFill> : null}
+      {video ? (video.audioOnly ? <Audio src={resolveAudio(video.src)} /> : <AbsoluteFill><Video src={resolveAudio(video.src)} objectFit="cover" /></AbsoluteFill>) : null}
       {audioSrc ? <Audio src={resolveAudio(audioSrc)} /> : null}
       {music ? (
         <Audio
@@ -190,7 +190,8 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
       {scenes.map((scene, i) => {
         const start = from;
         from += scene.durationInFrames;
-        const clip = video ? clipPlan(scene, video.seconds, fps) : null;
+        // Another part of the same footage only exists when there is footage: an audio file has no picture to cut away to.
+        const clip = video && !video.audioOnly ? clipPlan(scene, video.seconds, fps) : null;
         return (
           <Sequence key={i} from={start} durationInFrames={scene.durationInFrames} name={`Scene ${i + 1}`}>
             {video

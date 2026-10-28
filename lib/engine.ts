@@ -1,6 +1,6 @@
 // Browser-only FFmpeg (WebAssembly) wrapper. The core is self-hosted under /ffmpeg (copied at build time).
 import type { FFmpeg } from "@ffmpeg/ffmpeg";
-import { AUDIO_OUTPUT_NAME, audioArgs, ffmpegArgs, logTime, MP3_OUTPUT_NAME, mp3Args, OUTPUT_NAME, type Aspect, type Fit, type Quality } from "./clip";
+import { AUDIO_OUTPUT_NAME, audioArgs, ffmpegArgs, isAudioFile, logTime, MP3_OUTPUT_NAME, mp3Args, OUTPUT_NAME, type Aspect, type Fit, type Quality } from "./clip";
 import { WATERMARK_PNG_NAME } from "./watermark";
 
 export const CORE_BASE = "/ffmpeg";
@@ -82,7 +82,7 @@ export async function exportClip(job: ExportJob): Promise<Blob> {
       await ff.writeFile(input, await fetchFile(job.file));
     }
     if (job.watermark) await ff.writeFile(WATERMARK_PNG_NAME, job.watermark.data);
-    const code = await ff.exec(ffmpegArgs(input, job, job.aspect, job.quality, job.fit, job.watermark ? { file: WATERMARK_PNG_NAME, x: job.watermark.x, y: job.watermark.y } : null));
+    const code = await ff.exec(ffmpegArgs(input, job, job.aspect, job.quality, job.fit, job.watermark ? { file: WATERMARK_PNG_NAME, x: job.watermark.x, y: job.watermark.y } : null, isAudioFile(job.file)));
     if (code !== 0) throw new Error(`FFmpeg keluar dengan kode ${code}: ${lastLogs.slice(-6).join(" | ")}`);
     const data = await ff.readFile(OUTPUT_NAME);
     if (typeof data === "string" || data.byteLength < 1024) throw new Error(`Output MP4 kosong. ${lastLogs.slice(-6).join(" | ")}`);
