@@ -94,7 +94,7 @@ export function validateStoryboard(sb: Storyboard, o: ValidateOptions = {}): Iss
   const minFrames = Math.ceil(MIN_SCENE_SECONDS * sb.fps);
   sb.scenes.forEach((s, i) => {
     if (!s.narrationText.trim()) add("error", "EMPTY_NARRATION", `Scene ${i + 1} tidak punya teks narasi.`, s);
-    if (NOTE.test(s.narrationText)) add("error", "PRODUCTION_NOTE", `Scene ${i + 1} tampak berisi catatan produksi, bukan narasi: "${s.narrationText.slice(0, 40)}". Catatan akan terbaca oleh suara AI dan tampil di layar.`, s);
+    if (NOTE.test(s.narrationText)) add("warning", "PRODUCTION_NOTE", `Scene ${i + 1} tampak berisi catatan produksi, bukan narasi: "${s.narrationText.slice(0, 40)}". Catatan akan terbaca oleh suara AI dan tampil di layar.`, s);
     const key = norm(s.narrationText);
     const prev = key ? seen.get(key) : undefined;
     if (prev) add("warning", "DUPLICATE_NARRATION", `Scene ${i + 1} mengulang narasi ${prev.id.replace("scene-", "scene ")}.`, s); else if (key) seen.set(key, s);

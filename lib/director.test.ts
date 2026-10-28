@@ -7,6 +7,15 @@ const input: DirectorInput = {
   videoEdit: false, style: "hybrid", palette: "violet", language: "id",
 };
 
+describe("directorPrompt scope", () => {
+  it("limits a scoped revision to the named scenes and keeps the script unchanged", () => {
+    const p = directorPrompt({ scenes: [{ text: "A.", seconds: 2 }, { text: "B.", seconds: 2 }], videoEdit: false, style: "hybrid", palette: "violet", language: "id", scope: [1], feedback: "scene 2 lebih dinamis" });
+    expect(p).toContain("REVISI TERBATAS: ubah HANYA scene dengan index 1");
+    expect(p).toContain("Teks naskah tidak boleh berubah");
+    expect(directorPrompt({ scenes: [{ text: "A.", seconds: 2 }], videoEdit: false, style: "hybrid", palette: "violet", language: "id" })).not.toContain("REVISI TERBATAS");
+  });
+});
+
 describe("directorPrompt", () => {
   it("carries the playbook, the allowed options, the creator's feedback and every sentence", () => {
     const p = directorPrompt({ ...input, feedback: "terlalu ramai, lebih tenang" });

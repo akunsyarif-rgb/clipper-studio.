@@ -463,7 +463,9 @@ try {
     // A manual change replaces the AI's reason for that scene only.
     await ai.getByTestId("scene-template").nth(1).selectOption("quote");
     assert((await ai.getByTestId("scene-director").allTextContents()).length === 2, "manual change drops that scene's AI reason");
-    // Undo restores everything from before the first pass.
+    // Each revision is a version: undo twice goes back through both passes to before the first one, and redo is offered.
+    await ai.getByTestId("director-undo").click();
+    await ai.getByTestId("director-redo").waitFor({ timeout: 5000 });
     await ai.getByTestId("director-undo").click();
     assert(await ai.getByTestId("style").inputValue() === before.style && await ai.getByTestId("palette").inputValue() === before.palette, "undo restores style and palette");
     assert(await ai.getByTestId("scene-director").count() === 0 && await ai.getByTestId("director-note").count() === 0, "undo clears the reasons");
