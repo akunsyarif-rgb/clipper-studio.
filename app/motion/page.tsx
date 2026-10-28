@@ -29,6 +29,8 @@ import TranscriptPanel from "../TranscriptPanel";
 import GeminiJudge from "../GeminiJudge";
 import AiDirector from "../AiDirector";
 import PexelsPanel from "../PexelsPanel";
+import AffiliatePanel from "../AffiliatePanel";
+import { removeLine, scenesForProductPhoto, type AffiliateBrief } from "@/lib/affiliate";
 import ScenePhotoPicker from "../ScenePhotoPicker";
 import { creditText, type PexelsPhoto } from "@/lib/pexels";
 import { planToOverrides, type DirectorPlan } from "@/lib/director";
@@ -144,6 +146,8 @@ export default function MotionStudio() {
   // The last "Sutradara AI" pass: why each scene looks as it does (by scene text), and what to restore on undo.
   const [directorInfo, setDirectorInfo] = useState<Record<string, { reason: string; imageIdea?: string; imageQuery?: string }>>({});
   const [pickerFor, setPickerFor] = useState<string | null>(null);
+  // Set while the affiliate panel holds a complete product brief: this is then a selling video.
+  const [affiliateBrief, setAffiliateBrief] = useState<AffiliateBrief | null>(null);
   const [directorNote, setDirectorNote] = useState("");
   const [beforeDirector, setBeforeDirector] = useState<{ style: StyleId; palette: PaletteId; contentPreset: ContentPresetId | "custom"; overrides: Record<string, VisualOverride>; cutOverrides: Record<string, Cut> } | null>(null);
   const imagesRef = useRef(images);
@@ -508,6 +512,18 @@ export default function MotionStudio() {
     const url = URL.createObjectURL(blob);
     setImages(prev => { if (prev[text]) URL.revokeObjectURL(prev[text].url); return { ...prev, [text]: { url, name: file.name, credit } }; });
   }
+  /** The creator's own product photo behind every scene that names the product, and the last one; resolves with how many. */
+  async function placeProductPhoto(file: File, brief: AffiliateBrief): Promise<number> {
+    if (!timeline.ok) return 0;
+    const problem = imageProblem(file);
+    if (problem) throw new Error(problem);
+    const blob = await prepareImage(file); // reduced once, then shared by every scene
+    const prepared = new File([blob], file.name, { type: blob.type || "image/jpeg" });
+    const texts = timeline.scenes.map(sc => sc.text);
+    const targets = scenesForProductPhoto(texts, brief.product);
+    for (const i of targets) await putSceneImage(texts[i], prepared);
+    return targets.length;
+  }
   const putStockPhoto = (text: string, file: File, photo: PexelsPhoto) => putSceneImage(text, file, { text: creditText(photo), href: photo.pexelsUrl || photo.photographerUrl || "https://www.pexels.com" });
   function removeSceneImage(text: string) {
     setImages(prev => { if (!prev[text]) return prev; URL.revokeObjectURL(prev[text].url); const next = { ...prev }; delete next[text]; return next; });
@@ -657,6 +673,8 @@ export default function MotionStudio() {
                 onUse={t => { setScript(scriptFromTranscript(t, FPS)); setImported(t); setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptionOffset(0); setPalette("pearl"); setContentPreset("custom"); setOffer(null); }} />
             </>}
           {sourceError && <p className="field-error" role="alert">{sourceError}</p>}
+          {!(videoEdit && source) && <AffiliatePanel script={script} disabled={rendering} onBrief={setAffiliateBrief} onProductPhoto={placeProductPhoto}
+            onUseScript={(text, t) => { setScript(text); if (t) setTitle(t.slice(0, 60)); setContentPreset("custom"); }} onRemoveLine={i => setScript(removeLine(script, i))} />}
           <label className="field-label" htmlFor="motion-script">Naskah <span className="field-hint">satu baris/kalimat = satu scene · *kata* untuk menonjolkan</span></label>
           <textarea id="motion-script" data-testid="script" value={script} onChange={e => setScript(e.target.value)} rows={7} placeholder="Tulis naskah video…" />
           <div className="char-count">{script.length} / 3000</div>
@@ -797,7 +815,7 @@ export default function MotionStudio() {
           </div>
           <p className="preview-disclaimer">Pratinjau memakai komposisi yang sama dengan hasil render, jadi teks, durasi scene, narasi, dan backsound identik dengan MP4.</p>
           {timeline.ok && <AiDirector language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"} active={Object.keys(directorInfo).length > 0} note={directorNote} onPlan={applyDirector} onUndo={undoDirector}
-            input={{ scenes: timeline.scenes.map(sc => ({ text: sc.text, seconds: sc.durationInFrames / FPS })), videoEdit: !!(videoEdit && source), style, palette,
+            input={{ scenes: timeline.scenes.map(sc => ({ text: sc.text, seconds: sc.durationInFrames / FPS })), videoEdit: !!(videoEdit && source), style, palette, affiliate: affiliateBrief && !(videoEdit && source) ? { product: affiliateBrief.product } : undefined,
               current: timeline.scenes.map(sc => ({ template: overrides[sc.text]?.template, icon: overrides[sc.text]?.icon, cut: cutOverrides[sc.text] })) }} />}
           {timeline.ok && !(videoEdit && source) && <PexelsPanel disabled={rendering} onApply={putStockPhoto}
             scenes={timeline.scenes.map(sc => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery, hasImage: !!images[sc.text] }))} />}

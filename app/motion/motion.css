@@ -119,3 +119,18 @@ button.scene-row{width:100%;text-align:left;color:inherit;font:inherit;backgroun
 .scene-credit{font-size:10px;color:var(--m-muted)}
 .scene-credit a{color:#b8b0ff}
 @media(max-width:520px){.photo-picker{margin-left:28px}.photo-search input{font-size:16px}}
+.affiliate-panel{margin:16px 0}
+.affiliate-panel>summary{cursor:pointer;list-style:none;display:flex;flex-direction:column;gap:4px}
+.affiliate-panel>summary::-webkit-details-marker{display:none}
+.affiliate-panel .range-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.aff-draft,.aff-guard,.aff-photo{display:flex;flex-direction:column;gap:8px;margin-top:10px;padding:10px;border:1px solid var(--m-line);border-radius:10px;background:#12142a}
+.aff-draft ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:12px;line-height:1.5}
+.aff-draft li.flagged{color:#ffd9a8}
+.aff-guard ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;font-size:12px}
+.aff-guard li{display:flex;flex-direction:column;gap:3px}
+.aff-flag{display:block;color:#ffb98a!important}
+.aff-note{opacity:.8}
+.aff-photo label{cursor:pointer}
+.aff-photo .text-link,.aff-guard .text-link{margin-top:0;align-self:flex-start}
+@media(max-width:520px){.affiliate-panel textarea{font-size:16px}}
+.studio-panel .aff-photo input[type=file]{display:none}

@@ -584,6 +584,93 @@ try {
     return `phrases ${seen.searches.join(" / ")}, ${seen.images.length} images fetched through the server, credits shown, MP4 ${info.dur.toFixed(1)}s with the photos`;
   });
 
+  await step("affiliate mode: the AI writes from the product facts only, risky claims are flagged and removable, the product photo and the director follow", async () => {
+    const ctxA = await browser.newContext();
+    await ctxA.addInitScript(() => { if (!localStorage.getItem("noai")) localStorage.setItem("clipper:gemini:v1", JSON.stringify({ apiKey: "k".repeat(30), model: "gemini-flash-latest", consent: true })); });
+    const prompts = [];
+    const FIRST = ["Air cepat hangat saat kerja?", "Termos Aqualux menjaga air tetap dingin 12 jam.", "Termos terbaik, dijamin awet!", "Bahan stainless steel anti karat.", "Harganya Rp 89.000, diskon 50% hari ini!", "Cek keranjang kuning."];
+    const SECOND = ["Air cepat hangat?", "Termos Aqualux jaga dingin 12 jam.", "Rp 89.000 saja.", "Cek keranjang kuning."];
+    await ctxA.route("https://generativelanguage.googleapis.com/**", async route => {
+      const prompt = JSON.parse(route.request().postData() ?? "{}").contents?.[0]?.parts?.[0]?.text ?? "";
+      prompts.push(prompt);
+      const answer = obj => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] } }] }) });
+      if (prompt.includes("DATA PRODUK")) return answer(/lebih singkat/.test(prompt) ? { title: "Termos Dingin", lines: SECOND } : { title: "Termos Dingin 12 Jam", lines: FIRST });
+      return answer({ style: "kinetic", palette: "obsidian", note: "Jualan jelas.", scenes: [0, 1, 2, 3].map(index => ({ index, template: index === 3 ? "cta" : "statement", icon: "none", reason: "Alur jualan", imageIdea: "botol minum", imageQuery: "water bottle desk" })) });
+    });
+    const p = await ctxA.newPage();
+    p.on("pageerror", e => pageErrors.push(e.message));
+    await p.goto(BASE);
+    await p.getByTestId("voice-none").click();
+    await p.getByTestId("duration").selectOption("15");
+    await p.getByTestId("affiliate-panel").locator("summary").click();
+    await p.getByTestId("aff-product").fill("Botol Minum Termos Aqualux 750 ml");
+    await p.getByTestId("aff-price").fill("Rp 89.000");
+    await p.getByTestId("aff-promo").fill("Diskon 10% sampai akhir bulan");
+    assert(await p.getByTestId("aff-write").isDisabled() && /minimal satu/.test(await p.getByTestId("aff-problem").textContent()), "writing waits for at least one real fact");
+    await p.getByTestId("aff-benefits").fill("Menjaga air tetap dingin 12 jam\nBahan stainless steel anti karat");
+    await p.getByTestId("aff-write").click();
+    await p.getByTestId("aff-draft").waitFor({ timeout: 10000 });
+    assert(prompts.length === 1 && prompts[0].includes("HANYA dari DATA PRODUK") && prompts[0].includes("Rp 89.000") && prompts[0].includes("Cek keranjang kuning"), "the prompt carries the facts, the rule and the platform's call to action");
+    assert(!prompts[0].includes("k".repeat(30)), "the key is not in the prompt");
+    const flagged = await p.locator('[data-testid="aff-draft-line"].flagged').count();
+    assert(await p.getByTestId("aff-draft-line").count() === 6 && flagged === 2, `6 lines, 2 flagged: ${flagged}`);
+    const draftText = await p.getByTestId("aff-draft").textContent();
+    assert(/terbaik/.test(draftText) && /dijamin/.test(draftText) && /50%/.test(draftText), "the draft says what is risky");
+    assert(!/Rp 89\.000\W+tidak ada di data/.test(draftText), "the real price is not flagged");
+    // Feedback: a clean rewrite.
+    await p.getByTestId("aff-feedback").fill("lebih singkat");
+    await p.getByTestId("aff-regenerate").click();
+    await p.locator('[data-testid="aff-draft"] >> text=Tidak ada klaim berisiko').waitFor({ timeout: 10000 });
+    assert(prompts.length === 2 && prompts[1].includes("lebih singkat"), "feedback sent");
+    // The first draft again, then use it: the script and title are filled and the live guard flags the claims.
+    await p.getByTestId("aff-feedback").fill("kembali ke versi panjang");
+    await p.getByTestId("aff-regenerate").click();
+    await p.getByTestId("aff-draft-line").nth(5).waitFor({ timeout: 10000 });
+    await p.getByTestId("aff-use").click();
+    assert((await p.getByTestId("script").inputValue()).split("\n").length === 6, "script replaced by the draft");
+    assert(await p.getByTestId("title").inputValue() === "Termos Dingin 12 Jam", "title set");
+    await p.getByTestId("aff-finding").first().waitFor({ timeout: 5000 });
+    assert(await p.getByTestId("aff-finding").count() === 3, `3 findings: ${await p.getByTestId("aff-finding").count()}`);
+    // Removing a flagged line removes it from the script and its findings.
+    await p.getByTestId("aff-remove").first().click();
+    assert((await p.getByTestId("script").inputValue()).split("\n").length === 5 && !/terbaik/.test(await p.getByTestId("script").inputValue()), "flagged line removed from the script");
+    assert(await p.getByTestId("aff-finding").count() === 1, "one finding left (the invented 50%)");
+    await p.getByTestId("aff-remove").first().click();
+    await p.getByTestId("aff-guard-ok").waitFor({ timeout: 5000 });
+    // The creator's own product photo goes behind the scenes that name the product and the last scene.
+    const photo = join(dir, "produk.png");
+    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=orange:s=1200x1600", "-frames:v", "1", photo]);
+    await p.getByTestId("aff-photo-input").setInputFiles(photo);
+    await p.getByTestId("aff-photo-msg").waitFor({ timeout: 10000 });
+    assert(/2 scene/.test(await p.getByTestId("aff-photo-msg").textContent()), `photo message: ${await p.getByTestId("aff-photo-msg").textContent()}`);
+    assert(await p.locator(".scene-thumb").count() === 2, "two scenes got the product photo");
+    // The AI director knows this is a selling video.
+    await p.getByTestId("director-run").click();
+    await p.getByTestId("director-note").waitFor({ timeout: 10000 });
+    const dir1 = prompts.at(-1);
+    assert(dir1.includes("video AFFILIATE") && dir1.includes("Botol Minum Termos Aqualux 750 ml"), "director prompt has the affiliate rules");
+    const templates = await p.locator('[data-testid="scene-template"] option:checked').allTextContents();
+    assert(templates.at(-1) === "Ajakan", `buying prompt closes the video: ${templates}`);
+    // The product facts are remembered on this device.
+    await p.reload();
+    assert(await p.getByTestId("aff-product").inputValue() === "Botol Minum Termos Aqualux 750 ml" && /Rp 89\.000/.test(await p.getByTestId("aff-price").inputValue()), "facts remembered after a reload");
+    assert(await p.getByTestId("aff-disclosure").isVisible(), "disclosure reminder shown");
+    await ctxA.close();
+    // Without an AI key the claim guard still works.
+    const ctxB = await browser.newContext();
+    const q = await ctxB.newPage();
+    await q.goto(BASE);
+    await q.getByTestId("affiliate-panel").locator("summary").click();
+    await q.getByTestId("aff-needs-key").waitFor({ timeout: 5000 });
+    await q.getByTestId("aff-product").fill("Serum Wajah Glow");
+    await q.getByTestId("aff-benefits").fill("Tekstur ringan");
+    await q.getByTestId("script").fill("Serum ini menyembuhkan jerawat dan memutihkan kulit.\nTekstur ringan.");
+    await q.getByTestId("aff-finding").first().waitFor({ timeout: 5000 });
+    assert(await q.getByTestId("aff-finding").count() === 2, `health claims flagged without an AI key: ${await q.getByTestId("aff-finding").count()}`);
+    await ctxB.close();
+    return `AI script from facts (6 lines, 2 flagged), rewrite with feedback, 3 findings then removable, product photo on 2 scenes, director told, facts remembered, guard works without a key`;
+  });
+
   await step("no horizontal scroll on iPhone-size viewport", async () => {
     const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
     await phone.goto(BASE);
