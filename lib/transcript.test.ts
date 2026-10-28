@@ -421,3 +421,40 @@ describe("timing survives tiny scenes", () => {
     expect(sceneTimings(splitScript(s), allWords(t), FPS, 12)!.tooShort).toBe(0);
   });
 });
+
+describe("captions stay in step with the speech to the end of a long clip", () => {
+  // Forty short sentences, every fifth one under the studio's minimum scene length: the case that used to drift.
+  const sentences = Array.from({ length: 40 }, (_, i) => (i % 5 === 4 ? `Ya ${i}.` : `Ini kalimat nomor ${i} yang cukup panjang untuk dibaca.`));
+  const words: { text: string; start: number; end: number }[] = [];
+  const firstWord: number[] = [];
+  let at = 0;
+  for (const s of sentences) {
+    firstWord.push(words.length);
+    const parts = s.split(" ");
+    const per = s.startsWith("Ya") ? 0.2 : 0.35;
+    parts.forEach(p => { words.push({ text: p, start: at, end: at + per * 0.9 }); at += per; });
+  }
+  const total = at + 0.5;
+  const texts = splitScript(sentences.join("\n"));
+
+  it("places every scene where its first word is spoken, with exact durations", () => {
+    const timed = sceneTimings(texts, words, FPS, total)!;
+    expect(timed.tooShort).toBeGreaterThan(0);
+    const t = buildTimeline(sentences.join("\n"), { kind: "scenes", seconds: timed.seconds, exact: true });
+    expect(t.ok).toBe(true);
+    if (!t.ok) return;
+    let start = 0;
+    t.scenes.forEach((sc, i) => {
+      if (i > 0) expect(Math.abs(start - words[firstWord[i]].start * FPS)).toBeLessThanOrEqual(1);
+      start += sc.durationInFrames;
+    });
+    expect(Math.abs(t.totalFrames - total * FPS)).toBeLessThanOrEqual(1);
+  });
+  it("shows the drift that stretching short scenes causes", () => {
+    const timed = sceneTimings(texts, words, FPS, total)!;
+    const t = buildTimeline(sentences.join("\n"), { kind: "scenes", seconds: timed.seconds });
+    expect(t.ok).toBe(true);
+    if (!t.ok) return;
+    expect(t.totalFrames - Math.round(total * FPS)).toBeGreaterThan(FPS); // more than a second late by the end
+  });
+});

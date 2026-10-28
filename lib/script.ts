@@ -8,7 +8,6 @@ export const FPS = 30;
 export const WIDTH = 1080;
 export const HEIGHT = 1920;
 export const MAX_SECONDS = 180;
-export const MAX_SCENES = 20;
 export const MAX_SCRIPT_CHARS = 3000;
 export const MAX_SCENE_CHARS = 140;
 export const MIN_SCENE_SECONDS = 1.2;
@@ -212,8 +211,12 @@ export type DurationMode =
   | { kind: "audio"; seconds: number }
   | { kind: "target"; seconds: number }
   | { kind: "auto" }
-  /** One duration per scene, e.g. from per-scene synthesized speech. */
-  | { kind: "scenes"; seconds: number[] };
+  /**
+   * One duration per scene. By default none is shorter than the minimum scene length (per-scene synthesized speech is padded to
+   * it). With `exact` the durations are used as they are (at least one frame): for timing taken from a transcript, where
+   * stretching a short scene would push every later subtitle and animation late, more the further into the video.
+   */
+  | { kind: "scenes"; seconds: number[]; exact?: boolean };
 
 export type TimelineResult =
   | { ok: true; scenes: Scene[]; totalFrames: number; seconds: number; warnings: string[] }
@@ -230,11 +233,10 @@ export function buildTimeline(script: string, mode: DurationMode, fps = FPS): Ti
   if (script.length > MAX_SCRIPT_CHARS) return { ok: false, error: `Naskah terlalu panjang (${script.length} karakter). Batas ${MAX_SCRIPT_CHARS} karakter.` };
   const { texts, pauses } = splitScriptWithPauses(script);
   if (texts.length === 0) return { ok: false, error: "Naskah tidak berisi teks yang bisa dijadikan scene." };
-  if (texts.length > MAX_SCENES) return { ok: false, error: `Naskah menghasilkan ${texts.length} scene. Batas ${MAX_SCENES} scene; ringkas atau gabungkan kalimat.` };
 
   if (mode.kind === "scenes") {
     if (mode.seconds.length !== texts.length || mode.seconds.some(x => !Number.isFinite(x) || x <= 0)) return { ok: false, error: "Suara otomatis tidak cocok dengan naskah. Buat ulang suara." };
-    const frames = mode.seconds.map(x => sceneFrames(x, fps));
+    const frames = mode.seconds.map(x => (mode.exact ? Math.max(1, Math.round(x * fps)) : sceneFrames(x, fps)));
     const sum = frames.reduce((a, b) => a + b, 0);
     if (sum / fps > MAX_SECONDS) return { ok: false, error: `Durasi suara ${(sum / fps).toFixed(1)} detik melebihi batas ${MAX_SECONDS} detik. Ringkas naskahnya.` };
     return { ok: true, scenes: texts.map((text, i) => ({ text, durationInFrames: frames[i], ...pauseOf(pauses[i], frames[i], fps) })), totalFrames: sum, seconds: sum / fps, warnings: [] };

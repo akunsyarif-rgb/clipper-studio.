@@ -236,7 +236,7 @@ export default function MotionStudio() {
   const timings = useMemo(() => imported ? sceneTimings(splitScript(script), shiftWords(allWords(imported), captionOffset), FPS, imported.duration) : null, [imported, script, captionOffset]);
   const timed = voiceMode !== "ai" && timings && (!narration || Math.abs(narration.seconds - imported!.duration) <= 1) ? timings : null;
   const mode: DurationMode = aiFresh ? { kind: "scenes", seconds: aiFresh.sceneSeconds }
-    : timed ? { kind: "scenes", seconds: timed.seconds }
+    : timed ? { kind: "scenes", seconds: timed.seconds, exact: true }
     : narration ? { kind: "audio", seconds: narration.seconds }
     // Editing over a video whose captions have no usable timing: the scenes still span exactly the video, never more or less.
     : videoEdit && source && splitScript(script).length * MIN_SCENE_SECONDS <= source.seconds ? { kind: "target", seconds: source.seconds }
@@ -677,7 +677,7 @@ export default function MotionStudio() {
             <button className="text-button" data-testid="timing-restore" onClick={() => setScript(scriptFromTranscript(imported, FPS))}>Kembalikan naskah dari transkrip</button>
           </div>}
           {timed && timed.aligned && <div className="notice normal-only" data-testid="aligned-notice">Naskah sudah diedit setelah transkripsi; kata-katanya diselaraskan dengan ucapan asli, jadi waktu caption mungkin bergeser sedikit di bagian yang diubah.</div>}
-          {timed && timed.tooShort > 0 && <div className="notice notice-error normal-only" data-testid="short-warning">{timed.tooShort} scene lebih pendek dari {MIN_SCENE_SECONDS} dtk, sehingga akan diperpanjang dan membuat subtitle sesudahnya bergeser. Gabungkan barisnya di kolom Naskah, tetapi pertahankan kata-katanya.</div>}
+          {timed && timed.tooShort > 0 && <div className="notice normal-only" data-testid="short-warning">{timed.tooShort} scene lebih pendek dari {MIN_SCENE_SECONDS} dtk. Waktu subtitle tetap tepat dengan ucapan, tetapi teks scene itu tampil sebentar saja. Gabungkan barisnya di kolom Naskah (kata-katanya tidak diubah) bila ingin lebih nyaman dibaca.</div>}
           <div className="field-label normal-only">Video sumber <span className="field-hint">opsional · unggah video, ucapannya jadi naskah &amp; subtitle otomatis (maks. 3 menit)</span></div>
           {!source
             ? <label className="upload-source normal-only"><input type="file" accept="video/*,.mp4,.mov,.m4v,.webm" onChange={onSourceVideo} data-testid="source-video" /></label>

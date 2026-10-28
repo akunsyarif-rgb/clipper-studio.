@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { amountsIn, DENSITIES, explainScene, judgeScenes, planAnimations, type Density, type SceneInput } from "./importance";
+import { amountsIn, DENSITIES, explainScene, judgeScenes, MIN_ANIMATED_SECONDS, planAnimations, type Density, type SceneInput } from "./importance";
 import { splitScript } from "./script";
 import { resolveVisual, sceneTopics } from "./visuals";
 
@@ -122,5 +122,15 @@ describe("explaining the choice", () => {
   });
   it("offers three settings", () => {
     expect(DENSITIES.map(d => d.id)).toEqual(["sparse", "balanced", "rich"]);
+  });
+});
+
+describe("scenes too brief to show anything", () => {
+  it("never get an animation or a graphic, however strong they would be", () => {
+    const scenes: SceneInput[] = ["Kita mulai dari sini ya.", "Harganya hanya Rp 89.000 saja.", "Jadi begitu."].map(text => ({ text, seconds: 3, visual: resolveVisual(text) }));
+    const normal = planAnimations(scenes, "rich");
+    expect(normal.cuts[1]).not.toBe("video");
+    const brief = planAnimations(scenes.map((s, i) => (i === 1 ? { ...s, seconds: MIN_ANIMATED_SECONDS - 0.4 } : s)), "rich");
+    expect(brief.cuts[1]).toBe("video");
   });
 });
