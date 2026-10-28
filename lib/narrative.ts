@@ -64,12 +64,12 @@ function topicOf(text: string): string | null {
 
 function intentOf(text: string): NarrativeIntent {
   if (patterns.question.test(text)) return "question";
+  if (patterns.resolution.test(text)) return "resolution";
   if (patterns.comparison.test(text) || /\b(bukan|melainkan|tetapi|tapi|however|whereas)\b/i.test(text)) return "contrast";
   if (patterns.cause.test(text)) return "cause-effect";
   if (patterns.process.test(text) || /^(?:\d+[.)]|langkah\s+\d+)/i.test(text)) return "process";
   if (patterns.data.test(text)) return "evidence";
   if (patterns.reveal.test(text)) return "insight";
-  if (patterns.resolution.test(text)) return "resolution";
   if (patterns.application.test(text)) return "instruction";
   if (patterns.story.test(text)) return "story";
   if (patterns.reflection.test(text)) return "reflection";
