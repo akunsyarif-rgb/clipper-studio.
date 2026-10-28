@@ -24,6 +24,8 @@ export type NarrativePlan = {
   confidence: "low" | "medium" | "high";
   /** Index of the nearest previous/next beat sharing the detected topic, where available. */
   continuity: { previousRelated: number | null; nextRelated: number | null };
+  /** Review prompts for low-confidence or potentially hard-to-read beats; never presented as factual errors. */
+  reviewFlags: string[];
 };
 
 const patterns = {
@@ -157,6 +159,10 @@ export function planNarrative(texts: string[]): NarrativePlan[] {
 
     // Narrative role matters too, but the final line is not always a conclusion when it introduces a concrete action.
     const finalRole = last && role === "continuation" ? "resolution" : role;
+    const reviewFlags: string[] = [];
+    if (text.length > 120) reviewFlags.push("Naskah cukup panjang; pertimbangkan membaginya menjadi dua beat.");
+    if (confidence === "low") reviewFlags.push("Sinyal makna lemah; periksa pilihan visual secara manual.");
+    if (intent === "evidence") reviewFlags.push("Pastikan sumber angka atau klaim tersedia sebelum publikasi.");
     const reason = `${intent === "contrast" ? "Kontras terdeteksi" : intent === "cause-effect" ? "Hubungan sebab-akibat terdeteksi" : intent === "process" ? "Urutan langkah terdeteksi" : intent === "evidence" ? "Bukti atau angka terdeteksi" : intent === "insight" ? "Penanda insight terdeteksi" : intent === "instruction" ? "Ajakan tindakan terdeteksi" : intent === "story" ? "Sinyal alur cerita terdeteksi" : intent === "reflection" ? "Bahasa reflektif terdeteksi" : intent === "question" ? "Pertanyaan terdeteksi" : "Kalimat gagasan"}; ${visualCueFor(intent, topic)}.`;
     const continuityCue = previousRelated !== null
       ? `Lanjutkan konsep ${topic}; jadikan perubahan atau implikasi sebagai fokus adegan.`
@@ -178,6 +184,7 @@ export function planNarrative(texts: string[]): NarrativePlan[] {
       visualCue: visualCueFor(intent, topic),
       confidence,
       continuity: { previousRelated, nextRelated },
+      reviewFlags,
     };
   });
 }
