@@ -16,6 +16,7 @@ describe("directorPrompt", () => {
     expect(p).toContain("terlalu ramai, lebih tenang");
     expect(p).toContain("Kamu rugi 80% waktu tiap hari.");
     expect(p).toContain("jangan isi \"cut\"");
+    expect(p).toContain("imageQuery");
   });
   it("asks for screen cuts only when editing over a video", () => {
     expect(directorPrompt({ ...input, videoEdit: true })).toContain("isi juga \"cut\"");
@@ -29,13 +30,13 @@ describe("directorPrompt", () => {
 describe("parseDirector", () => {
   it("keeps valid choices, drops unknown ones and never invents", () => {
     const plan = parseDirector(gem({ style: "kinetic", palette: "nope", note: "Tegas lalu tenang.", scenes: [
-      { index: 0, template: "number", icon: "money", reason: "Angka jadi sorotan", imageIdea: "uang rupiah" },
+      { index: 0, template: "number", icon: "money", reason: "Angka jadi sorotan", imageIdea: "uang rupiah", imageQuery: "  indonesian\n rupiah money " },
       { index: 1, template: "hologram", icon: "not-an-icon", reason: "x" },
       { index: 9, template: "cta", reason: "di luar" },
     ] }), 3, false);
     expect(plan.style).toBe("kinetic");
     expect(plan.palette).toBeUndefined();
-    expect(plan.scenes[0]).toMatchObject({ template: "number", icon: "money", imageIdea: "uang rupiah" });
+    expect(plan.scenes[0]).toMatchObject({ template: "number", icon: "money", imageIdea: "uang rupiah", imageQuery: "indonesian rupiah money" });
     expect(plan.scenes[1]).toBeUndefined();
     expect(plan.scenes[2]).toBeUndefined();
     expect(plan.note).toBe("Tegas lalu tenang.");

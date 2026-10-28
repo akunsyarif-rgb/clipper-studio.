@@ -28,6 +28,9 @@ import { ScriptVideo } from "@/remotion/ScriptVideo";
 import TranscriptPanel from "../TranscriptPanel";
 import GeminiJudge from "../GeminiJudge";
 import AiDirector from "../AiDirector";
+import PexelsPanel from "../PexelsPanel";
+import ScenePhotoPicker from "../ScenePhotoPicker";
+import { creditText, type PexelsPhoto } from "@/lib/pexels";
 import { planToOverrides, type DirectorPlan } from "@/lib/director";
 import CloudAccount from "../CloudAccount";
 import { cloud } from "@/lib/cloud";
@@ -52,7 +55,7 @@ const MOTION_INTENSITY_LABELS: Record<string, string> = {
 
 type Track = { file: File; url: string; seconds: number };
 /** A scene picture kept in memory only (never uploaded or saved with the session). */
-type SceneImageFile = { url: string; name: string };
+type SceneImageFile = { url: string; name: string; /** Set for stock photos: who to credit and where. */ credit?: { text: string; href: string } };
 type Generated = Track & { mood: Mood; seed: number };
 type MusicMode = "none" | "auto" | "upload";
 type VoiceMode = "ai" | "manual" | "none";
@@ -139,7 +142,8 @@ export default function MotionStudio() {
   const [images, setImages] = useState<Record<string, SceneImageFile>>({});
   const [imageError, setImageError] = useState("");
   // The last "Sutradara AI" pass: why each scene looks as it does (by scene text), and what to restore on undo.
-  const [directorInfo, setDirectorInfo] = useState<Record<string, { reason: string; imageIdea?: string }>>({});
+  const [directorInfo, setDirectorInfo] = useState<Record<string, { reason: string; imageIdea?: string; imageQuery?: string }>>({});
+  const [pickerFor, setPickerFor] = useState<string | null>(null);
   const [directorNote, setDirectorNote] = useState("");
   const [beforeDirector, setBeforeDirector] = useState<{ style: StyleId; palette: PaletteId; contentPreset: ContentPresetId | "custom"; overrides: Record<string, VisualOverride>; cutOverrides: Record<string, Cut> } | null>(null);
   const imagesRef = useRef(images);
@@ -472,8 +476,8 @@ export default function MotionStudio() {
     if (plan.style || plan.palette) setContentPreset("custom");
     setOverrides(prev => ({ ...prev, ...ov }));
     if (videoEdit && source) setCutOverrides(prev => ({ ...prev, ...cuts }));
-    const info: Record<string, { reason: string; imageIdea?: string }> = {};
-    plan.scenes.forEach((s, i) => { if (s) info[texts[i]] = { reason: s.reason, imageIdea: s.imageIdea }; });
+    const info: Record<string, { reason: string; imageIdea?: string; imageQuery?: string }> = {};
+    plan.scenes.forEach((s, i) => { if (s) info[texts[i]] = { reason: s.reason, imageIdea: s.imageIdea, imageQuery: s.imageQuery }; });
     setDirectorInfo(info);
     setDirectorNote(plan.note);
   }
@@ -485,7 +489,7 @@ export default function MotionStudio() {
   }
   /** A choice made by hand replaces the AI's reason for that scene; the picture idea stays. */
   function manualChoice(text: string) {
-    setDirectorInfo(prev => prev[text]?.reason ? { ...prev, [text]: { reason: "", imageIdea: prev[text].imageIdea } } : prev);
+    setDirectorInfo(prev => prev[text]?.reason ? { ...prev, [text]: { ...prev[text], reason: "" } } : prev);
   }
 
   async function onSceneImage(text: string, e: ChangeEvent<HTMLInputElement>) {
@@ -495,12 +499,16 @@ export default function MotionStudio() {
     const problem = imageProblem(f);
     if (problem) { setImageError(problem); return; }
     setImageError("");
-    try {
-      const blob = await prepareImage(f);
-      const url = URL.createObjectURL(blob);
-      setImages(prev => { if (prev[text]) URL.revokeObjectURL(prev[text].url); return { ...prev, [text]: { url, name: f.name } }; });
-    } catch (err) { setImageError(err instanceof Error ? err.message : String(err)); }
+    try { await putSceneImage(text, f); }
+    catch (err) { setImageError(err instanceof Error ? err.message : String(err)); }
   }
+  /** Reduces the picture for memory and sets it behind the scene, replacing any earlier one. */
+  async function putSceneImage(text: string, file: File, credit?: SceneImageFile["credit"]) {
+    const blob = await prepareImage(file);
+    const url = URL.createObjectURL(blob);
+    setImages(prev => { if (prev[text]) URL.revokeObjectURL(prev[text].url); return { ...prev, [text]: { url, name: file.name, credit } }; });
+  }
+  const putStockPhoto = (text: string, file: File, photo: PexelsPhoto) => putSceneImage(text, file, { text: creditText(photo), href: photo.pexelsUrl || photo.photographerUrl || "https://www.pexels.com" });
   function removeSceneImage(text: string) {
     setImages(prev => { if (!prev[text]) return prev; URL.revokeObjectURL(prev[text].url); const next = { ...prev }; delete next[text]; return next; });
   }
@@ -571,7 +579,7 @@ export default function MotionStudio() {
       "MOTION GRAPHICS BRIEF", `Judul: ${title}`, `Gaya: ${STYLES.find(s => s.id === style)?.label}`, `Palet: ${PALETTES[palette].label}`,
       `Format: 9:16, ${WIDTH}x${HEIGHT}, ${FPS} fps`, `Narasi: ${narration ? narration.file.name : "tanpa narasi"}`,
       `Backsound: ${musicMode === "auto" ? `otomatis (${mood})` : musicMode === "upload" ? uploadedMusic?.file.name : "tanpa backsound"}`,
-      ...(timeline.ok ? timeline.scenes.map((s, i) => `Scene ${i + 1} (${(s.durationInFrames / FPS).toFixed(1)} dtk): ${s.text}${images[s.text] && !(videoEdit && source) ? ` [gambar: ${images[s.text].name}]` : ""}`) : []),
+      ...(timeline.ok ? timeline.scenes.map((s, i) => `Scene ${i + 1} (${(s.durationInFrames / FPS).toFixed(1)} dtk): ${s.text}${images[s.text] && !(videoEdit && source) ? ` [gambar: ${images[s.text].name}${images[s.text].credit ? ` — ${images[s.text].credit!.text}` : ""}]` : ""}`) : []),
     ].join("\n");
     try { await navigator.clipboard.writeText(brief); setStatus("Brief disalin ke clipboard."); }
     catch { setStatus("Browser tidak memberi izin clipboard. Gunakan Ekspor proyek JSON."); }
@@ -791,6 +799,8 @@ export default function MotionStudio() {
           {timeline.ok && <AiDirector language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"} active={Object.keys(directorInfo).length > 0} note={directorNote} onPlan={applyDirector} onUndo={undoDirector}
             input={{ scenes: timeline.scenes.map(sc => ({ text: sc.text, seconds: sc.durationInFrames / FPS })), videoEdit: !!(videoEdit && source), style, palette,
               current: timeline.scenes.map(sc => ({ template: overrides[sc.text]?.template, icon: overrides[sc.text]?.icon, cut: cutOverrides[sc.text] })) }} />}
+          {timeline.ok && !(videoEdit && source) && <PexelsPanel disabled={rendering} onApply={putStockPhoto}
+            scenes={timeline.scenes.map(sc => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery, hasImage: !!images[sc.text] }))} />}
           <div className="timeline-heading"><h3>Timeline scene</h3><span>{timeline.ok ? `${timeline.scenes.length} scene · maks. ${MAX_SECONDS} dtk` : ""}</span></div>
           <div className="scene-list" data-testid="scenes">{timeline.ok && (() => { let t = 0; return timeline.scenes.map((s, i) => { const from = t; t += s.durationInFrames; return (
             <div className="scene-item" key={i} data-testid="scene-item">
@@ -816,10 +826,13 @@ export default function MotionStudio() {
                   {images[s.text] ? "Ganti gambar" : "+ Gambar latar"}
                   <input type="file" accept="image/*" hidden disabled={rendering} data-testid="scene-image-input" onChange={e => void onSceneImage(s.text, e)} />
                 </label>
+                <button type="button" className="text-link" disabled={rendering} onClick={() => setPickerFor(pickerFor === s.text ? null : s.text)} data-testid="scene-image-pexels">Cari di Pexels</button>
                 {images[s.text] ? <button type="button" className="text-link" disabled={rendering} onClick={() => removeSceneImage(s.text)} data-testid="scene-image-remove">Hapus</button> : null}
+                {images[s.text]?.credit ? <small className="scene-credit" data-testid="scene-credit"><a href={images[s.text].credit!.href} target="_blank" rel="noreferrer noopener">{images[s.text].credit!.text}</a></small> : null}
               </div>}
+              {!(videoEdit && source) && pickerFor === s.text && <ScenePhotoPicker initialQuery={directorInfo[s.text]?.imageQuery ?? ""} onChoose={(file, photo) => putStockPhoto(s.text, file, photo)} onClose={() => setPickerFor(null)} />}
             </div>); }); })()}</div>
-          {!(videoEdit && source) && timeline.ok && <p className="preview-disclaimer" data-testid="image-note">{imageError ? <span className="scene-image-error" data-testid="image-error">{imageError} </span> : null}Gambar latar hanya dipakai di perangkat ini dan tidak ikut tersimpan atau tersinkron; pilih lagi setelah memuat ulang halaman. Pakai gambar milik Anda atau yang boleh dipakai ulang: gambar dari internet (mis. Pinterest) belum tentu bebas hak cipta.</p>}
+          {!(videoEdit && source) && timeline.ok && <p className="preview-disclaimer" data-testid="image-note">{imageError ? <span className="scene-image-error" data-testid="image-error">{imageError} </span> : null}Gambar latar hanya dipakai di perangkat ini dan tidak ikut tersimpan atau tersinkron; pilih lagi setelah memuat ulang halaman. Pakai gambar milik Anda, foto Pexels, atau yang boleh dipakai ulang: gambar dari internet (mis. Pinterest) belum tentu bebas hak cipta.</p>}
         </section>
       </div>
 

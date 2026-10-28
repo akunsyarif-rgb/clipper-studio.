@@ -477,6 +477,113 @@ try {
     return `3 scenes arranged with reasons, feedback pass, undo, error explained, no-key message`;
   });
 
+  await step("Pexels: save the key on the server, the AI's search phrases fill the scenes, swap by hand, credits shown, rendered", async () => {
+    const SB = "https://smwealrfgnzxquqqscxs.supabase.co";
+    // Two solid-colour "photos": scene 1 gets the green one, a hand swap on scene 2 gets the blue one.
+    const jpg = c => { const f = join(dir, `stock-${c}.jpg`); execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=${c}:s=1080x1920`, "-frames:v", "1", f]); return readFileSync(f); };
+    const bytes = { green: jpg("green"), blue: jpg("blue") };
+    const colorOf = id => (id === 11 ? "green" : "blue");
+    const photoRec = id => ({ id, alt: `foto ${id}`, url: `https://www.pexels.com/photo/x-${id}/`, photographer: `Fotografer ${id}`, photographer_url: `https://www.pexels.com/@f${id}`, src: { original: `https://images.pexels.com/photos/${id}/p.jpeg`, medium: `https://images.pexels.com/photos/${id}/p.jpeg?h=350`, portrait: `https://images.pexels.com/photos/${id}/p.jpeg?w=800` } });
+    const seen = { searches: [], images: [], saved: 0, hasKey: false, generate: 0 };
+    const ctx2 = await browser.newContext({ acceptDownloads: true });
+    await ctx2.route("https://images.pexels.com/**", r => r.fulfill({ status: 200, contentType: "image/jpeg", body: bytes[colorOf(Number(new URL(r.request().url()).pathname.split("/")[2]))], headers: { "access-control-allow-origin": "*" } }));
+    await ctx2.route(SB + "/**", async route => {
+      const req = route.request(), u = new URL(req.url());
+      const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "POST, GET, OPTIONS" };
+      if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+      const send = (status, body) => route.fulfill({ status, headers: cors, contentType: "application/json", body: JSON.stringify(body) });
+      if (u.pathname === "/auth/v1/token") return send(200, { access_token: "AT", refresh_token: "RT", expires_in: 3600, user: { email: "saya@contoh.id" } });
+      if (u.pathname.startsWith("/rest/v1/")) return send(200, []);
+      const m = JSON.parse(req.postData() ?? "{}");
+      if (u.pathname === "/functions/v1/gemini") {
+        if (m.action === "status") return send(200, { hasKey: true, provider: "openai", baseUrl: "https://openrouter.ai/api/v1", model: "google/gemini-x" });
+        seen.generate++;
+        const plan = { style: "kinetic", palette: "obsidian", note: "Hangat dan jelas.", scenes: [{ index: 0, template: "statement", icon: "none", reason: "Pembuka hangat", imageIdea: "kopi pagi", imageQuery: "morning coffee" }, { index: 1, template: "statement", icon: "none", reason: "Penutup rapi", imageIdea: "laptop kerja", imageQuery: "laptop desk" }] };
+        return send(200, { choices: [{ message: { content: JSON.stringify(plan) } }] });
+      }
+      if (u.pathname !== "/functions/v1/pexels") return send(404, {});
+      if (m.action === "status") return send(200, { hasKey: seen.hasKey });
+      if (m.action === "forget") { seen.hasKey = false; return send(200, { ok: true }); }
+      if (m.action === "save-key") { if (m.apiKey.startsWith("bad")) return send(400, { error: { status: "KEY_REJECTED", message: "Pexels menolak kunci ini. Periksa kuncinya di pexels.com/api." } }); seen.saved++; seen.hasKey = true; return send(200, { ok: true }); }
+      if (m.action === "search") {
+        seen.searches.push(m.query);
+        // The first scene's phrase finds the green photo (11) first; any other phrase finds blue (22) then green.
+        const ids = /coffee/.test(m.query) ? [11, 22] : [22, 11];
+        return send(200, { photos: ids.map(id => { const p = photoRec(id); return { id, alt: p.alt, photographer: p.photographer, photographerUrl: p.photographer_url, pexelsUrl: p.url, thumb: p.src.medium, image: p.src.original, fallback: p.src.portrait }; }), remaining: 190 });
+      }
+      if (m.action === "image") {
+        seen.images.push(m.url);
+        const id = Number(new URL(m.url).pathname.split("/")[2]);
+        return route.fulfill({ status: 200, headers: { ...cors, "content-type": "image/jpeg" }, body: bytes[colorOf(id)] });
+      }
+      return send(400, {});
+    });
+    const p = await ctx2.newPage();
+    p.on("pageerror", e => pageErrors.push(e.message));
+    await p.goto(BASE);
+    await p.getByTestId("voice-none").click();
+    await p.getByTestId("style").selectOption("hybrid");
+    await p.getByTestId("script").fill("Kopi pagi membuatmu semangat.\nLaptop siap untuk bekerja.");
+    await p.getByTestId("duration").selectOption("15");
+    // Signed out: the panel says what is needed.
+    await p.getByTestId("pexels-needs-login").waitFor({ timeout: 5000 });
+    await p.getByTestId("cloud-open").click();
+    await p.getByTestId("cloud-email").fill("saya@contoh.id");
+    await p.getByTestId("cloud-password").fill("benar-sekali");
+    await p.getByTestId("cloud-signin").click();
+    // Signed in without a Pexels key: a wrong key is explained, a good one is saved, and is never shown again.
+    await p.getByTestId("pexels-key").waitFor({ timeout: 10000 });
+    assert(await p.getByTestId("pexels-save").isDisabled(), "save waits for a key");
+    await p.getByTestId("pexels-key").fill("bad" + "x".repeat(30));
+    await p.getByTestId("pexels-save").click();
+    await p.getByTestId("pexels-error").filter({ hasText: "menolak" }).waitFor({ timeout: 5000 });
+    await p.getByTestId("pexels-key").fill("pexels_" + "z".repeat(40));
+    await p.getByTestId("pexels-save").click();
+    await p.getByTestId("pexels-fill").waitFor({ timeout: 5000 });
+    assert(seen.saved === 1 && !(await p.content()).includes("z".repeat(40)), "key saved once and not left on the page");
+    // No search phrases yet: the panel points to the director instead of guessing.
+    assert(await p.getByTestId("pexels-fill").isDisabled() && await p.getByTestId("pexels-no-query").isVisible(), "fill waits for phrases");
+    await p.getByTestId("director-run").click();
+    await p.getByTestId("scene-image-idea").first().waitFor({ timeout: 10000 });
+    const label = await p.getByTestId("pexels-fill").textContent();
+    assert(/2 scene/.test(label), `fill offers both scenes: ${label}`);
+    await p.getByTestId("pexels-fill").click();
+    await p.getByTestId("pexels-summary").waitFor({ timeout: 30000 });
+    assert(/2 gambar dipasang/.test(await p.getByTestId("pexels-summary").textContent()), "summary");
+    assert(seen.searches.join("|") === "morning coffee|laptop desk", `AI phrases were searched: ${seen.searches}`);
+    assert(await p.locator(".scene-thumb").count() === 2, "both scenes have a picture");
+    // Scene 2's best match (22, blue) is not used elsewhere; scene 1 got the green photo (11).
+    const credits = await p.getByTestId("scene-credit").allTextContents();
+    assert(credits[0] === "Foto: Fotografer 11 di Pexels" && credits[1] === "Foto: Fotografer 22 di Pexels", `credits: ${credits}`);
+    assert((await p.getByTestId("scene-credit").first().locator("a").getAttribute("href")).startsWith("https://www.pexels.com/"), "credit links to Pexels");
+    // Swap scene 2's picture by hand: the picker is prefilled with the AI phrase and shows credits.
+    await p.getByTestId("scene-image-pexels").nth(1).click();
+    await p.getByTestId("photo-grid").waitFor({ timeout: 10000 });
+    assert(await p.getByTestId("photo-query").inputValue() === "laptop desk", "picker prefilled with the AI phrase");
+    assert(await p.getByTestId("photo-choice").count() === 2, "two results");
+    await p.getByTestId("photo-choice").nth(1).click(); // the second result for "laptop desk" is photo 11 (green)
+    await p.getByTestId("photo-picker").waitFor({ state: "detached", timeout: 10000 });
+    assert((await p.getByTestId("scene-credit").allTextContents())[1] === "Foto: Fotografer 11 di Pexels", "swapped credit");
+    // Render: both scenes show their green photo.
+    const info = await (async () => {
+      await p.getByTestId("render").click();
+      await p.getByTestId("result").waitFor({ timeout: 300000 });
+      const [download] = await Promise.all([p.waitForEvent("download"), p.getByTestId("download").click()]);
+      const out = join(dir, "stock.mp4");
+      await download.saveAs(out);
+      const px = at => [...execFileSync("ffmpeg", ["-v", "error", "-ss", String(at), "-i", out, "-frames:v", "1", "-vf", "crop=1080:200:0:0,scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])];
+      return { p1: px(3), p2: px(11), dur: probe(out).duration };
+    })();
+    for (const [name, [r, g, b]] of [["scene 1", info.p1], ["scene 2", info.p2]]) assert(g > r + 20 && g > b + 20, `${name} should show a green photo, got ${r},${g},${b}`);
+    assert(Math.abs(info.dur - 15) < 0.3, `duration ${info.dur}`);
+    // Forgetting the key brings the key form back.
+    await p.getByTestId("pexels-forget").click();
+    await p.getByTestId("pexels-key").waitFor({ timeout: 5000 });
+    assert(seen.hasKey === false, "key forgotten on the server");
+    await ctx2.close();
+    return `phrases ${seen.searches.join(" / ")}, ${seen.images.length} images fetched through the server, credits shown, MP4 ${info.dur.toFixed(1)}s with the photos`;
+  });
+
   await step("no horizontal scroll on iPhone-size viewport", async () => {
     const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
     await phone.goto(BASE);

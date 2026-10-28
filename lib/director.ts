@@ -24,7 +24,7 @@ export type DirectorInput = {
   language: "id" | "en";
 };
 
-export type DirectorScene = { template?: Template; icon?: string; cut?: Cut; reason: string; imageIdea?: string };
+export type DirectorScene = { template?: Template; icon?: string; cut?: Cut; reason: string; /** What kind of photo fits, in Indonesian, for the creator to read. */ imageIdea?: string; /** The same as a search phrase in English, for the stock-photo search. */ imageQuery?: string };
 export type DirectorPlan = { style?: StyleId; palette?: PaletteId; scenes: (DirectorScene | undefined)[]; note: string };
 
 /**
@@ -39,7 +39,7 @@ export const PLAYBOOK = [
   "Satu warna dominan: palet mengikuti suasana topik (edukasi: pearl; teknologi/bisnis: obsidian; motivasi/sinematik: gold; refleksi/tenang: forest atau ivory; sosial yang cepat: violet).",
   "Gaya mengikuti tempo: kinetic untuk hook cepat dan media sosial; cinematic untuk cerita/motivasi; editorial untuk refleksi tenang; hybrid bila campuran; popup untuk penekanan.",
   "Video sumber (bila ada): pembicara tetap yang utama. \"video\" = hanya pembicara; \"overlay\" = animasi kecil untuk istilah/angka penting; \"graphic\" = ganti layar penuh (maks. 4 detik) hanya untuk poin kunci, tidak lebih dari 1 dari 3 scene, dan bukan di momen emosional.",
-  "Ide gambar: untuk setiap scene beri 2-4 kata kunci pencarian foto yang konkret dan mudah dicari (benda/situasi nyata, bukan konsep abstrak).",
+  "Ide gambar: untuk setiap scene beri \"imageIdea\" (2-4 kata bahasa Indonesia untuk dibaca pembuat video) dan \"imageQuery\" (2-4 kata bahasa INGGRIS untuk mencari foto vertikal di situs foto stok): benda atau situasi nyata yang mudah dicari, bukan konsep abstrak; hindari orang tertentu, teks, dan logo.",
 ];
 
 const iconList = () => Object.keys(ICONS).sort().join(", ");
@@ -62,7 +62,7 @@ export function directorPrompt(i: DirectorInput): string {
     `Sekarang: style=${i.style}, palette=${i.palette}.`,
     i.feedback ? `Masukan pembuat video tentang hasil sebelumnya (utamakan ini): "${i.feedback.replace(/\s+/g, " ").trim().slice(0, 400)}"` : "Belum ada masukan; susun yang terbaik menurut panduan.",
     "Beri alasan (reason) singkat dalam bahasa Indonesia, maksimal 10 kata, yang menjelaskan PILIHAN itu kepada pembuat video. Beri juga \"note\": satu kalimat ringkasan arah keseluruhan (maks. 25 kata).",
-    "Balas hanya JSON: {\"style\":\"...\",\"palette\":\"...\",\"note\":\"...\",\"scenes\":[{\"index\":n,\"template\":\"...\",\"icon\":\"...\",\"cut\":\"...\",\"reason\":\"...\",\"imageIdea\":\"...\"}]} untuk setiap kalimat.",
+    "Balas hanya JSON: {\"style\":\"...\",\"palette\":\"...\",\"note\":\"...\",\"scenes\":[{\"index\":n,\"template\":\"...\",\"icon\":\"...\",\"cut\":\"...\",\"reason\":\"...\",\"imageIdea\":\"...\",\"imageQuery\":\"...\"}]} untuk setiap kalimat.",
     "",
     "Kalimat (JSON):",
     JSON.stringify(i.scenes.map((s, index) => ({ index, text: s.text.replace(/\*/g, ""), seconds: Math.round(s.seconds * 10) / 10, ...(i.current?.[index] ? { sekarang: i.current[index] } : {}) }))),
@@ -84,7 +84,7 @@ export function parseDirector(response: unknown, expected: number, videoEdit: bo
     const icon = typeof it.icon === "string" && (it.icon === "none" || it.icon in ICONS) ? it.icon : undefined;
     const cut = videoEdit && CUTS.includes(it.cut as Cut) ? it.cut as Cut : undefined;
     if (!template && !icon && !cut) continue;
-    scenes[it.index] = { template, icon, cut, reason: clean(it.reason, 80), imageIdea: clean(it.imageIdea, 60) || undefined };
+    scenes[it.index] = { template, icon, cut, reason: clean(it.reason, 80), imageIdea: clean(it.imageIdea, 60) || undefined, imageQuery: clean(it.imageQuery, 60) || undefined };
   }
   if (!scenes.some(Boolean)) throw new GeminiError("format", "AI tidak memberi susunan yang bisa dipakai. Coba lagi.");
   return {
@@ -123,7 +123,7 @@ export function planToOverrides(plan: DirectorPlan, texts: string[]): { override
 /** Asks the model to arrange the video. Only the sentences' text (and the creator's feedback) is sent. */
 export async function directVideo(input: DirectorInput, o: CleanupOptions): Promise<DirectorPlan> {
   if (input.scenes.length === 0) throw new GeminiError("format", "Belum ada scene untuk disusun.");
-  const sceneSchema = { type: "OBJECT", properties: { index: { type: "INTEGER" }, template: { type: "STRING" }, icon: { type: "STRING" }, cut: { type: "STRING" }, reason: { type: "STRING" }, imageIdea: { type: "STRING" } }, required: ["index", "template", "reason"] };
+  const sceneSchema = { type: "OBJECT", properties: { index: { type: "INTEGER" }, template: { type: "STRING" }, icon: { type: "STRING" }, cut: { type: "STRING" }, reason: { type: "STRING" }, imageIdea: { type: "STRING" }, imageQuery: { type: "STRING" } }, required: ["index", "template", "reason"] };
   const schema = { type: "OBJECT", properties: { style: { type: "STRING" }, palette: { type: "STRING" }, note: { type: "STRING" }, scenes: { type: "ARRAY", items: sceneSchema } }, required: ["style", "palette", "note", "scenes"] };
   return ask(o, [{ text: directorPrompt(input) }], schema, json => parseDirector(json, input.scenes.length, input.videoEdit));
 }
