@@ -412,6 +412,71 @@ try {
     return `${info}, top band scene 1 rgb ${r1},${g1},${b1}, scene 2 rgb ${r2},-,${b2}`;
   });
 
+  await step("the AI director arranges the video, shows its reasons, takes feedback, can be undone and edited by hand", async () => {
+    const ai = await (await browser.newContext()).newPage();
+    ai.on("pageerror", e => pageErrors.push(e.message));
+    // A device key (no sign-in needed) and a fake AI service that answers according to the request.
+    await ai.addInitScript(() => localStorage.setItem("clipper:gemini:v1", JSON.stringify({ apiKey: "k".repeat(30), model: "gemini-flash-latest", consent: true })));
+    const requests = [];
+    let fail = false;
+    await ai.route("https://generativelanguage.googleapis.com/**", async route => {
+      const prompt = JSON.parse(route.request().postData() ?? "{}").contents?.[0]?.parts?.[0]?.text ?? "";
+      requests.push(prompt);
+      if (fail) return route.fulfill({ status: 429, contentType: "application/json", body: JSON.stringify({ error: { status: "RESOURCE_EXHAUSTED", message: "quota" } }) });
+      const calm = /lebih tenang/.test(prompt);
+      const plan = calm
+        ? { style: "editorial", palette: "ivory", note: "Dibuat lebih tenang.", scenes: [{ index: 0, template: "statement", icon: "none", reason: "Tenang, tanpa ikon", imageIdea: "orang melamun" }, { index: 1, template: "statement", icon: "none", reason: "Satu fokus", imageIdea: "dua jalan" }, { index: 2, template: "statement", icon: "none", reason: "Penutup lembut", imageIdea: "layar ponsel" }] }
+        : { style: "kinetic", palette: "obsidian", note: "Pembuka tegas, angka jadi sorotan, ajakan di akhir.", scenes: [{ index: 0, template: "number", reason: "Angka 80% jadi sorotan", imageIdea: "jam pasir, orang sibuk" }, { index: 1, template: "question", reason: "Pertanyaan memancing jawaban", imageIdea: "persimpangan jalan" }, { index: 2, template: "cta", reason: "Ajakan di akhir", imageIdea: "tombol ikuti" }] };
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(plan) }] } }] }) });
+    });
+    await ai.goto(BASE);
+    await ai.getByTestId("voice-none").click();
+    await ai.getByTestId("script").fill("Kamu rugi 80% waktu tiap hari.\nPilih jalan lama atau jalan baru?\nIkuti untuk tips berikutnya!");
+    await ai.getByTestId("duration").selectOption("15");
+    await ai.getByTestId("director-run").waitFor({ timeout: 5000 });
+    const before = { style: await ai.getByTestId("style").inputValue(), palette: await ai.getByTestId("palette").inputValue() };
+    await ai.getByTestId("director-run").click();
+    await ai.getByTestId("director-note").waitFor({ timeout: 10000 });
+    assert(/angka jadi sorotan/.test(await ai.getByTestId("director-note").textContent()), "AI direction summary shown");
+    assert(await ai.getByTestId("style").inputValue() === "kinetic" && await ai.getByTestId("palette").inputValue() === "obsidian", "AI chose style and palette");
+    const reasons = await ai.getByTestId("scene-director").allTextContents();
+    assert(reasons.length === 3 && /Angka 80%/.test(reasons[0]), `one reason per scene: ${JSON.stringify(reasons)}`);
+    assert((await ai.getByTestId("scene-image-idea").allTextContents())[1].includes("persimpangan"), "picture idea shown");
+    const templates = await ai.locator('[data-testid="scene-template"] option:checked').allTextContents();
+    assert(templates[0] === "Angka" && templates[1] === "Tanya" && templates[2] === "Ajakan", `templates applied: ${templates}`);
+    assert(requests.length === 1 && requests[0].includes("Panduan kerja") && requests[0].includes("Kamu rugi 80% waktu"), "playbook and sentences sent");
+    assert(!requests[0].includes("k".repeat(30)), "the key is never part of the prompt");
+    // The preview really shows the chosen template.
+    await ai.getByTestId("scene-item").nth(0).locator(".scene-row").click();
+    await ai.locator('.player-wrap [data-visual="number"]').waitFor({ timeout: 5000 });
+    // Feedback: the second pass carries the creator's words and the current choices.
+    await ai.getByTestId("director-feedback").fill("lebih tenang, kurangi animasi");
+    await ai.getByTestId("director-run").click();
+    await ai.getByText("Dibuat lebih tenang.").waitFor({ timeout: 10000 });
+    assert(requests.length === 2 && requests[1].includes("lebih tenang, kurangi animasi") && requests[1].includes('"sekarang"'), "feedback and current choices sent");
+    assert(await ai.getByTestId("style").inputValue() === "editorial", "second pass applied");
+    // A manual change replaces the AI's reason for that scene only.
+    await ai.getByTestId("scene-template").nth(1).selectOption("quote");
+    assert((await ai.getByTestId("scene-director").allTextContents()).length === 2, "manual change drops that scene's AI reason");
+    // Undo restores everything from before the first pass.
+    await ai.getByTestId("director-undo").click();
+    assert(await ai.getByTestId("style").inputValue() === before.style && await ai.getByTestId("palette").inputValue() === before.palette, "undo restores style and palette");
+    assert(await ai.getByTestId("scene-director").count() === 0 && await ai.getByTestId("director-note").count() === 0, "undo clears the reasons");
+    const after = await ai.locator('[data-testid="scene-template"] option:checked').allTextContents();
+    assert(after.every(t => t.startsWith("Otomatis")), `templates back to automatic: ${after}`);
+    // A service error is explained and changes nothing.
+    fail = true;
+    await ai.getByTestId("director-run").click();
+    await ai.getByTestId("director-error").waitFor({ timeout: 15000 });
+    assert(await ai.getByTestId("scene-director").count() === 0, "failure applies nothing");
+    // Without a key the panel says what is needed.
+    const noKey = await (await browser.newContext()).newPage();
+    await noKey.goto(BASE);
+    await noKey.getByTestId("director-needs-key").waitFor({ timeout: 5000 });
+    await ai.close(); await noKey.close();
+    return `3 scenes arranged with reasons, feedback pass, undo, error explained, no-key message`;
+  });
+
   await step("no horizontal scroll on iPhone-size viewport", async () => {
     const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
     await phone.goto(BASE);

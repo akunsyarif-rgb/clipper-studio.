@@ -27,6 +27,8 @@ import { scenesToSrt } from "@/lib/srt";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
 import TranscriptPanel from "../TranscriptPanel";
 import GeminiJudge from "../GeminiJudge";
+import AiDirector from "../AiDirector";
+import { planToOverrides, type DirectorPlan } from "@/lib/director";
 import CloudAccount from "../CloudAccount";
 import { cloud } from "@/lib/cloud";
 import type { SceneScore } from "@/lib/gemini";
@@ -136,6 +138,10 @@ export default function MotionStudio() {
   // Scene pictures for faceless videos, keyed by scene text like the other per-scene choices.
   const [images, setImages] = useState<Record<string, SceneImageFile>>({});
   const [imageError, setImageError] = useState("");
+  // The last "Sutradara AI" pass: why each scene looks as it does (by scene text), and what to restore on undo.
+  const [directorInfo, setDirectorInfo] = useState<Record<string, { reason: string; imageIdea?: string }>>({});
+  const [directorNote, setDirectorNote] = useState("");
+  const [beforeDirector, setBeforeDirector] = useState<{ style: StyleId; palette: PaletteId; contentPreset: ContentPresetId | "custom"; overrides: Record<string, VisualOverride>; cutOverrides: Record<string, Cut> } | null>(null);
   const imagesRef = useRef(images);
   imagesRef.current = images;
   // Where in the source video a "clip" scene starts (seconds), per scene text.
@@ -455,6 +461,33 @@ export default function MotionStudio() {
     }
   }
 
+  /** Applies one pass of the AI director as ordinary choices; the previous state is kept so the whole pass can be undone. */
+  function applyDirector(plan: DirectorPlan) {
+    if (!timeline.ok) return;
+    const texts = timeline.scenes.map(sc => sc.text);
+    const { overrides: ov, cuts } = planToOverrides(plan, texts);
+    setBeforeDirector(prev => prev && Object.keys(directorInfo).length ? prev : { style, palette, contentPreset, overrides, cutOverrides });
+    if (plan.style) setStyle(plan.style);
+    if (plan.palette) setPalette(plan.palette);
+    if (plan.style || plan.palette) setContentPreset("custom");
+    setOverrides(prev => ({ ...prev, ...ov }));
+    if (videoEdit && source) setCutOverrides(prev => ({ ...prev, ...cuts }));
+    const info: Record<string, { reason: string; imageIdea?: string }> = {};
+    plan.scenes.forEach((s, i) => { if (s) info[texts[i]] = { reason: s.reason, imageIdea: s.imageIdea }; });
+    setDirectorInfo(info);
+    setDirectorNote(plan.note);
+  }
+  function undoDirector() {
+    if (!beforeDirector) return;
+    setStyle(beforeDirector.style); setPalette(beforeDirector.palette); setContentPreset(beforeDirector.contentPreset);
+    setOverrides(beforeDirector.overrides); setCutOverrides(beforeDirector.cutOverrides);
+    setDirectorInfo({}); setDirectorNote(""); setBeforeDirector(null);
+  }
+  /** A choice made by hand replaces the AI's reason for that scene; the picture idea stays. */
+  function manualChoice(text: string) {
+    setDirectorInfo(prev => prev[text]?.reason ? { ...prev, [text]: { reason: "", imageIdea: prev[text].imageIdea } } : prev);
+  }
+
   async function onSceneImage(text: string, e: ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     e.target.value = "";
@@ -755,23 +788,27 @@ export default function MotionStudio() {
               : <div className="player-empty">{blocker}</div>}
           </div>
           <p className="preview-disclaimer">Pratinjau memakai komposisi yang sama dengan hasil render, jadi teks, durasi scene, narasi, dan backsound identik dengan MP4.</p>
+          {timeline.ok && <AiDirector language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"} active={Object.keys(directorInfo).length > 0} note={directorNote} onPlan={applyDirector} onUndo={undoDirector}
+            input={{ scenes: timeline.scenes.map(sc => ({ text: sc.text, seconds: sc.durationInFrames / FPS })), videoEdit: !!(videoEdit && source), style, palette,
+              current: timeline.scenes.map(sc => ({ template: overrides[sc.text]?.template, icon: overrides[sc.text]?.icon, cut: cutOverrides[sc.text] })) }} />}
           <div className="timeline-heading"><h3>Timeline scene</h3><span>{timeline.ok ? `${timeline.scenes.length} scene · maks. ${MAX_SECONDS} dtk` : ""}</span></div>
           <div className="scene-list" data-testid="scenes">{timeline.ok && (() => { let t = 0; return timeline.scenes.map((s, i) => { const from = t; t += s.durationInFrames; return (
             <div className="scene-item" key={i} data-testid="scene-item">
               <button className="scene-row" onClick={() => player.current?.seekTo(from)}>
                 <span className="scene-index">{String(i + 1).padStart(2, "0")}</span>
-                <div className="scene-info"><b>{stripMarks(s.text)}</b><small className="narrative-hint">{NARRATIVE_ROLE_LABELS[narrativePlan[i]?.role ?? ""] ?? "Lanjutan"} · {VISUAL_STRATEGY_LABELS[narrativePlan[i]?.strategy ?? ""] ?? "Minimal"} · {MOTION_INTENSITY_LABELS[narrativePlan[i]?.intensity ?? ""] ?? "Tenang"}{!(videoEdit && source) && sceneVisuals[i] ? <> · <span className="scene-family" data-testid="scene-family">{FAMILY_LABELS[chooseFamily(sceneVisuals[i], narrativePlan[i])]}</span></> : null}</small><small className="narrative-reason">{narrativePlan[i]?.reason}</small>{videoEdit && source && animationPlan.judgements[i] ? <small className="narrative-reason" data-testid="scene-importance">{cutOverrides[s.text] ? "Diatur manual" : explainScene(animationPlan.judgements[i], planned[i] === "overlay")}</small> : null}<small className="narrative-continuity"><b>Penghubung:</b> {narrativePlan[i]?.continuityCue}</small></div>
+                <div className="scene-info"><b>{stripMarks(s.text)}</b><small className="narrative-hint">{NARRATIVE_ROLE_LABELS[narrativePlan[i]?.role ?? ""] ?? "Lanjutan"} · {VISUAL_STRATEGY_LABELS[narrativePlan[i]?.strategy ?? ""] ?? "Minimal"} · {MOTION_INTENSITY_LABELS[narrativePlan[i]?.intensity ?? ""] ?? "Tenang"}{!(videoEdit && source) && sceneVisuals[i] ? <> · <span className="scene-family" data-testid="scene-family">{FAMILY_LABELS[chooseFamily(sceneVisuals[i], narrativePlan[i])]}</span></> : null}</small><small className="narrative-reason">{narrativePlan[i]?.reason}</small>{videoEdit && source && animationPlan.judgements[i] ? <small className="narrative-reason" data-testid="scene-importance">{cutOverrides[s.text] ? "Diatur manual" : explainScene(animationPlan.judgements[i], planned[i] === "overlay")}</small> : null}<small className="narrative-continuity"><b>Penghubung:</b> {narrativePlan[i]?.continuityCue}</small>{directorInfo[s.text]?.reason ? <small className="narrative-reason director-reason" data-testid="scene-director"><b>Pilihan AI:</b> {directorInfo[s.text].reason}</small> : null}{!(videoEdit && source) && directorInfo[s.text]?.imageIdea ? <small className="narrative-reason director-reason" data-testid="scene-image-idea"><b>Ide gambar:</b> {directorInfo[s.text].imageIdea}</small> : null}</div>
                 <div className="scene-meta"><b>{(from / FPS).toFixed(1)}–{(t / FPS).toFixed(1)}s</b><small>{(s.durationInFrames / FPS).toFixed(1)} dtk</small></div>
               </button>
               <SceneVisualControls text={s.text} topics={sceneContext[i]} override={overrides[s.text]} disabled={rendering} cut={videoEdit ? { value: cutOverrides[s.text], auto: planned[i], clipFrom: clipStarts[s.text] } : undefined}
                 onCut={c => {
+                  manualChoice(s.text);
                   setCutOverrides(prev => { const next = { ...prev }; if (c) next[s.text] = c; else delete next[s.text]; return next; });
                   // Choosing "other footage" starts at wherever the source player is now.
                   if (c === "clip" && clipStarts[s.text] === undefined) setClipStarts(prev => ({ ...prev, [s.text]: Math.min(sourceVideo.current?.currentTime ?? 0, source?.seconds ?? 0) }));
                 }}
                 onClipHere={() => setClipStarts(prev => ({ ...prev, [s.text]: Math.min(sourceVideo.current?.currentTime ?? 0, source?.seconds ?? 0) }))}
                 onClipSeek={t => { if (sourceVideo.current) { sourceVideo.current.currentTime = t; } }}
-                onChange={o => setOverrides(prev => { const next = { ...prev }; if (o.template || o.icon) next[s.text] = o; else delete next[s.text]; return next; })} />
+                onChange={o => { manualChoice(s.text); setOverrides(prev => { const next = { ...prev }; if (o.template || o.icon) next[s.text] = o; else delete next[s.text]; return next; }); }} />
               {!(videoEdit && source) && <div className="scene-image" data-testid="scene-image">
                 {/* eslint-disable-next-line @next/next/no-img-element -- a local blob: thumbnail, nothing for next/image to optimise */}
                 {images[s.text] ? <img src={images[s.text].url} alt="" className="scene-thumb" /> : null}

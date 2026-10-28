@@ -414,3 +414,20 @@ Tahap "aset visual" dalam alur produksi (naskah → storyboard → suara → **a
 - **Pengujian:** `lib/scene-image.test.ts`; `e2e/motion.mjs` ("a scene picture moves behind its scene…": file bukan gambar ditolak, foto 4000×3000 diperkecil, pratinjau, render MP4, warna frame scene 1 berasal dari gambar dan scene 2 tetap latar palet, hapus gambar).
 
 Perubahan kecil lain di rilis yang sama: label pengembang "CLIPPER / MOTION · 30 FPS" tidak lagi ikut terbakar di MP4, dan gerak drift scene serta bar data kini memakai easing (bukan linear).
+
+## Sutradara AI (AI menyusun video, Anda memeriksa)
+
+Panel di atas "Timeline scene" di halaman Motion, untuk mode faceless maupun edit di atas video. Memakai kunci AI Anda yang sudah tersimpan (OpenRouter di server setelah masuk akun, atau kunci di perangkat). Satu ketukan, satu permintaan AI.
+
+- **Yang dikerjakan AI:** memilih **gaya, palet, tampilan tiap scene** (Ikon/Langkah/Tanya/Angka/✗✓/Ajakan/Kutipan), **ikon**, dan di mode edit video **potongan layar** (video / video + animasi / grafis penuh). Untuk faceless, AI juga memberi **ide gambar** per scene (2–4 kata kunci pencarian foto), supaya mencari aset tidak menebak-nebak.
+- **Yang tidak pernah dilakukan AI:** mengubah, menambah, atau membuang teks naskah. AI hanya memilih di antara opsi yang dimiliki app; nilai di luar daftar dibuang (`parseDirector`), bukan ditebak.
+- **Pagar pengaman** (`planToOverrides`): tampilan "Angka" tanpa angka di kalimat dan "✗/✓" tanpa dua sisi dibuang; ajakan (cta) tidak pernah membuka video; cta dan ✗/✓ tidak diberi ikon.
+- **Panduan yang dipakai AI** (`PLAYBOOK` di `lib/director.ts`, ringkasan sendiri, bukan salinan): pembuka paling kuat dan bergerak dalam 1,5 detik pertama; satu fokus visual per scene dan tampilan dipilih dari isi kalimat; variasi dengan tujuan (maks. 2 scene berturut-turut sama, beri jeda tenang setelah dua scene padat); ikon hanya bila mewakili isi; satu warna dominan sesuai suasana topik; gaya sesuai tempo; di edit video, pembicara tetap utama dan layar penuh maks. 1 dari 3 scene (maks. 4 detik). Sumber: Remotion Agent Skills (`remotion-dev/skills`), `haidrrrry/claude-remotion-skill` (MIT), pack `tiktok-video-skills` dan `explainer-video-skills` dari `iart-ai` (MIT).
+- **Anda tetap pengaudit:**
+  1. Di tiap scene tampil **"Pilihan AI: …"** (alasan singkat) dan **"Ide gambar: …"**; ringkasan arah keseluruhan tampil di panel.
+  2. Semua pilihan adalah pilihan biasa: ubah lewat menu **Tampilan / Ikon / Layar** seperti biasa. Alasan AI untuk scene itu hilang karena pilihannya sudah milik Anda.
+  3. **Masukan:** tulis di kotak (mis. "lebih tenang, kurangi animasi, scene 3 pakai angka"), lalu **"Susun ulang dengan masukan"**. AI menerima masukan itu dan pilihan saat ini, jadi menyesuaikan, bukan mulai dari nol.
+  4. **"Batalkan susunan AI"** mengembalikan gaya, palet, tampilan, ikon, dan potongan layar ke keadaan sebelum AI pertama kali dijalankan.
+- **Privasi dan biaya:** hanya teks kalimat, durasinya, dan masukan Anda yang dikirim; kunci tidak pernah masuk ke permintaan atau pesan galat. Satu pass = satu permintaan teks kecil (biaya sangat rendah di OpenRouter). Kegagalan (kuota, jaringan, jawaban rusak) dijelaskan dan tidak mengubah apa pun.
+- **Batas:** AI memilih dari tampilan yang ada; gerak dan tata letak tiap tampilan tetap dari app. Gambar tetap Anda pasang sendiri (lihat bagian gambar latar); AI belum mencari atau mengunduh gambar.
+- **Pengujian:** `lib/director.test.ts` (14 tes: prompt, parser termasuk format OpenRouter, pagar pengaman, satu permintaan) dan `e2e/motion.mjs` ("the AI director…": AI palsu, gaya/palet/tampilan diterapkan, alasan per scene, pratinjau menampilkan tampilan pilihan, masukan terkirim bersama pilihan saat ini, ubah manual, batalkan, galat dijelaskan, pesan tanpa kunci). **Belum diuji dengan model sungguhan** dari sandbox ini; kualitas pilihannya perlu Anda nilai.

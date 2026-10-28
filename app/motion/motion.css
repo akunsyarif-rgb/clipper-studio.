@@ -99,3 +99,9 @@ button.scene-row{width:100%;text-align:left;color:inherit;font:inherit;backgroun
 .scene-image-error{color:#ffb4a8}
 @media(max-width:520px){.scene-image{padding-left:28px}}
 .scene-image .text-link{margin-top:0}
+.ai-director{display:flex;flex-direction:column;gap:8px;margin-top:18px;padding:14px;border:1px solid #a194ff30;border-radius:12px;background:#a194ff0c}
+.ai-director>b{font-size:12px}
+.ai-director small{font-size:10px;line-height:1.6;color:var(--m-muted)}
+.ai-director textarea{width:100%;min-height:54px;border:1px solid #343750;background:#171a31;color:#f0f2ff;border-radius:9px;padding:10px;font:12px/1.5 'DM Sans',system-ui,sans-serif;resize:vertical}
+.director-reason b{color:#bcb1ff}
+@media(max-width:520px){.ai-director textarea{font-size:16px}}
