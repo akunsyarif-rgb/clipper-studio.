@@ -163,9 +163,10 @@ export async function extractAudio(file: File, range: { start: number; duration:
     if (code !== 0) throw new Error(`FFmpeg keluar dengan kode ${code}: ${logs}`);
     const data = await ff.readFile(AUDIO_OUTPUT_NAME);
     if (typeof data === "string" || data.byteLength < 3200) throw new Error("no audio: video tidak punya audio");
-    const pcm = new Int16Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength - (data.byteLength % 2)));
-    const out = new Float32Array(pcm.length);
-    for (let i = 0; i < pcm.length; i++) out[i] = pcm[i] / 32768;
+    // Convert straight from the bytes read: no intermediate Int16 copy (the peak matters on a tablet).
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength - (data.byteLength % 2));
+    const out = new Float32Array(view.byteLength / 2);
+    for (let i = 0; i < out.length; i++) out[i] = view.getInt16(i * 2, true) / 32768;
     return out;
   } finally {
     if (engine === ff) {

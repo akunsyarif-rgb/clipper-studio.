@@ -3,6 +3,7 @@
 /// <reference lib="webworker" />
 import type { RawChunk } from "../transcript";
 import { transcribeSpeech, type Pipe } from "./run";
+import { LOW_MEMORY_SESSION, ortWasmPaths } from "./device";
 
 export type AsrRequest = { audio: Float32Array; model: string; language: string };
 export type AsrMessage =
@@ -25,12 +26,11 @@ self.onmessage = async (e: MessageEvent<AsrRequest>) => {
     env.allowLocalModels = false;
     env.useBrowserCache = true;
     // Self-hosted WebAssembly runtime (copied to public/ort-asr at build time); no SharedArrayBuffer, so a single thread.
-    // Same variant choice as Transformers.js: the plain build on Safari < 26 without WebGPU, the asyncify build elsewhere.
+    // Always the plain CPU build (see ortWasmPaths): the asyncify one needs more memory than an iPad tab can spare.
     if (env.backends.onnx.wasm) {
-      const safari = /Version\/(\d+)[\d.]*.*Safari/.exec(self.navigator.userAgent);
-      const suffix = safari && Number(safari[1]) < 26 && !("gpu" in self.navigator) ? "" : ".asyncify";
-      env.backends.onnx.wasm.wasmPaths = { mjs: `/ort-asr/ort-wasm-simd-threaded${suffix}.mjs`, wasm: `/ort-asr/ort-wasm-simd-threaded${suffix}.wasm` };
+      env.backends.onnx.wasm.wasmPaths = ortWasmPaths();
       env.backends.onnx.wasm.numThreads = 1;
+      env.backends.onnx.wasm.proxy = false;
     }
     const loadStart = performance.now();
     const reused = !!loaded && loaded.model === model;
@@ -44,6 +44,7 @@ self.onmessage = async (e: MessageEvent<AsrRequest>) => {
       const pipe = await pipeline("automatic-speech-recognition", model, {
         device: "wasm",
         dtype: "q8",
+        session_options: { ...LOW_MEMORY_SESSION },
         progress_callback: (p: { status: string; file?: string; loaded?: number; total?: number }) => {
           if (p.status !== "progress" || !p.file) return;
           files.set(p.file, { loaded: p.loaded ?? 0, total: p.total ?? 0 });
@@ -61,6 +62,9 @@ self.onmessage = async (e: MessageEvent<AsrRequest>) => {
     const run = await transcribeSpeech(pipe as Pipe, audio, language, (done, total) => post({ type: "chunk", done, total }));
     post({ type: "result", granularity: run.granularity, chunks: run.chunks, inferSeconds: (performance.now() - inferStart) / 1000, speechSeconds: run.speechSeconds });
   } catch (err) {
+    // A half-loaded or failed model only holds memory: drop it so a retry (here or with a lighter model) starts clean.
+    try { await loaded?.pipe.dispose?.(); } catch { /* best effort */ }
+    loaded = null;
     post({ type: "error", detail: err instanceof Error ? `${err.name}: ${err.message}\n${(err.stack ?? "").split("\n").slice(0, 4).join("\n")}` : String(err) });
   }
 };

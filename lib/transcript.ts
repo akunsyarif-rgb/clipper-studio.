@@ -416,7 +416,7 @@ export function validateTranscribeRange(duration: number): string | null {
 /** Human-readable explanation of common transcription failures. */
 export function explainTranscribeError(detail: string): string {
   if (/no audio|tidak punya audio|empty audio/i.test(detail)) return "Video ini tidak memiliki suara yang bisa ditranskripsi. Pilih video atau bagian lain yang ada ucapannya.";
-  if (/memory|OOM|allocation|RangeError|Out of bounds/i.test(detail)) return "Memori browser tidak cukup untuk model ucapan. Tutup tab lain, pilih bagian lebih pendek, atau pakai model Cepat.";
+  if (/memory|OOM|allocation|RangeError|Out of bounds|no available backend/i.test(detail)) return "Memori browser tidak cukup untuk model ucapan, bahkan setelah dicoba dengan model yang lebih ringan. Tutup tab dan aplikasi lain, muat ulang halaman, lalu pilih bagian yang lebih pendek (30–60 detik) dan coba lagi.";
   if (/fetch|network|Failed to load|NetworkError|load failed|Could not locate|unable to get|huggingface/i.test(detail)) return "Model ucapan gagal diunduh. Periksa koneksi internet lalu coba lagi (model hanya diunduh sekali, lalu disimpan di perangkat).";
   if (/webassembly|wasm|worker/i.test(detail)) return "Browser ini tidak dapat menjalankan mesin transkripsi (WebAssembly/Worker). Perbarui Safari/Chrome lalu coba lagi.";
   if (/Invalid data|moov atom|Decoder|does not contain any stream|codec/i.test(detail)) return "Audio video tidak dapat dibaca. Coba ekspor ulang video sebagai MP4 (H.264/AAC).";
