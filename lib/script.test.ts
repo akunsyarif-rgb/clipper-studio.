@@ -203,3 +203,25 @@ describe("clipPlan (other footage from the source video)", () => {
     expect(clipPlan(scene({ clipFrom: 40 }), undefined)?.startFrame).toBe(1200);
   });
 });
+
+import { fitScenesToVideo } from "./script";
+
+describe("scenes cut to the source video", () => {
+  const scenes = [{ text: "a", durationInFrames: 100 }, { text: "b", durationInFrames: 100 }, { text: "c", durationInFrames: 100 }];
+  it("keeps everything when the video is long enough", () => {
+    expect(fitScenesToVideo(scenes, 300)).toEqual(scenes);
+    expect(fitScenesToVideo(scenes, 1000)).toEqual(scenes);
+  });
+  it("shortens the scene the video ends in and drops the ones after it, so the picture never freezes", () => {
+    const fitted = fitScenesToVideo(scenes, 250);
+    expect(fitted.map(s => s.durationInFrames)).toEqual([100, 100, 50]);
+    expect(fitScenesToVideo(scenes, 150).map(s => [s.text, s.durationInFrames])).toEqual([["a", 100], ["b", 50]]);
+    expect(fitScenesToVideo(scenes, 100).map(s => s.text)).toEqual(["a"]);
+  });
+  it("does not change the scenes it was given, and ignores a length it cannot use", () => {
+    fitScenesToVideo(scenes, 150);
+    expect(scenes[1].durationInFrames).toBe(100);
+    expect(fitScenesToVideo(scenes, NaN)).toBe(scenes);
+    expect(fitScenesToVideo(scenes, 0)).toBe(scenes);
+  });
+});

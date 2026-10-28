@@ -1,6 +1,6 @@
 // Pure transcript logic shared by the UI, the motion studio and unit tests. No browser APIs here.
 // Times are seconds relative to the start of the transcribed range (the audio that was fed to the engine).
-import { MAX_SCENE_CHARS, MAX_SECONDS, MIN_SCENE_SECONDS } from "./script";
+import { MAX_SCENE_CHARS, MAX_SECONDS, MIN_SCENE_SECONDS, splitScript } from "./script";
 
 /** Transcription is limited to the same 3 minutes as the motion studio. */
 export const MAX_TRANSCRIBE_SECONDS = MAX_SECONDS;
@@ -335,6 +335,9 @@ export function sceneTimings(texts: string[], words: Word[], fps: number, totalS
   const endFrame = Math.round((totalSeconds ?? words[words.length - 1].end) * fps);
   // The first scene starts at frame 0 so leading silence stays part of it and the video still lines up with the audio.
   starts[0] = 0;
+  // Two scenes whose first words share a frame (a zero-length word, a one-word segment) must not throw the whole timing
+  // away, or every scene falls back to estimated lengths and the captions drift: each scene gets at least one frame.
+  for (let i = 1; i < starts.length; i++) if (starts[i] <= starts[i - 1]) starts[i] = starts[i - 1] + 1;
   const bounds = [...starts, Math.max(endFrame, starts[starts.length - 1] + 1)];
   const seconds = texts.map((_, i) => (bounds[i + 1] - bounds[i]) / fps);
   if (seconds.some(s => s <= 0)) return null;
@@ -343,6 +346,38 @@ export function sceneTimings(texts: string[], words: Word[], fps: number, totalS
   const wordEnds = split.map((w, i) => w.map((_, j) => Math.max(wordStarts[i][j], rel(words[first[i] + j].end, i))));
   const tooShort = seconds.filter(x => x < MIN_SCENE_SECONDS - 1e-6).length;
   return { seconds, wordStarts, wordEnds, tooShort, aligned };
+}
+
+const JOIN_END = /[.!?…]+["'”’)]*$/;
+
+/**
+ * Joins every scene that is shorter than `min` seconds to its neighbour, so no scene has to be lengthened (a lengthened
+ * scene pushes every later caption out of step with the speech, and makes the video longer than its source). Scenes are
+ * sentences, so the full stop between two joined scenes becomes a comma; the words themselves are untouched.
+ */
+export function mergeShortScenes(script: string, words: Word[], fps: number, total: number, min = MIN_SCENE_SECONDS): string {
+  let current = script;
+  for (let guard = 0; guard < 80; guard++) {
+    const texts = splitScript(current);
+    const t = sceneTimings(texts, words, fps, total);
+    if (!t || texts.length < 2) return current;
+    const bad = t.seconds.findIndex(s => s < min - 1e-6);
+    if (bad < 0) return current;
+    // Join with the scene before, or the one after when the one before ends in a question or exclamation mark (kept as is).
+    const j = [bad - 1, bad].find(k => k >= 0 && k + 1 < texts.length && !/[?!]["'”’)]*$/.test(texts[k]));
+    if (j === undefined) return current;
+    const joined = `${texts[j].replace(JOIN_END, ",")} ${texts[j + 1]}`;
+    const next = [...texts.slice(0, j), joined, ...texts.slice(j + 2)].join("\n");
+    // A joined scene that the splitter breaks apart again (a ? or ! ending, or over the length limit) cannot be improved.
+    if (splitScript(next).length >= texts.length) return current;
+    current = next;
+  }
+  return current;
+}
+
+/** The script a transcript becomes when it is applied to a video: its lines, with scenes too short to stand alone joined. */
+export function scriptFromTranscript(t: Transcript, fps: number): string {
+  return mergeShortScenes(transcriptText(t), allWords(t), fps, t.duration);
 }
 
 /** Handoff from the clipper to the motion studio (sessionStorage, same tab session, nothing leaves the device). */

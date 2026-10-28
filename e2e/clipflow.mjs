@@ -128,6 +128,16 @@ try {
     assert(/catat semua pengeluaran/.test(script) && !/Halo semuanya/.test(script), "the clip's own subtitles became the script: " + script);
     assert((await page.getByTestId("title").inputValue()) === "Tiga tips keuangan", "the title came along");
     await page.getByTestId("scene-cut").first().waitFor({ timeout: 15000 });
+    // The video is exactly as long as its source (no frozen tail), and a script that drifts from the transcript is called out.
+    const badge = await page.locator(".preview-badge").innerText();
+    assert(/\b(3[6-9]|4[0-2])\.\ds\b/.test(badge), "the preview is as long as the 40 s clip: " + badge);
+    assert((await page.getByTestId("timing-lost").count()) === 0, "caption timing follows the transcript right after the hand-off");
+    await page.getByTestId("script").fill("Kalimat yang sama sekali lain dan tidak pernah diucapkan di video ini.");
+    await page.getByTestId("timing-lost").waitFor({ timeout: 5000 });
+    assert(/\b(3[6-9]|4[0-2])\.\ds\b/.test(await page.locator(".preview-badge").innerText()), "even without usable timing the video spans its source: " + await page.locator(".preview-badge").innerText());
+    await page.getByTestId("timing-restore").click();
+    assert(/catat semua pengeluaran/.test(await page.getByTestId("script").inputValue()), "the script came back from the transcript");
+    assert((await page.getByTestId("timing-lost").count()) === 0, "timing follows the transcript again");
     const seconds = await page.locator("video").first().evaluate(v => new Promise(res => { if (v.readyState >= 1) res(v.duration); else v.onloadedmetadata = () => res(v.duration); }));
     assert(seconds > 36 && seconds < 42, "the video is the cut clip (about 40 s): " + seconds);
     await page.reload();

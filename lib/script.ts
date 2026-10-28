@@ -300,6 +300,22 @@ export function clipPlan(scene: Pick<Scene, "cut" | "clipFrom" | "durationInFram
   return { startFrame: Math.round(Math.min(Math.max(0, from), latest) * fps), lengthFrames };
 }
 
+/**
+ * The scenes cut to a video that is only `videoFrames` long: a scene that would start after the video has ended is
+ * dropped and the last one is shortened, so the picture never freezes on the last frame while the captions run on.
+ */
+export function fitScenesToVideo<T extends { durationInFrames: number }>(scenes: T[], videoFrames: number): T[] {
+  if (!Number.isFinite(videoFrames) || videoFrames <= 0) return scenes;
+  const out: T[] = [];
+  let at = 0;
+  for (const s of scenes) {
+    if (at >= videoFrames) break;
+    out.push(at + s.durationInFrames > videoFrames ? { ...s, durationInFrames: videoFrames - at } : s);
+    at += s.durationInFrames;
+  }
+  return out.length ? out : scenes;
+}
+
 export function totalFrames(scenes: Scene[]): number {
   return Math.max(1, scenes.reduce((a, s) => a + s.durationInFrames, 0));
 }
