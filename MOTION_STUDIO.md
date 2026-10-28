@@ -487,6 +487,40 @@ Halaman Motion dimulai dengan saklar **[ Konten biasa | Affiliate ]**. Mesinnya 
 - **Pengaturan dilipat** (terbuka dengan satu ketukan, ringkasannya tampil di judulnya): **Tampilan** (template, gaya, palet; biasanya diatur Sutradara AI), **Backsound**, dan **Durasi dan subtitle**. Voice over tetap terlihat karena harus dibuat sebelum render. Tidak ada pengaturan yang dihapus.
 - **Pengujian:** `e2e/motion.mjs` ("mode switch…": bawaan Konten biasa, tiap panel hanya di mode-nya, naskah dan pengaturan terbawa, aturan jualan hanya di Affiliate, mode diingat setelah muat ulang, lipatan tertutup dengan ringkasan dan tetap terbuka saat diedit) dan `e2e/clipflow.mjs` (klip dengan video membuka sebagai Konten biasa dan Affiliate nonaktif). Tes lain yang memakai pengaturan terlipat membukanya dulu lewat bantu `openFolds`.
 
+## Riset produk otomatis untuk affiliate (dikerjakan app, bukan AI)
+
+Di mode Affiliate, di bawah Nama produk ada **"Tautan halaman produk (opsional)"** dan tombol **"Cari info produk dengan AI"** (nama tombol mengikuti kebiasaan; yang mencari adalah app). Pembagian tugasnya sengaja tegas: **app mencari dan membaca, AI hanya merangkum apa yang sudah ditemukan.**
+
+**Yang dikerjakan app (kode di server, tanpa AI)**
+1. **Halaman yang Anda tempel dibaca** (toko resmi atau merek paling akurat).
+2. **Pencarian web** dua kali (`<produk> spesifikasi resmi` dan `<produk> specifications`) lewat halaman HTML DuckDuckGo, tanpa kunci dan tanpa biaya.
+3. **Memilih halaman** (`rankHits`): situs merek sendiri dan toko resmi lebih dulu, lalu marketplace; media sosial dan video (Pinterest, YouTube, dsb.) dibuang; halaman ulasan "terbaik/review" diturunkan; maks. 2 halaman per situs. Maks. 4 halaman dibaca (termasuk yang Anda tempel), tiga sekaligus.
+4. **Membaca tiap halaman:** data terstruktur (schema.org Product: nama, merek, harga, bahan, warna, gambar, properti), **tabel spesifikasi dan daftar definisi** halaman, Open Graph, dan teks halaman yang terbaca.
+
+**Yang dikerjakan AI (opsional, hanya merangkum)**
+- Bila ada kunci AI, teks halaman diberikan ke model **biasa** Anda (bukan model pencari web, tanpa plugin pencarian). AI menulis fakta pendek berbahasa Indonesia tentang **informasi umum yang berguna bagi calon pembeli** (spesifikasi, fitur, isi paket, untuk siapa produk ini, garansi resmi, serta kelebihan atau kekurangan yang *ditulis halaman itu*, tanpa menilai sendiri), dan **setiap fakta wajib membawa kutipan persis dari halaman** serta nomor halamannya. Anda yang menilai hasilnya: hanya fakta yang Anda centang yang dipakai.
+- Verifikasi oleh kode: fakta **dibuang** bila kutipannya tidak ditemukan di teks halaman yang disebut, atau bila angka di ringkasannya tidak ada di kutipan. Jumlah yang dibuang dilaporkan. Jadi AI tidak bisa menambah fakta dari ingatannya.
+- Tanpa kunci AI, atau bila AI gagal (saldo habis, dsb.), spesifikasi yang tertulis di halaman tetap dipakai dan alasannya dilaporkan.
+
+**Hasil riset** tampil dengan merek, daftar fakta (kotak centang, sumber, dan untuk hasil AI **kutipan halaman** agar bisa dibandingkan dengan aslinya), petunjuk harga, dan gambar:
+- Spesifikasi yang ditulis halaman sendiri dan fakta berkutipan **tercentang** otomatis; urutannya spesifikasi halaman dulu, lalu fakta berkutipan.
+- Fakta berkata promosi atau klaim (terbaik, nomor 1, klaim kesehatan, dan juga baris "Garansi: …" karena terbaca sebagai janji) **ditahan, tidak tercentang**, dengan peringatan; Anda tetap bisa mencentangnya bila memang benar.
+- **Pakai N fakta yang dicentang** menambahkannya ke Manfaat dan fakta nyata (maks. 8, tanpa duplikat). Naskah AI dan pemeriksa klaim memakainya seperti biasa.
+- **Harga hanya petunjuk** dengan sumbernya ("Rp 89.000"); tidak pernah terisi sendiri. "Pakai harga ini" memasukkannya setelah Anda periksa.
+- **Gambar dari halaman produk** (yang dipakai halaman toko atau merek itu sendiri): ketuk satu, server mengambilnya, dan dipasang di scene yang menyebut produk dan scene terakhir. **Sumbernya tampil sebagai kredit di bawah scene** (tautan ke halamannya).
+
+**Fungsi server `product`** (`supabase/functions/product/`, hanya untuk pengguna yang masuk, tanpa kunci atau tabel): aksi `search`, `page`, dan `image`. Pengaman: hanya alamat https publik (tanpa kredensial, port, IP, `localhost`, `.local`/`.internal`), setiap pengalihan diperiksa ulang (maks. 3), alamat hasil pencarian diperiksa sebelum dibuka, halaman maks. 1,5 MB, gambar maks. 12 MB dan hanya JPG/PNG/WebP. Sebelum dibuka untuk pengguna lain, tambahkan batas pemakaian per akun.
+
+**Batas yang jujur**
+- **Pencarian DuckDuckGo tidak resmi.** DuckDuckGo tidak punya API gratis; server membaca halaman hasilnya. DuckDuckGo bisa membatasi atau memblokir pencarian otomatis dari server kapan saja (tampil sebagai "Mesin pencari membatasi pencarian otomatis"). Bila itu terjadi, halaman yang Anda tempel tetap dibaca; dan penggantinya adalah mesin pencari berkunci (mis. Serper atau Brave), yang bisa ditambahkan tanpa mengubah bagian lain.
+- **Marketplace sering menolak dibaca otomatis** (Shopee, Tokopedia, dsb.), dan banyak halaman toko dimuat lewat JavaScript sehingga tidak punya data yang bisa dibaca. App memberi tahu dan melanjutkan dengan sumber lain. Tautan toko resmi atau situs merek paling andal.
+- **Akurasi:** spesifikasi yang ditulis halaman bisa saja keliru atau memuat produk lain; sumber dan kutipan ditampilkan agar Anda bisa memeriksa. Anda tetap penanggung jawab isi video.
+- **Hak cipta gambar:** gambar produk milik toko atau merek. App mengingatkan dan mencantumkan sumbernya, tetapi hak pakainya Anda yang menilai (mis. materi dari program afiliasi atau penjual). Foto sendiri tetap pilihan paling aman.
+- **Belum diuji terhadap DuckDuckGo atau situs toko sungguhan** dari lingkungan pengembangan (tidak terjangkau). Format halaman hasil DuckDuckGo dibaca dari pengetahuan umum tentang strukturnya (`result__a` dengan tautan pengalih `uddg`) dan diuji dengan contoh buatan; bila strukturnya berubah, pencarian akan mengembalikan nol hasil.
+- **Pemasangan di produksi:** fungsi `product` harus di-deploy sekali (tanpa perubahan database). Sebelum itu muncul "Fungsi pembaca halaman produk belum dipasang di server."
+
+**Pengujian:** `lib/product-function.test.ts` (26: keamanan alamat, pengalihan, batas ukuran, parser JSON-LD/tabel/Open Graph, hasil DuckDuckGo tanpa iklan dan alamat internal, mesin pencari yang membatasi), `lib/product.test.ts` (10), `lib/product-research.test.ts` (kualitas pemilihan halaman, kutipan yang harus ada, angka yang harus ada di kutipan, kegagalan sebagian) dan `e2e/motion.mjs` ("affiliate research…": dua pencarian oleh app, halaman ditempel dibaca pertama, media sosial dan halaman ganda tidak dibaca, AI hanya meringkas dengan model biasa, kutipan palsu dibuang dan dilaporkan, fakta berkutipan dan baris klaim, harga tidak terisi sendiri, gambar lewat server di 2 scene dengan kredit, AI gagal dan pencarian dibatasi tetap menyisakan fakta halaman).
+
 ## Tanpa batas jumlah scene, dan subtitle tepat sampai akhir (perbaikan)
 
 - **Batas 20 scene dihapus.** Naskah dengan banyak kalimat (mis. klip 2–3 menit dari Clipper) kini diterima; yang membatasi hanya panjang total (maks. 180 detik) dan 3.000 karakter. Bila durasi dibagi otomatis, tiap scene tetap butuh minimal 1,2 detik, jadi pesan "durasi terlalu pendek untuk N scene" tetap muncul bila waktunya tidak cukup.

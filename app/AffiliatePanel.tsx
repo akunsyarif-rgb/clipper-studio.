@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { checkClaims, DISCLOSURE_NOTE, EMPTY_BRIEF, parseBenefits, PLATFORMS, TONES, validateBrief, writeAffiliateScript, type AffiliateBrief, type AffiliateScript, type PlatformId, type Tone } from "@/lib/affiliate";
+import { checkClaims, DISCLOSURE_NOTE, EMPTY_BRIEF, MAX_BENEFITS, parseBenefits, PLATFORMS, TONES, validateBrief, writeAffiliateScript, type AffiliateBrief, type AffiliateScript, type PlatformId, type Tone } from "@/lib/affiliate";
 import { GeminiError } from "@/lib/gemini";
 import { getAccess } from "@/lib/gemini-access";
 import { useGeminiAccess } from "./useGeminiAccess";
+import ProductResearch from "./ProductResearch";
 
 const STORE_KEY = "clipper:affiliate:v1";
 
-type Fields = { product: string; price: string; promo: string; platform: PlatformId; benefits: string; audience: string; tone: Tone };
-const EMPTY: Fields = { product: "", price: "", promo: "", platform: EMPTY_BRIEF.platform, benefits: "", audience: "", tone: EMPTY_BRIEF.tone };
+type Fields = { product: string; link: string; price: string; promo: string; platform: PlatformId; benefits: string; audience: string; tone: Tone };
+const EMPTY: Fields = { product: "", link: "", price: "", promo: "", platform: EMPTY_BRIEF.platform, benefits: "", audience: "", tone: EMPTY_BRIEF.tone };
 
 function load(): Fields {
   try {
@@ -17,7 +18,7 @@ function load(): Fields {
     if (!v || typeof v !== "object") return EMPTY;
     const s = (x: unknown, max: number) => (typeof x === "string" ? x.slice(0, max) : "");
     return {
-      product: s(v.product, 80), price: s(v.price, 40), promo: s(v.promo, 80), audience: s(v.audience, 80), benefits: s(v.benefits, 800),
+      product: s(v.product, 80), link: s(v.link, 400), price: s(v.price, 40), promo: s(v.promo, 80), audience: s(v.audience, 80), benefits: s(v.benefits, 1400),
       platform: PLATFORMS.some(p => p.id === v.platform) ? v.platform as PlatformId : EMPTY.platform,
       tone: TONES.some(t => t.id === v.tone) ? v.tone as Tone : EMPTY.tone,
     };
@@ -34,7 +35,7 @@ export default function AffiliatePanel({ script, onUseScript, onRemoveLine, onPr
   onUseScript: (script: string, title: string) => void;
   onRemoveLine: (index: number) => void;
   /** Puts the creator's own product photo behind the scenes that name the product; resolves with how many scenes got it. */
-  onProductPhoto: (file: File, brief: AffiliateBrief) => Promise<number>;
+  onProductPhoto: (file: File, brief: AffiliateBrief, credit?: { text: string; href: string }) => Promise<number>;
   /** The usable brief (or null while it is incomplete), so other tools such as the AI director know this is a selling video. */
   onBrief: (brief: AffiliateBrief | null) => void;
   disabled: boolean;
@@ -76,6 +77,18 @@ export default function AffiliatePanel({ script, onUseScript, onRemoveLine, onPr
     finally { setBusy(false); }
   }
 
+  /** Facts the creator ticked in the research result join the benefits (no duplicates, at most MAX_BENEFITS). */
+  function addFacts(texts: string[]) {
+    setF(prev => {
+      const have = parseBenefits(prev.benefits);
+      const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+      const seen = new Set(have.map(norm));
+      const next = [...have];
+      for (const t of texts) { if (!seen.has(norm(t)) && next.length < MAX_BENEFITS) { seen.add(norm(t)); next.push(t); } }
+      return { ...prev, benefits: next.join("\n") };
+    });
+  }
+
   async function photo(file: File | undefined) {
     if (!file) return;
     setPhotoMsg("");
@@ -92,12 +105,16 @@ export default function AffiliatePanel({ script, onUseScript, onRemoveLine, onPr
     <small>Isi hanya fakta yang benar. AI hanya boleh memakai data ini, dan pemeriksa klaim memeriksa naskah terhadapnya. Data disimpan di perangkat ini saja.</small>
     <label className="field-label" htmlFor="aff-product">Nama produk</label>
     <input id="aff-product" data-testid="aff-product" value={f.product} maxLength={80} onChange={e => set("product", e.target.value)} placeholder="mis. Botol Minum Termos Aqualux 750 ml" />
+    <label className="field-label" htmlFor="aff-link">Tautan halaman produk (opsional) <span className="field-hint">toko resmi atau merek; paling akurat</span></label>
+    <input id="aff-link" data-testid="aff-link" value={f.link} maxLength={400} onChange={e => set("link", e.target.value)} placeholder="mis. https://www.merek.co.id/produk/termos-750" inputMode="url" autoCapitalize="none" autoCorrect="off" />
+    <ProductResearch product={f.product} link={f.link} disabled={disabled}
+      onUseFacts={addFacts} onUsePrice={text => set("price", text.slice(0, 40))} onPhoto={(file, credit) => onProductPhoto(file, brief, credit)} />
     <div className="field-row">
       <div><label className="field-label" htmlFor="aff-price">Harga (opsional)</label><input id="aff-price" data-testid="aff-price" value={f.price} maxLength={40} onChange={e => set("price", e.target.value)} placeholder="mis. Rp 89.000" /></div>
       <div><label className="field-label" htmlFor="aff-promo">Promo nyata (opsional)</label><input id="aff-promo" data-testid="aff-promo" value={f.promo} maxLength={80} onChange={e => set("promo", e.target.value)} placeholder="mis. Diskon 10% sampai akhir bulan" /></div>
     </div>
-    <label className="field-label" htmlFor="aff-benefits">Manfaat dan fakta nyata <span className="field-hint">satu per baris, maks. 5</span></label>
-    <textarea id="aff-benefits" data-testid="aff-benefits" rows={4} value={f.benefits} onChange={e => set("benefits", e.target.value)} placeholder={"Menjaga air tetap dingin 12 jam\nBahan stainless steel anti karat"} />
+    <label className="field-label" htmlFor="aff-benefits">Manfaat dan fakta nyata <span className="field-hint">satu per baris, maks. 8</span></label>
+    <textarea id="aff-benefits" data-testid="aff-benefits" rows={5} value={f.benefits} onChange={e => set("benefits", e.target.value)} placeholder={"Menjaga air tetap dingin 12 jam\nBahan stainless steel anti karat"} />
     <div className="field-row">
       <div><label className="field-label" htmlFor="aff-platform">Platform</label>
         <select id="aff-platform" data-testid="aff-platform" value={f.platform} onChange={e => set("platform", e.target.value as PlatformId)}>{PLATFORMS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></div>

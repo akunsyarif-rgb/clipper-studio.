@@ -9,8 +9,9 @@ const gem = (obj: unknown) => ({ candidates: [{ content: { parts: [{ text: JSON.
 const kinds = (lines: string[], b = brief) => checkClaims(lines, b).map(f => f.kind);
 
 describe("the brief", () => {
-  it("reads one benefit per line, with or without bullets, at most five", () => {
-    expect(parseBenefits("- Tahan lama\n• Ringan\n1. Murah\n\n  Mudah   dibersihkan \na\nb\nc")).toEqual(["Tahan lama", "Ringan", "Murah", "Mudah dibersihkan", "a"]);
+  it("reads one benefit per line, with or without bullets, at most eight", () => {
+    expect(parseBenefits("- Tahan lama\n• Ringan\n1. Murah\n\n  Mudah   dibersihkan \na\nb\nc")).toEqual(["Tahan lama", "Ringan", "Murah", "Mudah dibersihkan", "a", "b", "c"]);
+    expect(parseBenefits(Array.from({ length: 12 }, (_, i) => "Fakta " + i).join("\n"))).toHaveLength(8);
   });
   it("needs a product and at least one fact, within sensible lengths", () => {
     expect(validateBrief(brief)).toBeNull();

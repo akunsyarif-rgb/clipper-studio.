@@ -27,14 +27,14 @@ export type AffiliateBrief = {
   price: string;
   promo: string;
   platform: PlatformId;
-  /** One real benefit or fact per entry (1–5). These are the only claims the script may make. */
+  /** One real benefit or fact per entry (1–8). These are the only claims the script may make. */
   benefits: string[];
   audience: string;
   tone: Tone;
 };
 
 export const EMPTY_BRIEF: AffiliateBrief = { product: "", price: "", promo: "", platform: "tiktok", benefits: [], audience: "", tone: "santai" };
-export const MAX_BENEFITS = 5;
+export const MAX_BENEFITS = 8;
 
 /** The benefit box (one per line, bullets allowed) as a list. */
 export function parseBenefits(text: string): string[] {

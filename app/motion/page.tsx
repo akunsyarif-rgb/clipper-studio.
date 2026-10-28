@@ -520,7 +520,7 @@ export default function MotionStudio() {
     setImages(prev => { if (prev[text]) URL.revokeObjectURL(prev[text].url); return { ...prev, [text]: { url, name: file.name, credit } }; });
   }
   /** The creator's own product photo behind every scene that names the product, and the last one; resolves with how many. */
-  async function placeProductPhoto(file: File, brief: AffiliateBrief): Promise<number> {
+  async function placeProductPhoto(file: File, brief: AffiliateBrief, credit?: SceneImageFile["credit"]): Promise<number> {
     if (!timeline.ok) return 0;
     const problem = imageProblem(file);
     if (problem) throw new Error(problem);
@@ -528,7 +528,7 @@ export default function MotionStudio() {
     const prepared = new File([blob], file.name, { type: blob.type || "image/jpeg" });
     const texts = timeline.scenes.map(sc => sc.text);
     const targets = scenesForProductPhoto(texts, brief.product);
-    for (const i of targets) await putSceneImage(texts[i], prepared);
+    for (const i of targets) await putSceneImage(texts[i], prepared, credit);
     return targets.length;
   }
   const putStockPhoto = (text: string, file: File, photo: PexelsPhoto) => putSceneImage(text, file, { text: creditText(photo), href: photo.pexelsUrl || photo.photographerUrl || "https://www.pexels.com" });

@@ -67,7 +67,7 @@ type Fetch = typeof fetch;
 export type Transport = (payload: object, opts: { signal: AbortSignal; timeoutMs: number }) => Promise<Response | null>;
 export type CleanupOptions = { apiKey: string; model: string; language: string; fetchImpl?: Fetch; signal?: AbortSignal; timeoutMs?: number; transport?: Transport; /** Waits (ms) before each retry of a busy or failing service; empty = no retries. */ retryDelaysMs?: number[]; /** The request/answer format of the service: Google's own (default) or OpenAI's, used by routers such as Flatkey. */ format?: "gemini" | "openai" };
 
-function explain(status: number, body: unknown): GeminiError {
+export function explain(status: number, body: unknown): GeminiError {
   const err = (body as { error?: { status?: string; message?: string; code?: string | number; type?: string } } | null)?.error;
   const text = `${err?.status ?? ""} ${err?.message ?? ""} ${err?.code ?? ""} ${err?.type ?? ""}`;
   // Answers of the owner's own server, before Google's are considered.
