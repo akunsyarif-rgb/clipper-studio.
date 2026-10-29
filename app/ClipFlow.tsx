@@ -66,7 +66,8 @@ export default function ClipFlow({ file, duration, video, busy, room, onAdd, onM
       setPhase("choosing");
       const moments = await suggestMoments(t.segments.map(s => ({ start: s.start, end: s.end, text: s.text })), o, limitsForVideo(duration));
       if (moments.length === 0) setError("AI tidak menemukan bagian yang layak dijadikan klip. Coba video lain, atau potong manual di bawah.");
-      setItems(moments.map((m, i) => ({ start: m.start, end: m.end, title: m.title, reason: m.reason, checked: i < Math.max(room, 0) && i < 5 })));
+      setItems(moments.map((m, i) => ({ start: m.start, end: m.end, title: m.title, reason: m.reason, checked: i < Math.max(room, 0) && i < 5,
+        ...(m.reachedBack ? { note: `Awal dimundurkan ${m.reachedBack} kalimat karena kalimat pilihan AI hanya melanjutkan kalimat sebelumnya. Bila kurang pas, geser lagi di "Sesuaikan waktu".` } : {}) })));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(/no audio/i.test(msg) ? "Video ini tidak punya suara, jadi tidak ada yang bisa dianalisis." : e instanceof GeminiError ? e.message : `Analisis gagal: ${msg}`);
@@ -107,7 +108,7 @@ export default function ClipFlow({ file, duration, video, busy, room, onAdd, onM
       </>}
     {note && <div className="notice" role="status" data-testid="flow-note">{note}</div>}
     {error && <div className="notice notice-error" role="alert" data-testid="flow-error">{error}</div>}
-    {items && items.length > 0 && <SuggestionList items={items} onItems={setItems} duration={duration}
+    {items && items.length > 0 && <SuggestionList items={items} onItems={setItems} duration={duration} lines={full.current?.segments.map(sg => ({ start: sg.start, end: sg.end, text: sg.text }))}
       intro={`${items.length} klip disarankan. Putar untuk memeriksa, sesuaikan bila perlu, lalu centang yang Anda mau.`}
       actions={m => <>
         <button onClick={() => preview(m)} data-testid="flow-play">▶ Putar</button>
