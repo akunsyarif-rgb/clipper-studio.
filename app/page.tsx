@@ -21,7 +21,7 @@ import { clearClipperWork, loadClipperWork, saveClipperWork } from "@/lib/clippe
 import type { Transcript } from "@/lib/transcript";
 import { releaseAsr } from "@/lib/asr/client";
 import { clipId, logDownload, logRender } from "@/lib/history";
-import { updateHistory } from "@/lib/history-store";
+import { startHistorySync, updateHistory } from "@/lib/history-store";
 import { ExportCancelled, exportClip, isEngineLoaded, terminateEngine } from "@/lib/engine";
 
 type Clip = { id: number; start: number; end: number; title?: string; transcript?: Transcript };
@@ -35,6 +35,7 @@ export default function Home() {
   const picker = useRef<HTMLInputElement>(null);
   const player = useRef<HTMLVideoElement>(null);
   const cancelled = useRef(false);
+  useEffect(() => { startHistorySync(); }, []);
   const historyBase = useRef<{ id: string; kind: "clip"; title: string; script: string } | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [src, setSrc] = useState("");
