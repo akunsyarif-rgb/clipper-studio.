@@ -57,6 +57,8 @@ import { isAudioFile, probeVideo, SOURCE_ACCEPT, validateFile } from "@/lib/clip
 import { imageProblem, prepareImage } from "@/lib/scene-image";
 import "./motion.css";
 
+const VIDEO_ONLY = "Video Anda";
+const AUDIO_ONLY = "Audio Anda";
 const SAMPLE = "Jangan tunggu semangat datang.\nMulailah, meski langkahmu kecil.\nDisiplin membuatmu tetap bergerak.\nSatu langkah hari ini lebih baik dari rencana sempurna.\nMulai sekarang.";
 
 const NARRATIVE_ROLE_LABELS: Record<string, string> = {
@@ -268,7 +270,19 @@ export default function MotionStudio() {
       setHandoffNote(h.transcript.granularity === "word"
         ? "Klip dari Clipper dimuat dengan subtitlenya."
         : "Klip dari Clipper dimuat. Subtitle berasal dari AI dengan waktu per kalimat. Untuk waktu yang paling presisi, ketuk \"Presisikan waktu subtitle\" di panel Transkrip (satu ketukan, dibuat di perangkat; teks tidak berubah).");
-    } else setHandoffNote("Klip dari Clipper dimuat. Belum ada subtitle: buat transkrip di panel Transkrip, atau tulis naskah.");
+    } else { makeSourceBase(file); setHandoffNote("Klip dari Clipper dimuat dan jadi dasar video (tampil di preview). Belum ada subtitle: buat transkrip di panel Transkrip, atau tulis naskah."); }
+  }
+  /**
+   * A chosen video (or audio) becomes the base of the video at once, so the preview shows it and the render uses it, even
+   * before there is a transcript. With the untouched sample script (or none) it plays as it is, without subtitles, until a
+   * transcript is made; with a script the creator already wrote, the lines are spread over it (their timing is only an estimate).
+   */
+  function makeSourceBase(file: File) {
+    setVideoEdit(true); setVoiceMode("none"); setNarration(null); setCaptionOffset(0); setPalette("pearl"); setContentPreset("custom");
+    const plain = isAudioFile(file) ? AUDIO_ONLY : VIDEO_ONLY;
+    if (!script.trim() || script === SAMPLE || script === VIDEO_ONLY || script === AUDIO_ONLY) {
+      setScript(plain); setCaptions(false); setCutOverrides({ [plain]: "video" }); setImported(null);
+    }
   }
   function onSourceVideo(e: ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -283,7 +297,7 @@ export default function MotionStudio() {
     probe.onloadedmetadata = () => {
       if (!Number.isFinite(probe.duration) || probe.duration <= 0) { URL.revokeObjectURL(url); return setSourceError("Durasi berkas tidak dapat dibaca. Coba MP4 (H.264) atau audio MP3/M4A."); }
       if (probe.duration > MAX_SECONDS) { URL.revokeObjectURL(url); return setSourceError(`Video ${Math.round(probe.duration)} detik melebihi batas ${MAX_SECONDS} detik (3 menit). Potong dulu di Clipper Studio.`); }
-      setSource({ file: f, url, seconds: probe.duration });
+      setSource({ file: f, url, seconds: probe.duration }); makeSourceBase(f);
     };
     probe.onerror = () => { URL.revokeObjectURL(url); setSourceError("Browser tidak dapat memutar berkas ini. Coba MP4 (H.264) atau audio MP3/M4A/WAV."); };
     probe.src = url;
@@ -396,7 +410,7 @@ export default function MotionStudio() {
     const words = shiftWords(allWords(t), captionOffset);
     if (!sceneTimings(splitScript(script), words, FPS, t.duration)) return "Naskah terlalu berbeda dari hasil ini, jadi waktunya tidak bisa dipakai. Pilih \"Pakai transkrip\" untuk mengganti naskah dengan hasil ini.";
     setScript(mergeShortScenes(script, allWords(t), FPS, t.duration));
-    setImported(t); setVoiceMode("none"); setNarration(null); setVideoEdit(true);
+    setImported(t); setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptions(true);
     return null;
   }
   async function discardSession() { await clearSession(); setSavedCloud(false); setSaved(null); setSavedSource(null); setAutosave(true); }
@@ -834,9 +848,9 @@ export default function MotionStudio() {
             : <div className="normal-only">
               <video ref={sourceVideo} src={source.url} controls playsInline preload="metadata" style={{ width: "100%", maxHeight: 220, borderRadius: 10, background: "#000" }} data-testid={isAudioFile(source.file) ? "source-audio-only" : undefined} />
               {isAudioFile(source.file) && <small className="field-hint" data-testid="audio-only-note">Audio saja: suaranya dipakai apa adanya, gambarnya latar studio dengan subtitle dan animasi.</small>}
-              <button className="text-button" disabled={asrBusy} onClick={() => { setSource(null); setImported(null); setVideoEdit(false); setCutOverrides({}); setClipStarts({}); }}>Ganti video ({source.file.name})</button>
+              <button className="text-button" disabled={asrBusy} onClick={() => { setSource(null); setImported(null); setVideoEdit(false); setCutOverrides({}); setClipStarts({}); if (script === VIDEO_ONLY || script === AUDIO_ONLY) { setScript(SAMPLE); setCaptions(true); } }}>Ganti video ({source.file.name})</button>
               <TranscriptPanel key={source.url} file={source.file} video={sourceVideo} range={{ start: 0, duration: source.seconds }} locked={false} onWorking={setAsrBusy} onCopy={setScript} onUseTiming={useTimingOnly} preciseTiming={!!imported && imported.granularity !== "word" && videoEdit}
-                onUse={t => { setScript(scriptFromTranscript(t, FPS)); setImported(t); setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptionOffset(0); setPalette("pearl"); setContentPreset("custom"); setOffer(null); }} />
+                onUse={t => { setScript(scriptFromTranscript(t, FPS)); setImported(t); setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptions(true); setCaptionOffset(0); setPalette("pearl"); setContentPreset("custom"); setOffer(null); }} />
             </div>}
           {sourceError && <p className="field-error normal-only" role="alert">{sourceError}</p>}
           <AffiliatePanel script={script} disabled={rendering} onBrief={setAffiliateBrief} onProductPhoto={placeProductPhoto}
