@@ -146,7 +146,6 @@ export type SeoResult = {
 
 const words = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
 const cleanText = (v: unknown, max = 4000): string => (typeof v === "string" ? v : "")
-  // eslint-disable-next-line no-control-regex
   .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").replace(/\r\n?/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, max);
 
 /** "#Nama Baik!" → "#NamaBaik"; null when nothing usable is left or the tag is one of the noise tags. */
