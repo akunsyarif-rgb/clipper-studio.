@@ -6,6 +6,7 @@ import { getAccess } from "@/lib/gemini-access";
 import { SEO_PLATFORMS } from "@/lib/seo";
 import { addTrendChip, EMPTY_TREND, TREND_CHIPS, TREND_GOALS, trendProblem, writeTrendIdeas, type TrendBrief, type TrendIdea } from "@/lib/trend";
 import { useGeminiAccess } from "./useGeminiAccess";
+import TrendRadar from "./TrendRadar";
 
 const STORE_KEY = "clipper:trend:v1";
 
@@ -15,7 +16,7 @@ function load(): TrendBrief {
     if (!v || typeof v !== "object") return EMPTY_TREND;
     const s = (x: unknown, max: number) => (typeof x === "string" ? x.slice(0, max) : "");
     return {
-      niche: s(v.niche, 160), audience: s(v.audience, 200), trend: s(v.trend, 300),
+      niche: s(v.niche, 160), audience: s(v.audience, 200), trend: s(v.trend, 700),
       platform: SEO_PLATFORMS.some(p => p.id === v.platform) ? v.platform! : EMPTY_TREND.platform,
       goal: TREND_GOALS.some(g => g.id === v.goal) ? v.goal! : EMPTY_TREND.goal,
     };
@@ -66,12 +67,13 @@ export default function TrendStart({ onUse, disabled }: {
   return (
     <details className="fold trend-start normal-only" data-testid="fold-trend">
       <summary><b>0 · Mulai dari tren</b> <small>{ideas.length ? `${ideas.length} ide · ${platformLabel}` : "ide dan naskah dari tren yang sedang Anda lihat"}</small></summary>
-      <small className="field-hint">Pilih platform, tulis tren atau musim yang Anda lihat, dan AI mengusulkan tiga sudut berbeda lengkap dengan hook dan naskah. AI tidak punya data tren langsung: hanya tren yang Anda tulis yang dipakai. Hanya teks di kolom ini yang dikirim ke layanan AI Anda. Periksa fakta sebelum tayang.</small>
+      <small className="field-hint">Pilih platform, tulis tren atau musim yang Anda lihat, dan AI mengusulkan tiga sudut berbeda lengkap dengan hook dan naskah. AI tidak punya data tren langsung: hanya tren yang Anda tulis, atau sinyal yang Anda centang dari Radar tren, yang dipakai. Hanya teks di kolom ini yang dikirim ke layanan AI Anda. Periksa fakta sebelum tayang.</small>
       <div className="option-grid seo-platforms" role="group" aria-label="Platform tujuan">
         {SEO_PLATFORMS.map(p => <button key={p.id} type="button" className={"option " + (f.platform === p.id ? "active" : "")} aria-pressed={f.platform === p.id} onClick={() => set("platform", p.id)} data-testid={"trend-platform-" + p.id}><strong>{p.label}</strong></button>)}
       </div>
       <label className="field-label">Niche / topik<input value={f.niche} maxLength={160} onChange={e => set("niche", e.target.value)} placeholder="Contoh: tips freelance, resep hemat, olahraga rumahan" data-testid="trend-niche" /></label>
-      <label className="field-label">Tren / musim yang Anda lihat<input value={f.trend} maxLength={300} onChange={e => set("trend", e.target.value)} placeholder="Contoh: banyak yang bahas gajian cepat habis, challenge 30 hari" data-testid="trend-text" /></label>
+      <TrendRadar niche={f.niche} disabled={busy} onUse={text => set("trend", [f.trend.trim(), text].filter(Boolean).join("; ").slice(0, 700))} />
+      <label className="field-label">Tren / musim yang Anda lihat<input value={f.trend} maxLength={700} onChange={e => set("trend", e.target.value)} placeholder="Contoh: banyak yang bahas gajian cepat habis, challenge 30 hari" data-testid="trend-text" /></label>
       <div className="chip-row" role="group" aria-label="Musim dan momen">
         {TREND_CHIPS.map(c => <button key={c} type="button" className="chip" onClick={() => set("trend", addTrendChip(f.trend, c))} data-testid={"trend-chip-" + c.replace(/\s+/g, "-").toLowerCase()}>+ {c}</button>)}
       </div>

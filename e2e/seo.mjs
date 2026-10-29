@@ -187,6 +187,88 @@ try {
     assert(await p.getByTestId("trend-write").count() === 0, "no write button");
   });
 
+  await step("trend radar: signed out it says what is needed; signed in it scans without a key, ticked signals reach the AI, a YouTube key is checked, saved and never shown again", async () => {
+    const SB = "https://smwealrfgnzxquqqscxs.supabase.co";
+    const ctxR = await browser.newContext();
+    await ctxR.addInitScript(() => localStorage.setItem("clipper:gemini:v1", JSON.stringify({ apiKey: "k".repeat(30), model: "gemini-flash-latest", consent: true })));
+    const seen = { hasKey: false, scans: [], saved: 0, prompts: [] };
+    const item = (source, title, eng) => ({ source, title, url: source === "youtube" ? "https://www.youtube.com/watch?v=abcdefghijk" : source === "hn" ? "https://news.ycombinator.com/item?id=1" : "https://id.wikipedia.org/wiki/Banjir", engLabel: eng, ts: Date.now() - 864e5, score: 1, also: [] });
+    await ctxR.route("https://generativelanguage.googleapis.com/**", async route => {
+      const prompt = JSON.parse(route.request().postData() ?? "{}").contents?.[0]?.parts?.[0]?.text ?? "";
+      seen.prompts.push(prompt);
+      const ideas = [1, 2, 3].map(n => ({ angle: `Sudut ${n}`, title: `Judul ${n}`, hook: "Hook", whyFits: "Cocok", lines: ["Satu kalimat.", "Dua kalimat.", "Tiga kalimat."] }));
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ ideas }) }] } }] }) });
+    });
+    await ctxR.route(SB + "/**", async route => {
+      const req = route.request(), u = new URL(req.url());
+      const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "POST, GET, OPTIONS" };
+      if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+      const send = (status, body) => route.fulfill({ status, headers: cors, contentType: "application/json", body: JSON.stringify(body) });
+      if (u.pathname === "/auth/v1/token") return send(200, { access_token: "AT", refresh_token: "RT", expires_in: 3600, user: { email: "saya@contoh.id" } });
+      if (u.pathname.startsWith("/rest/v1/")) return send(200, []);
+      const m = JSON.parse(req.postData() ?? "{}");
+      if (u.pathname !== "/functions/v1/trends") return send(404, {});
+      if (m.action === "status") return send(200, { hasKey: seen.hasKey });
+      if (m.action === "forget") { seen.hasKey = false; return send(200, { ok: true }); }
+      if (m.action === "save-key") { if (m.apiKey.startsWith("bad")) return send(400, { error: { status: "KEY_REJECTED", message: "YouTube menolak kunci ini. Periksa kuncinya di Google Cloud dan pastikan YouTube Data API v3 aktif." } }); seen.saved++; seen.hasKey = true; return send(200, { ok: true }); }
+      if (m.action === "scan") {
+        seen.scans.push({ q: m.q, region: m.region, withKey: seen.hasKey });
+        const items = [item("wikipedia", "Banjir Jakarta", "400 rb tayangan dalam 7 hari"), item("hn", "Banjir dan data terbuka", "120 poin, 30 komentar")];
+        if (seen.hasKey) items.unshift(item("youtube", "Cara hemat saat banjir", "1,5 jt tayangan, Kanal Uang"));
+        return send(200, { at: Date.now(), q: m.q, region: m.region, status: [{ source: "wikipedia", ok: true, n: 1 }, { source: "hn", ok: true, n: 1 }, seen.hasKey ? { source: "youtube", ok: true, n: 1 } : { source: "youtube", ok: false, note: "kunci YouTube belum disimpan" }], items });
+      }
+      return send(400, {});
+    });
+    const p = await ctxR.newPage();
+    p.on("pageerror", e => pageErrors.push(e.message));
+    await p.goto(BASE); await p.getByTestId("fold-trend").waitFor({ timeout: 8000 }); await openFolds(p);
+    await p.getByTestId("radar-needs-login").waitFor({ timeout: 5000 });
+    assert(/bukan jaminan/.test(await p.getByTestId("trend-radar").innerText()), "says a signal is not a promise");
+    await p.getByTestId("cloud-open").click();
+    await p.getByTestId("cloud-email").fill("saya@contoh.id");
+    await p.getByTestId("cloud-password").fill("benar-sekali");
+    await p.getByTestId("cloud-signin").click();
+    await p.getByTestId("radar-scan").waitFor({ timeout: 10000 });
+    await p.getByTestId("trend-niche").fill("banjir");
+    await p.getByTestId("radar-scan").click();
+    await p.getByTestId("radar-result").waitFor({ timeout: 8000 });
+    assert(seen.scans.length === 1 && seen.scans[0].q === "banjir" && seen.scans[0].region === "ID", "scan carries the niche and region");
+    assert(/YouTube: kunci YouTube belum disimpan/.test(await p.getByTestId("radar-status").innerText()), "says which source did not answer");
+    assert(await p.getByTestId("radar-item").count() === 2, "two keyless signals");
+    assert(await p.getByTestId("radar-use").isDisabled(), "nothing ticked yet");
+    await p.getByTestId("radar-item").nth(0).locator("input").check();
+    await p.getByTestId("radar-item").nth(1).locator("input").check();
+    await p.getByTestId("radar-use").click();
+    const trendText = await p.getByTestId("trend-text").inputValue();
+    assert(trendText.includes("Banjir Jakarta (Wikipedia: 400 rb tayangan dalam 7 hari)") && trendText.includes("Banjir dan data terbuka (Hacker News"), "ticked signals added to the trend note: " + trendText);
+    // The cache answers a repeat scan without calling the server again.
+    await p.getByTestId("radar-scan").click();
+    await p.getByTestId("radar-refresh").waitFor({ timeout: 3000 });
+    assert(seen.scans.length === 1, "repeat scan comes from the 6-hour cache");
+    // A wrong YouTube key is explained, a good one saved and never shown again; a fresh scan then has YouTube.
+    await p.getByTestId("radar-key-fold").locator("summary").click();
+    await p.getByTestId("radar-key").fill("bad" + "x".repeat(30));
+    await p.getByTestId("radar-save-key").click();
+    await p.getByTestId("radar-error").filter({ hasText: "menolak" }).waitFor({ timeout: 5000 });
+    await p.getByTestId("radar-key").fill("AIza" + "z".repeat(35));
+    await p.getByTestId("radar-save-key").click();
+    await p.getByTestId("radar-key-saved").waitFor({ timeout: 5000 });
+    assert(seen.saved === 1 && await p.getByTestId("radar-key").count() === 0, "key saved once and the field is gone");
+    assert(!(await p.content()).includes("AIza" + "z".repeat(35)), "the key is not in the page");
+    await p.getByTestId("radar-refresh").click();
+    await p.getByTestId("radar-item").nth(0).waitFor({ timeout: 5000 });
+    assert(seen.scans.length === 2 && seen.scans[1].withKey && await p.getByTestId("radar-item").count() === 3, "fresh scan includes YouTube");
+    assert(/YouTube: 1 hasil/.test(await p.getByTestId("radar-status").innerText()), "status shows YouTube answered");
+    // The ticked signals are in what the AI is asked, the key is not.
+    await p.getByTestId("trend-write").click();
+    await p.getByTestId("trend-ideas").waitFor({ timeout: 10000 });
+    const prompt = seen.prompts.find(x => x.includes("TREN_DARI_PEMBUAT"));
+    assert(prompt && prompt.includes("Banjir Jakarta (Wikipedia") && !prompt.includes("AIza") && !prompt.includes("k".repeat(30)), "AI prompt carries the ticked signals and no key");
+    await p.getByTestId("radar-forget-key").click();
+    await p.getByTestId("radar-key-fold").waitFor({ timeout: 5000 });
+    await ctxR.close();
+  });
+
   await step("no uncaught page errors", async () => { assert(pageErrors.length === 0, pageErrors.join(" | ")); });
   await browser.close();
 } finally {

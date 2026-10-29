@@ -754,7 +754,7 @@ export default function MotionStudio() {
           </div>}
           <TrendStart disabled={rendering || videoMode} onUse={(text, t, b) => {
             setScript(text.slice(0, 3000)); if (t) setTitle(t.slice(0, 60)); setContentPreset("custom");
-            setSeoSeed({ platform: b.platform, niche: b.niche, audience: b.audience, trends: b.trend, nonce: Date.now() });
+            setSeoSeed({ platform: b.platform, niche: b.niche, audience: b.audience, trends: b.trend.slice(0, 300), nonce: Date.now() });
           }} />
           <div className="step-title" data-testid="step-1"><b>1</b>{activeMode === "affiliate" ? "Produk dan naskah" : "Naskah"}</div>
           {offer && !imported && <div className="notice normal-only" data-testid="transcript-offer">
