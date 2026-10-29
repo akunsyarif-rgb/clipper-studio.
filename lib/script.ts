@@ -4,6 +4,7 @@ import type { BrandMotion, OverlayPosition } from "./overlay";
 import type { Cut, SceneVisual } from "./visuals";
 import type { NarrativePlan } from "./narrative";
 import type { Watermark } from "./watermark";
+import type { TypePackId } from "./fonts";
 
 export const FPS = 30;
 export const WIDTH = 1080;
@@ -16,7 +17,7 @@ export const MIN_SCENE_SECONDS = 1.2;
 export const WORDS_PER_SECOND = 2.5;
 
 export type StyleId = "hybrid" | "kinetic" | "popup" | "cinematic" | "editorial";
-export type PaletteId = "violet" | "gold" | "pearl" | "forest" | "obsidian" | "ivory";
+export type PaletteId = "violet" | "gold" | "pearl" | "forest" | "obsidian" | "ivory" | "sunset" | "ocean" | "crimson" | "citrus" | "mint" | "lavender";
 
 export const STYLES: { id: StyleId; label: string }[] = [
   { id: "hybrid", label: "Hybrid" },
@@ -45,6 +46,12 @@ export const PALETTES: Record<PaletteId, { label: string; bg1: string; bg2: stri
   forest: { label: "Forest / Sage", bg1: "#0d211d", bg2: "#24483b", accent: "#b9d7ad", text: "#f7f5eb" },
   obsidian: { label: "Obsidian / Electric", bg1: "#090d16", bg2: "#17263b", accent: "#73e0ff", text: "#f4f7ff" },
   ivory: { label: "Ivory / Forest", bg1: "#f5f2e8", bg2: "#e4e8da", accent: "#2f5d46", text: "#16251e" },
+  sunset: { label: "Sunset / Peach", bg1: "#2a0f1f", bg2: "#7a2e3b", accent: "#ffb48a", text: "#fff7f0" },
+  ocean: { label: "Deep Ocean / Aqua", bg1: "#04161f", bg2: "#0d4a5a", accent: "#5ef0d0", text: "#eafcff" },
+  crimson: { label: "Noir / Crimson", bg1: "#0b0b0f", bg2: "#3a0d14", accent: "#ff5a69", text: "#ffffff" },
+  citrus: { label: "Moss / Neon Lime", bg1: "#101406", bg2: "#2f3d0b", accent: "#d6ff3d", text: "#fbfff0" },
+  mint: { label: "Mint / Evergreen", bg1: "#eefaf3", bg2: "#cdeedd", accent: "#0e7a53", text: "#0f2a20" },
+  lavender: { label: "Lavender / Violet", bg1: "#f3effd", bg2: "#ddd3fa", accent: "#5b35c9", text: "#1f1442" },
 };
 
 export type Scene = {
@@ -67,6 +74,14 @@ export type Scene = {
   /** Faceless videos only: the creator's picture behind the scene (blob:/http(s):/data: URL, or a file name inside public/ for CLI renders). */
   image?: string;
 };
+
+export type CaptionStyleId = "classic" | "pop" | "outline" | "box";
+export const CAPTION_STYLES: { id: CaptionStyleId; label: string; description: string }[] = [
+  { id: "classic", label: "Klasik", description: "Putih dengan kata yang diucapkan berwarna kuning" },
+  { id: "pop", label: "Pop (viral)", description: "Huruf tebal besar bergaris tepi hitam, kata aktif berwarna aksen dan sedikit membesar" },
+  { id: "outline", label: "Outline", description: "Putih bergaris tepi hitam tegas, kata aktif kuning, terbaca di latar apa pun" },
+  { id: "box", label: "Kotak sorot", description: "Kata yang diucapkan disorot kotak berwarna aksen, gaya populer di TikTok" },
+];
 
 export type VideoProps = {
   title: string;
@@ -91,6 +106,14 @@ export type VideoProps = {
   watermark?: Watermark;
   /** Accent objects (floating point, rising steps, orbit, converging point) above suitable text scenes; on unless false. */
   storyVisuals?: boolean;
+  /** Type pack (lib/fonts.ts) for headlines and labels; absent means the classic system fonts. */
+  typography?: TypePackId;
+  /** How the spoken words are drawn over a source video; absent means "classic". */
+  captionStyle?: CaptionStyleId;
+  /** Background of text scenes: soft moving colour fields from the palette ("mesh") or the plain gradient (default). */
+  backdrop?: "plain" | "mesh";
+  /** A fine film-grain texture over text scenes. */
+  grain?: boolean;
 };
 
 const words = (s: string) => s.split(/\s+/).filter(Boolean);

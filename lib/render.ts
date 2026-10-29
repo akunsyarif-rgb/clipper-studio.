@@ -41,6 +41,10 @@ function describe(err: unknown): string {
 
 export async function renderMp4(props: VideoProps, opts: { signal: AbortSignal; onProgress: (fraction: number) => void; onRetry?: () => void }): Promise<Blob> {
   const { renderMediaOnWeb } = await import("@remotion/web-renderer");
+  // Fonts first: text is fitted with their real metrics, and the first frame must not be drawn in a fallback face.
+  const { ensureFonts } = await import("../remotion/fonts");
+  const { resolveTypePack } = await import("./fonts");
+  await ensureFonts(resolveTypePack(props.typography));
   const muted = !props.audioSrc && !props.music && !props.video;
   const failures: string[] = [];
   let tried = 0;

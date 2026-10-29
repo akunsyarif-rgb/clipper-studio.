@@ -3,12 +3,15 @@ import { Audio, Video } from "@remotion/media";
 import { AbsoluteFill, Easing, Img, interpolate, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig, type CalculateMetadataFunction } from "remotion";
 import { kenBurns } from "../lib/scene-image";
 import { musicGain } from "../lib/audio";
-import { activeWordIndex, clipPlan, HEIGHT, phraseLine, spokenFrames, PALETTES, totalFrames, WIDTH, type Scene, type StyleId, type VideoProps } from "../lib/script";
+import { type CaptionStyleId, activeWordIndex, clipPlan, HEIGHT, phraseLine, spokenFrames, PALETTES, totalFrames, WIDTH, type Scene, type StyleId, type VideoProps } from "../lib/script";
 import { chooseFamily, planLayouts, type Layout } from "../lib/composition";
-import { CAPTION_BOTTOM, CONTENT_WIDTH, contentBox, MOTION, SAFE } from "../lib/layout";
+import { CAPTION_BOTTOM, CONTENT_WIDTH, contentBox, MOTION, SAFE, setActiveType, TYPE } from "../lib/layout";
 import { detectVisual, stripMarks } from "../lib/visuals";
 import { overlayWindows } from "../lib/overlay";
 import { watermarkInsets } from "../lib/watermark";
+import { resolveTypePack } from "../lib/fonts";
+import { useFonts } from "./fonts";
+import { GrainOverlay, Glow, MeshBackdrop } from "./Backdrops";
 import { measureWatermark, WatermarkLayer } from "./Watermark";
 import { FamilyView } from "./Families";
 import { VideoOverlay } from "./Overlays";
@@ -37,17 +40,36 @@ function captionState(scene: Scene, frame: number) {
   return { line, since };
 }
 
+/** Hard outline around text without relying on -webkit-text-stroke (eight shadows draw the same in every engine). */
+function outlineShadow(px: number, color = "#000"): string {
+  const d = [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]];
+  return d.map(([x, y]) => `${(x * px).toFixed(1)}px ${(y * px).toFixed(1)}px 0 ${color}`).join(", ") + `, 0 ${px * 1.6}px ${px * 3}px #000a`;
+}
+
 /** Caption over the speaker (source-video edits): short phrase, spoken word highlighted, stable layout. */
-function VideoCaption({ scene }: { scene: Scene }) {
+function VideoCaption({ scene, captionStyle, colors }: { scene: Scene; captionStyle: CaptionStyleId; colors: Colors }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const state = captionState(scene, frame);
   if (!state) return null;
-  const pop = spring({ frame: state.since, fps, config: { damping: 16, stiffness: 220, mass: 0.5 } });
+  const pop = Math.min(1, spring({ frame: state.since, fps, config: { damping: 16, stiffness: 220, mass: 0.5 } }));
+  const words = state.line.words, activeIn = state.line.activeInLine;
+  const wrap = { maxWidth: CONTENT_WIDTH, textAlign: "center" as const, lineHeight: 1.12, opacity: Math.min(1, 0.2 + pop), transform: `translateY(${(1 - pop) * 18}px) scale(${0.94 + 0.06 * pop})` };
+  const base = { classic: { fontFamily: "Arial, sans-serif", fontWeight: 800, fontSize: 76, letterSpacing: -1 }, pop: { fontFamily: TYPE.display, fontWeight: 900, fontSize: 88, letterSpacing: TYPE.tracking }, outline: { fontFamily: TYPE.sans, fontWeight: 800, fontSize: 74, letterSpacing: -0.5 }, box: { fontFamily: TYPE.display, fontWeight: 800, fontSize: 72, letterSpacing: TYPE.tracking } }[captionStyle];
+  const cap = (captionStyle === "pop" || captionStyle === "box") && TYPE.caps;
+  const text = (w: string) => (cap ? w.toLocaleUpperCase("id") : w);
+  const gap = (i: number) => (i < words.length - 1 ? " " : "");
   return (
     <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", paddingBottom: CAPTION_BOTTOM }}>
-      <div style={{ maxWidth: CONTENT_WIDTH, textAlign: "center", fontFamily: "Arial, sans-serif", fontWeight: 800, fontSize: 76, lineHeight: 1.12, letterSpacing: -1, color: "#fff", textShadow: "0 4px 22px #000d, 0 0 3px #000c", opacity: Math.min(1, 0.2 + pop), transform: `translateY(${(1 - Math.min(1, pop)) * 18}px) scale(${0.94 + 0.06 * Math.min(1, pop)})` }}>
-        {state.line.words.map((w, i) => <span key={i} style={{ color: i === state.line.activeInLine ? "#ffe066" : "#fff" }}>{w}{i < state.line.words.length - 1 ? " " : ""}</span>)}
+      <div data-caption-style={captionStyle} style={{ ...wrap, ...base, color: "#fff", textShadow: captionStyle === "classic" ? "0 4px 22px #000d, 0 0 3px #000c" : captionStyle === "box" ? "0 3px 14px #000c" : outlineShadow(captionStyle === "pop" ? 6 : 4) }}>
+        {words.map((w, i) => {
+          const on = i === activeIn;
+          if (captionStyle === "classic") return <span key={i} style={{ color: on ? "#ffe066" : "#fff" }}>{w}{gap(i)}</span>;
+          if (captionStyle === "outline") return <span key={i} style={{ color: on ? "#ffe066" : "#fff" }}>{w}{gap(i)}</span>;
+          if (captionStyle === "pop") return <span key={i} style={{ display: "inline-block", color: on ? colors.accent : "#fff", transform: on ? "scale(1.12)" : undefined, marginRight: i < words.length - 1 ? "0.25em" : 0 }}>{text(w)}</span>;
+          // box: the spoken word sits on an accent-coloured rounded box, dark text for contrast.
+          return <span key={i} style={{ display: "inline-block", padding: "0 0.18em", margin: "0 0.04em", borderRadius: "0.22em", background: on ? colors.accent : "transparent", color: on ? colors.bg1 : "#fff", textShadow: on ? "none" : undefined }}>{text(w)}</span>;
+        })}
       </div>
     </AbsoluteFill>
   );
@@ -140,7 +162,11 @@ function SceneView({ scene, index, count, title, style, colors, layout, insets, 
   );
 }
 
-export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech, video, overlay, brandMotion, watermark, storyVisuals }) => {
+export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech, video, overlay, brandMotion, watermark, storyVisuals, typography, captionStyle, backdrop, grain }) => {
+  // The type pack is set before anything below draws or measures text, and the frame waits for its fonts.
+  const pack = resolveTypePack(typography);
+  setActiveType(pack);
+  useFonts(pack);
   const frame = useCurrentFrame();
   const { durationInFrames, fps } = useVideoConfig();
   const colors = PALETTES[palette] ?? PALETTES.violet;
@@ -167,9 +193,10 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
   let from = 0;
   return (
     <AbsoluteFill style={{ background: `linear-gradient(145deg, ${colors.bg1} 0%, ${colors.bg2} 100%)`, overflow: "hidden" }}>
-      {!quiet && <AbsoluteFill style={{ background: `radial-gradient(circle at 80% 20%, ${colors.accent}22 0%, transparent 38%)`, opacity: wash }} />}
+      {!quiet && <AbsoluteFill><Glow cx={WIDTH * 0.8} cy={HEIGHT * 0.2} radius={670} color={colors.accent} alpha="22" opacity={wash} /></AbsoluteFill>}
       {particles.map(p => <div key={p.key} aria-hidden="true" style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: p.size, height: p.size, borderRadius: "50%", background: colors.accent, opacity: p.opacity, transform: `translateY(${p.drift}px)`, pointerEvents: "none" }} />)}
       {!quiet && <div style={{ position: "absolute", width: 700, height: 700, border: `1px solid ${colors.accent}45`, borderRadius: "50%", right: -380, top: 250, transform: `rotate(${frame * 0.3}deg)` }} />}
+      {backdrop === "mesh" && !video ? <MeshBackdrop colors={colors} /> : null}
       {video ? (video.audioOnly ? <Audio src={resolveAudio(video.src)} /> : <AbsoluteFill><Video src={resolveAudio(video.src)} objectFit="cover" /></AbsoluteFill>) : null}
       {audioSrc ? <Audio src={resolveAudio(audioSrc)} /> : null}
       {music ? (
@@ -198,7 +225,7 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
             {video
               ? <>
                 {clip && video ? <Sequence from={0} durationInFrames={clip.lengthFrames}><ClipCutaway src={video.src} startFrame={clip.startFrame} length={clip.lengthFrames} /></Sequence> : null}
-                {captions ? <VideoCaption scene={scene} /> : null}
+                {captions ? <VideoCaption scene={scene} captionStyle={captionStyle ?? "classic"} colors={colors} /> : null}
                 {/* Cutaway: an opaque graphic over the speaker (at most 4 s); the video underneath keeps playing, so audio never breaks. */}
                 {scene.cut === "graphic" ? <Sequence from={0} durationInFrames={Math.min(scene.durationInFrames, 120)}><Cutaway scene={scene} colors={colors} length={Math.min(scene.durationInFrames, 120)} index={i} /></Sequence> : null}
               </>
@@ -207,6 +234,7 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
         );
       })}
       <div style={{ position: "absolute", bottom: 72, left: 70, right: 70, height: quiet ? 2 : 4, background: `${colors.text}30` }}><div style={{ height: "100%", width: `${progress}%`, background: colors.accent }} /></div>
+      {grain && !video ? <GrainOverlay /> : null}
       <WatermarkLayer watermark={watermark} />
     </AbsoluteFill>
   );
