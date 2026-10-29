@@ -30,6 +30,9 @@ import GeminiJudge from "../GeminiJudge";
 import AiDirector from "../AiDirector";
 import SeoPanel, { type SeoSeed } from "../SeoPanel";
 import TrendStart from "../TrendStart";
+import { logDownload, logRender, logSeo, logTrend, scriptId, type HistoryEntry } from "@/lib/history";
+import { loadHistory, onHistoryChange, updateHistory } from "@/lib/history-store";
+import type { SeoPlatform, SeoResult } from "@/lib/seo";
 import { planStickers, STICKERS, STICKER_BY_ID, STICKER_CREDIT, matchSticker, type StickerMode } from "@/lib/stickers";
 import { planSfx, SFX_LABELS, SFX_MODES, SFX_VOLUME, type SfxMode } from "@/lib/sfx";
 import { sfxWav } from "@/lib/sfx-synth";
@@ -415,6 +418,35 @@ export default function MotionStudio() {
   useEffect(() => () => { if (srtUrl) URL.revokeObjectURL(srtUrl); }, [srtUrl]);
   useEffect(() => { setResult(null); }, [script, title, style, palette, target, captions, narration, musicMode, musicTrack, musicVolume, duck, watermark]);
 
+  // Production history (text only, on this device): renders and downloads are logged, and the SEO packs of the video being
+  // worked on are restored when its script is back, so making many videos and downloading them loses nothing.
+  const [historyId, setHistoryId] = useState(() => scriptId(script));
+  useEffect(() => { const t = setTimeout(() => setHistoryId(scriptId(script)), 800); return () => clearTimeout(t); }, [script]);
+  const [entrySeo, setEntrySeo] = useState<HistoryEntry["seo"]>({});
+  useEffect(() => {
+    let alive = true;
+    const load = () => { void loadHistory().then(list => { if (alive) setEntrySeo(list.find(e => e.id === historyId)?.seo ?? {}); }); };
+    load();
+    const off = onHistoryChange(load);
+    return () => { alive = false; off(); };
+  }, [historyId]);
+  const base = () => ({ id: scriptId(script), kind: "motion" as const, title, script, now: Date.now() });
+  useEffect(() => {
+    if (!result) return;
+    void updateHistory(l => logRender(l, base(), { name: result.name, size: result.size, label: `${WIDTH}×${HEIGHT} · ${videoSeconds.toFixed(0)} dtk` }));
+  }, [result]); // eslint-disable-line react-hooks/exhaustive-deps
+  const onSeoResult = (platform: SeoPlatform, r: SeoResult) => { void updateHistory(l => logSeo(l, base(), platform, r)); };
+  // "Buka di studio" from the history page leaves the script here.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("clipper:history:open");
+      if (!raw) return;
+      sessionStorage.removeItem("clipper:history:open");
+      const o = JSON.parse(raw) as { script?: unknown; title?: unknown };
+      if (typeof o.script === "string" && o.script.trim()) { setScript(o.script.slice(0, 3000)); setTitle(typeof o.title === "string" ? o.title.slice(0, 60) : ""); setContentPreset("custom"); setHistoryId(scriptId(o.script)); setHandoffNote("Naskah dibuka dari Riwayat. Atur tampilan, render ulang, atau lihat paket SEO yang tersimpan."); }
+    } catch { /* storage blocked: nothing to open */ }
+  }, []);
+
   const generate = useCallback(async (seconds: number, m: Mood, s: number): Promise<Generated | null> => {
     setMusicBusy(true); setMusicError("");
     try {
@@ -729,7 +761,7 @@ export default function MotionStudio() {
     <main className="motion-shell">
       <header className="motion-header">
         <Link className="motion-brand" href="/"><span className="motion-logo">✳</span> clipper<span>studio</span></Link>
-        <Link className="back-link" href="/">← Clipper Studio</Link>
+        <span><Link className="back-link" href="/riwayat" data-testid="link-history">Riwayat</Link> · <Link className="back-link" href="/">← Clipper Studio</Link></span>
       </header>
 
       <section className="motion-intro compact">
@@ -754,6 +786,7 @@ export default function MotionStudio() {
           </div>}
           <TrendStart disabled={rendering || videoMode} onUse={(text, t, b) => {
             setScript(text.slice(0, 3000)); if (t) setTitle(t.slice(0, 60)); setContentPreset("custom");
+            void updateHistory(l => logTrend(l, { id: scriptId(text), kind: "motion", title: t, script: text, now: Date.now() }, { platform: b.platform, niche: b.niche, audience: b.audience, trend: b.trend }));
             setSeoSeed({ platform: b.platform, niche: b.niche, audience: b.audience, trends: b.trend.slice(0, 300), nonce: Date.now() });
           }} />
           <div className="step-title" data-testid="step-1"><b>1</b>{activeMode === "affiliate" ? "Produk dan naskah" : "Naskah"}</div>
@@ -982,9 +1015,9 @@ export default function MotionStudio() {
           {rendering && <div className="render-progress" data-testid="progress"><div><span>Merender di browser…</span><b>{progress}%</b></div><i><em style={{ width: progress + "%" }} /></i></div>}
           {renderError && <p className="field-error" role="alert" data-testid="render-error">{renderError}</p>}
           {errorDetail && <details className="error-details" open><summary>Detail teknis (kirimkan saat melapor)</summary><code data-testid="error-detail">{errorDetail}</code><button className="text-link" onClick={() => navigator.clipboard?.writeText(errorDetail).then(() => setStatus("Detail teknis disalin."), () => setStatus("Salin manual teks di atas."))}>Salin detail teknis</button></details>}
-          {result && <div className="render-result" data-testid="result"><b>✓ MP4 siap</b><small>{WIDTH}×{HEIGHT} · {videoSeconds.toFixed(1)} dtk · {(result.size / 1024 ** 2).toFixed(1)} MB</small><a className="motion-primary" href={result.url} download={result.name} data-testid="download">Simpan MP4 ↓</a>{srtUrl && <a className="text-link" href={srtUrl} download={result.name.replace(/\.mp4$/i, "") + ".srt"} data-testid="download-srt">Unduh subtitle (.srt)</a>}</div>}
+          {result && <div className="render-result" data-testid="result"><b>✓ MP4 siap</b><small>{WIDTH}×{HEIGHT} · {videoSeconds.toFixed(1)} dtk · {(result.size / 1024 ** 2).toFixed(1)} MB</small><a className="motion-primary" href={result.url} download={result.name} data-testid="download" onClick={() => { void updateHistory(l => logDownload(l, base(), { name: result.name, size: result.size, label: `${WIDTH}×${HEIGHT} · ${videoSeconds.toFixed(0)} dtk` })); }}>Simpan MP4 ↓</a>{srtUrl && <a className="text-link" href={srtUrl} download={result.name.replace(/\.mp4$/i, "") + ".srt"} data-testid="download-srt">Unduh subtitle (.srt)</a>}</div>}
           {status && <p className="motion-status" role="status" data-testid="status">{status}</p>}
-          {timeline.ok && <SeoPanel seed={seoSeed} transcript={timeline.scenes.map(sc => stripMarks(sc.text)).join(" ")} topic={title.trim()} language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"} />}
+          {timeline.ok && <SeoPanel seed={seoSeed} stored={entrySeo} storedId={historyId} onResult={onSeoResult} transcript={timeline.scenes.map(sc => stripMarks(sc.text)).join(" ")} topic={title.trim()} language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"} />}
         </section>
 
         <section className="preview-column">

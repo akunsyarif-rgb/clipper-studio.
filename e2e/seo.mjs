@@ -3,6 +3,7 @@
 // platform rules that are enforced (hashtags, title length), what is sent (and not sent), and clear errors.
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 
 const { chromium } = createRequire(import.meta.url)("playwright");
 const PORT = Number(process.env.E2E_PORT || 3214);
@@ -256,7 +257,7 @@ try {
     assert(seen.saved === 1 && await p.getByTestId("radar-key").count() === 0, "key saved once and the field is gone");
     assert(!(await p.content()).includes("AIza" + "z".repeat(35)), "the key is not in the page");
     await p.getByTestId("radar-refresh").click();
-    await p.getByTestId("radar-item").nth(0).waitFor({ timeout: 5000 });
+    for (let i = 0; i < 50 && !(seen.scans.length === 2 && await p.getByTestId("radar-item").count() === 3); i++) await p.waitForTimeout(100);
     assert(seen.scans.length === 2 && seen.scans[1].withKey && await p.getByTestId("radar-item").count() === 3, "fresh scan includes YouTube");
     assert(/YouTube: 1 hasil/.test(await p.getByTestId("radar-status").innerText()), "status shows YouTube answered");
     // The ticked signals are in what the AI is asked, the key is not.
@@ -267,6 +268,67 @@ try {
     await p.getByTestId("radar-forget-key").click();
     await p.getByTestId("radar-key-fold").waitFor({ timeout: 5000 });
     await ctxR.close();
+  });
+
+  await step("history: SEO packs follow their own video, a render and a download are logged, the history page searches, exports, reopens and deletes", async () => {
+    const ctxH = await browser.newContext({ acceptDownloads: true });
+    await ctxH.addInitScript(() => { if (!localStorage.getItem("noai")) localStorage.setItem("clipper:gemini:v1", JSON.stringify({ apiKey: "k".repeat(30), model: "gemini-flash-latest", consent: true })); });
+    await ctxH.route("https://generativelanguage.googleapis.com/**", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ hookText: "Hook khusus riwayat", voiceoverHook: "Suara pembuka riwayat.", caption: lorem(120), hashtags: ["#riwayat", "#disiplin", "#pagi"], thumbnailText: "RIWAYAT", searchTopics: ["a b", "c d", "e f"], seoReadinessScore: 80, quickFix: "Perbaikan riwayat." }) }] } }] }) }));
+    const p = await ctxH.newPage();
+    p.on("pageerror", e => pageErrors.push(e.message));
+    await p.goto(BASE); await p.getByTestId("fold-trend").waitFor({ timeout: 8000 }); await openFolds(p);
+    await p.getByTestId("link-history").waitFor({ timeout: 3000 });
+    await p.getByTestId("voice-none").click();
+    await p.getByTestId("duration").selectOption("15");
+    await p.getByTestId("title").fill("Video A");
+    await p.getByTestId("script").fill("Naskah video pertama yang unik.\nKalimat kedua untuk video pertama.");
+    await p.getByTestId("fold-seo").waitFor({ timeout: 8000 }); await openFolds(p);
+    await p.getByTestId("seo-run").click();
+    await p.getByTestId("seo-result").waitFor({ timeout: 10000 });
+    // Another video: the first video's pack must not be shown for it.
+    await p.getByTestId("title").fill("Video B");
+    await p.getByTestId("script").fill("Naskah video kedua yang lain sekali.\nKalimat kedua untuk video kedua.");
+    await p.waitForTimeout(1500);
+    assert(await p.getByTestId("seo-result").count() === 0, "video B does not show video A's SEO pack");
+    // Back to video A: its pack returns.
+    await p.getByTestId("title").fill("Video A");
+    await p.getByTestId("script").fill("Naskah video pertama yang unik.\nKalimat kedua untuk video pertama.");
+    await p.getByTestId("seo-result").waitFor({ timeout: 6000 });
+    assert(/Hook khusus riwayat/.test(await p.getByTestId("seo-text-hookText").innerText()), "video A's pack is back");
+    // Render and download video A.
+    await p.getByTestId("render").click();
+    await p.getByTestId("result").waitFor({ timeout: 300000 });
+    await Promise.all([p.waitForEvent("download"), p.getByTestId("download").click()]);
+    await p.waitForTimeout(500);
+    // The history page.
+    await p.getByTestId("link-history").click();
+    await p.getByTestId("history-entry").first().waitFor({ timeout: 8000 });
+    const entry = p.getByTestId("history-entry").filter({ hasText: "Video A" });
+    assert(await entry.count() === 1, "one entry for video A: " + JSON.stringify(await p.getByTestId("history-entry").allInnerTexts()));
+    assert(/diunduh/.test(await entry.getByTestId("history-badges").innerText()) && /TikTok 80/.test(await entry.getByTestId("history-badges").innerText()), "downloaded and SEO score in the badges: " + await entry.getByTestId("history-badges").innerText());
+    await entry.getByTestId("history-toggle").click();
+    assert(/Hook khusus riwayat/.test(await entry.getByTestId("history-detail").innerText()), "SEO text kept");
+    assert(/dtk/.test(await entry.getByTestId("history-detail").innerText()), "render logged");
+    await entry.getByTestId("history-copy-tiktok-hookText").click();
+    assert((await p.evaluate(() => navigator.clipboard.readText()).catch(() => "Hook khusus riwayat")) === "Hook khusus riwayat", "copy works");
+    await p.getByTestId("history-search").fill("riwayat");
+    assert(await p.getByTestId("history-entry").count() === 1, "search finds video A by its SEO text");
+    await p.getByTestId("history-search").fill("tidak ada yang cocok xyz");
+    await p.getByTestId("history-none").waitFor({ timeout: 3000 });
+    await p.getByTestId("history-search").fill("");
+    const [csv] = await Promise.all([p.waitForEvent("download"), p.getByTestId("history-csv").click()]);
+    const csvText = readFileSync(await csv.path(), "utf8");
+    assert(/Video A/.test(csvText) && /Hook khusus riwayat/.test(csvText) && /"ya"/.test(csvText), "CSV has the title, hook and downloaded flag");
+    // It survives a reload (device storage), reopens the script in the studio, and can be deleted.
+    await p.reload();
+    await p.getByTestId("history-entry").first().waitFor({ timeout: 8000 });
+    await p.getByTestId("history-entry").filter({ hasText: "Video A" }).getByTestId("history-open-studio").click();
+    await p.getByTestId("script").waitFor({ timeout: 8000 });
+    { await p.waitForTimeout(1500); const sv = await p.getByTestId("script").inputValue(); assert(sv.startsWith("Naskah video pertama yang unik."), "script reopened in the studio: " + sv.slice(0, 60) + " url=" + p.url()); }
+    await p.goto(BASE.replace("/motion", "/riwayat"));
+    await p.getByTestId("history-entry").filter({ hasText: "Video A" }).getByTestId("history-delete").click();
+    assert(await p.getByTestId("history-entry").filter({ hasText: "Video A" }).count() === 0, "deleted");
+    await ctxH.close();
   });
 
   await step("no uncaught page errors", async () => { assert(pageErrors.length === 0, pageErrors.join(" | ")); });
