@@ -31,7 +31,7 @@ const SB = "https://smwealrfgnzxquqqscxs.supabase.co";
 const LINES = [
   { start: 2, end: 10, text: "Halo semuanya selamat datang di video ini." },
   { start: 12, end: 25, text: "Hari ini saya bahas tiga tips keuangan penting." },
-  { start: 30, end: 50, text: "Tips pertama adalah catat semua pengeluaran Anda." },
+  { start: 30, end: 50, text: "Jadi tips pertama adalah catat semua pengeluaran Anda." },
   { start: 55, end: 80, text: "Tips kedua sisihkan tabungan di awal bulan." },
 ];
 async function until(check, message) { for (let i = 0; i < 80; i++) { if (await check().catch(() => false)) return; await new Promise(r => setTimeout(r, 100)); } throw new Error(message); }
@@ -75,7 +75,7 @@ try {
       if (text.includes('"moments"')) {
         const lines = JSON.parse(text.split("\n").at(-1));
         if (lines.length > 6) { seen.ytMomentLines = lines.length; return answer({ moments: [{ start: 1, end: 4, title: "Bagian awal penting", reason: "dari teks YouTube" }, { start: 6, end: 9, title: "Bagian akhir penting", reason: "dari teks YouTube" }] }); }
-        seen.moments++; return answer({ moments: [{ start: 1, end: 2, title: "Tiga tips keuangan", reason: "pembuka kuat" }, { start: 3, end: 3, title: "Sisihkan tabungan dulu", reason: "tips praktis" }] });
+        seen.moments++; return answer({ moments: [{ start: 2, end: 2, title: "Tiga tips keuangan", reason: "pembuka kuat" }, { start: 3, end: 3, title: "Sisihkan tabungan dulu", reason: "tips praktis" }] });
       }
       return answer({ lines: [] });
     }
@@ -108,9 +108,17 @@ try {
     assert(a.head === "ID3" || a.head.charCodeAt(0) === 0xff, "the audio is MP3 data: " + JSON.stringify(a.head));
     assert((await page.getByTestId("flow-item").count()) === 2, "two clips suggested");
     const first = await page.getByTestId("flow-item").first().innerText();
-    assert(/Tiga tips keuangan/.test(first) && /00:00:12/.test(first) && /00:00:50/.test(first), "first clip has title and times: " + first);
+    assert(/Tiga tips keuangan/.test(first) && /00:00:11/.test(first) && /00:00:50/.test(first), "first clip has title and times (start moved back to the sentence that introduces the topic, with a lead-in): " + first);
+    assert(/dimundurkan 1 kalimat/.test(first) && /Mulai: “Hari ini saya bahas/.test(first) && /Berakhir: “Jadi tips pertama/.test(first), "says the start was moved and shows what is said at both ends: " + first);
     assert(!(await page.content()).includes("benar-sekali"), "no password on the page");
-    await page.getByTestId("flow-item").first().getByText("Sesuaikan waktu").click();
+    await page.getByTestId("flow-item").first().getByText("Sesuaikan waktu", { exact: true }).click();
+    // One sentence later: the start goes to the line that begins "Jadi tips pertama" (30 s, with its lead-in), and one earlier brings it back.
+    await page.getByTestId("flow-item").first().getByTestId("flow-start-later").click();
+    await page.getByTestId("flow-item").first().getByText(/Mulai: “Jadi tips pertama/).waitFor({ timeout: 3000 });
+    assert(/00:00:29/.test(await page.getByTestId("flow-item").first().innerText()), "start stepped one sentence later");
+    await page.getByTestId("flow-item").first().getByTestId("flow-start-earlier").click();
+    await page.getByTestId("flow-item").first().getByText(/Mulai: “Hari ini saya bahas/).waitFor({ timeout: 3000 });
+    assert(!(await page.getByTestId("flow-item").first().getByTestId("flow-note-item").count()), "the note goes once the creator has chosen the start");
     await page.getByTestId("flow-item").first().getByTestId("flow-end-plus").click();
     await page.getByTestId("flow-item").first().getByText("Selesai +2 dtk").waitFor();
     assert(/00:00:52/.test(await page.getByTestId("flow-item").first().innerText()), "the end moved by two seconds");

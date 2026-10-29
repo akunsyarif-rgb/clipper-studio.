@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { copyPrompt, MAX_MOMENTS, MOMENT_MAX_SECONDS, momentsPrompt, parseCopy, parseMoments, suggestMoments, writeCopy, type Line } from "./clip-assist";
+import { continuesEarlier, copyPrompt, LEAD_IN_SECONDS, lineTextAt, MAX_MOMENTS, MAX_REACH_BACK, startWithLeadIn, stepped, stepToLine, type Item, MOMENT_MAX_SECONDS, momentsPrompt, parseCopy, parseMoments, suggestMoments, writeCopy, type Line } from "./clip-assist";
 
 const gem = (obj: unknown) => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] } }] });
 const oa = (obj: unknown) => ({ choices: [{ message: { content: JSON.stringify(obj) } }] });
@@ -124,5 +124,73 @@ describe("a clip's own transcript", () => {
   });
   it("is empty when nothing is said there", () => {
     expect(sliceTranscript(t, 60, 90).segments).toEqual([]);
+  });
+});
+
+describe("where a clip starts", () => {
+  // Lines with small pauses between them: line i covers [6i + 1, 6i + 6]; the gap before it is 1 s (0 for the first line it is 1 s from 0).
+  const spoken = (texts: string[]): Line[] => texts.map((text, i) => ({ start: i * 6 + 1, end: i * 6 + 6, text }));
+  const ten = spoken(["Soal uang bulanan.", "Jadi pertama catat pengeluaranmu.", "Nah, kedua sisihkan di awal.", "Karena itu tabungan tumbuh.", "Ketiga hindari utang konsumtif.", "Lalu evaluasi tiap minggu.", "Itu saja tipsnya.", "Sampai jumpa.", "Satu lagi.", "Terakhir."]);
+
+  it("knows which openers only continue an earlier thought", () => {
+    for (const t of ["Jadi pertama catat.", "nah, kedua", "Karena itu kita", "But then it", "And so"]) expect(continuesEarlier(t)).toBe(true);
+    for (const t of ["Soal uang bulanan.", "Pernah kehabisan uang?", "Ini rahasianya.", "Banyak orang salah.", "Jadilah disiplin."]) expect(continuesEarlier(t)).toBe(false);
+  });
+  it("moves the start back to the sentence that introduces the topic, with a short lead-in", () => {
+    const [m] = parseMoments(gem({ moments: [{ start: 1, end: 4, title: "Tips uang", reason: "" }] }), ten, { min: 8, max: 90, count: 6 });
+    expect(m.startIndex).toBe(0);
+    expect(m.reachedBack).toBe(1);
+    expect(m.start).toBeCloseTo(1 - LEAD_IN_SECONDS, 5); // line 0 starts at 1 s, 1 s after 0 s: room for the full lead-in
+    expect(m.end).toBe(ten[4].end);
+  });
+  it("reaches back at most twice, and never into the clip before", () => {
+    const lns = spoken(["Pokok bahasan.", "Jadi satu.", "Nah dua.", "Lalu tiga.", "Tapi empat.", "Dan lima.", "Selesai di sini.", "Penutup yang baik."]);
+    const [m] = parseMoments(gem({ moments: [{ start: 4, end: 7, title: "x", reason: "" }] }), lns, { min: 8, max: 90, count: 6 });
+    expect(m.reachedBack).toBe(MAX_REACH_BACK);
+    expect(m.startIndex).toBe(2);
+    const two = parseMoments(gem({ moments: [{ start: 0, end: 2, title: "a", reason: "" }, { start: 3, end: 7, title: "b", reason: "" }] }), lns, { min: 8, max: 90, count: 6 });
+    expect(two[1].startIndex).toBe(3); // the line before belongs to the first clip, so it is not taken
+  });
+  it("leaves a clean opener alone", () => {
+    const [m] = parseMoments(gem({ moments: [{ start: 0, end: 3, title: "x", reason: "" }] }), ten, { min: 8, max: 90, count: 6 });
+    expect(m.reachedBack).toBeUndefined();
+  });
+  it("the lead-in never reaches into the previous line", () => {
+    const tight: Line[] = [{ start: 0, end: 5, text: "a" }, { start: 5.1, end: 10, text: "b" }, { start: 12, end: 20, text: "c" }];
+    expect(startWithLeadIn(tight, 1)).toBeCloseTo(5, 5); // only 0.1 s of gap
+    expect(startWithLeadIn(tight, 2)).toBeCloseTo(12 - LEAD_IN_SECONDS, 5);
+    expect(startWithLeadIn(tight, 0)).toBe(0);
+  });
+  it("steps one sentence earlier or later, and says what is said there", () => {
+    expect(stepToLine(ten, ten[3].start - LEAD_IN_SECONDS, "start", -1)).toBeCloseTo(startWithLeadIn(ten, 2), 5);
+    expect(stepToLine(ten, startWithLeadIn(ten, 3), "start", 1)).toBeCloseTo(startWithLeadIn(ten, 4), 5);
+    expect(stepToLine(ten, ten[4].end, "end", -1)).toBe(ten[3].end);
+    expect(stepToLine(ten, ten[4].end, "end", 1)).toBe(ten[5].end);
+    expect(stepToLine(ten, 0, "start", -1)).toBeNull();
+    expect(stepToLine(ten, ten[9].end, "end", 1)).toBeNull();
+    expect(lineTextAt(ten, startWithLeadIn(ten, 1), "start")).toBe("Jadi pertama catat pengeluaranmu.");
+    expect(lineTextAt(ten, ten[3].end, "end")).toBe("Karena itu tabungan tumbuh.");
+    expect(lineTextAt(ten, 0, "end")).toBe("");
+  });
+  it("tells the model to start from the sentence that introduces the topic", () => {
+    expect(momentsPrompt(ten, "id")).toContain("jangan mulai dari kalimat yang diawali kata sambung");
+  });
+});
+
+describe("stepping a suggestion one sentence", () => {
+  const ls: Line[] = [{ start: 1, end: 6, text: "a" }, { start: 7, end: 12, text: "b" }, { start: 13, end: 19, text: "c" }, { start: 20, end: 40, text: "d" }];
+  const item = (start: number, end: number): Item => ({ start, end, title: "t", reason: "", checked: true, note: "Awal dimundurkan" });
+  it("moves to the next sentence boundary and drops the note", () => {
+    const m = stepped(item(startWithLeadIn(ls, 2), 40), "start", -1, ls, 100);
+    expect(m.start).toBeCloseTo(startWithLeadIn(ls, 1), 5);
+    expect(m.note).toBeUndefined();
+    expect(stepped(item(startWithLeadIn(ls, 1), 40), "start", 1, ls, 100).start).toBeCloseTo(startWithLeadIn(ls, 2), 5);
+    expect(stepped(item(1, 19), "end", 1, ls, 100).end).toBe(40);
+  });
+  it("stays put when there is no further sentence or the clip would get too short", () => {
+    const first = item(0.7, 19);
+    expect(stepped(first, "start", -1, ls, 100)).toBe(first);
+    const tiny = item(startWithLeadIn(ls, 2), startWithLeadIn(ls, 2) + 5);
+    expect(stepped(tiny, "start", 1, ls, 100).end - stepped(tiny, "start", 1, ls, 100).start).toBeGreaterThanOrEqual(5);
   });
 });
