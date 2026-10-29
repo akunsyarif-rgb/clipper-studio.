@@ -157,13 +157,25 @@ try {
     assert(/catat semua pengeluaran/.test(await page.getByTestId("script").inputValue()), "the script came back from the transcript");
     assert((await page.getByTestId("timing-lost").count()) === 0, "timing follows the transcript again");
     const seconds = await page.locator("video").first().evaluate(v => new Promise(res => { if (v.readyState >= 1) res(v.duration); else v.onloadedmetadata = () => res(v.duration); }));
-    assert(seconds > 36 && seconds < 42, "the video is the cut clip (about 40 s): " + seconds);
+    assert(seconds > 40 && seconds < 52, "the file is the clip (about 40 s) plus up to 3 s of footage on each side: " + seconds);
+    assert(await page.getByTestId("trim-panel").isVisible() && await page.getByTestId("trim-original").count() === 0, "the trim panel starts on the clip itself");
+    const sum = await page.getByTestId("trim-summary").innerText();
+    assert(/3[6-9]\.\d dtk dipakai dari 4\d\.\d dtk/.test(sum) || /4[0-2]\.\d dtk dipakai dari/.test(sum), "the summary shows the clip inside the footage: " + sum);
     // Pictures (own or Pexels) also work over a source video: choosing one makes that scene a full-screen cutaway.
     assert(await page.getByTestId("scene-image").count() > 0 && await page.getByTestId("scene-image-pexels").first().isVisible(), "picture controls and Pexels are offered over a source video");
     await page.getByTestId("scene-image-input").nth(1).setInputFiles(photo);
     await page.getByTestId("scene-credit").count();
     await until(async () => (await page.getByTestId("scene-cut").nth(1).inputValue()) === "graphic", "a scene with a picture becomes a cutaway");
     assert(await page.getByTestId("scene-image-remove").count() === 1, "the picture is attached to that scene only");
+    // The transcript has word times, so the range can be snapped to the first and last word; the video stays within the clip's footage and its timing stays valid.
+    await page.getByTestId("trim-snap").waitFor({ timeout: 5000 });
+    const before = await page.getByTestId("trim-summary").innerText();
+    if (await page.getByTestId("trim-snap").isEnabled()) await page.getByTestId("trim-snap").click();
+    await page.waitForTimeout(500);
+    const after = await page.getByTestId("trim-summary").innerText();
+    const secs = Number(/(\d+):(\d+\.\d) dtk dipakai/.exec(after)?.[1] ?? 0) * 60 + Number(/(\d+):(\d+\.\d) dtk dipakai/.exec(after)?.[2] ?? 0);
+    assert(secs > 10 && secs < 46, "after snapping to words the range is still the speech: " + before + " -> " + after);
+    assert((await page.getByTestId("timing-lost").count()) === 0, "caption timing still follows the transcript after snapping");
     await page.reload();
     assert((await page.getByTestId("handoff-note").count()) === 0, "the hand-off is used once");
   });

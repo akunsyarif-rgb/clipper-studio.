@@ -197,7 +197,7 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
       {particles.map(p => <div key={p.key} aria-hidden="true" style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: p.size, height: p.size, borderRadius: "50%", background: colors.accent, opacity: p.opacity, transform: `translateY(${p.drift}px)`, pointerEvents: "none" }} />)}
       {!quiet && <div style={{ position: "absolute", width: 700, height: 700, border: `1px solid ${colors.accent}45`, borderRadius: "50%", right: -380, top: 250, transform: `rotate(${frame * 0.3}deg)` }} />}
       {backdrop === "mesh" && !video ? <MeshBackdrop colors={colors} /> : null}
-      {video ? (video.audioOnly ? <Audio src={resolveAudio(video.src)} /> : <AbsoluteFill><Video src={resolveAudio(video.src)} objectFit="cover" /></AbsoluteFill>) : null}
+      {video ? (video.audioOnly ? <Audio src={resolveAudio(video.src)} trimBefore={Math.round((video.trimStart ?? 0) * fps)} /> : <AbsoluteFill><Video src={resolveAudio(video.src)} trimBefore={Math.round((video.trimStart ?? 0) * fps)} objectFit="cover" /></AbsoluteFill>) : null}
       {audioSrc ? <Audio src={resolveAudio(audioSrc)} /> : null}
       {sfx ? <Audio src={resolveAudio(sfx.src)} volume={sfx.volume} /> : null}
       {music ? (

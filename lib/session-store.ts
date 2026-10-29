@@ -67,7 +67,7 @@ export const saveSource = (s: SourceRecord) => kvSet(SOURCE, s);
 export const deleteSource = () => kvDel(SOURCE);
 
 /** A clip cut in the clipper, waiting for the motion studio to take it over (the video itself, so nothing is uploaded or re-chosen). */
-export type ClipHandoff = { blob: Blob; name: string; type: string; seconds: number; title: string; transcript: Transcript | null; at: number };
+export type ClipHandoff = { blob: Blob; name: string; type: string; /** Length of the clip itself (the blob also holds `padStart` and `padEnd` seconds of footage around it). */ seconds: number; padStart?: number; padEnd?: number; title: string; transcript: Transcript | null; at: number };
 const HANDOFF_MAX_AGE_MS = 60 * 60 * 1000;
 
 /**

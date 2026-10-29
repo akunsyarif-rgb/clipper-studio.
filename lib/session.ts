@@ -32,6 +32,8 @@ export type SessionData = {
   storyVisuals?: boolean;
   typography?: TypePackId;
   captionStyle?: CaptionStyleId;
+  /** The part of the source video that is used (seconds into the file); absent = the whole video. */
+  trim?: { start: number; end: number };
   stickerMode?: "off" | "auto";
   stickerOverrides?: Record<string, string>;
   sfx?: SfxMode;
@@ -74,6 +76,7 @@ export function isSession(v: unknown): v is SessionData {
     && (v.stickerOverrides === undefined || (isObject(v.stickerOverrides) && Object.values(v.stickerOverrides).every(x => typeof x === "string")))
     && (v.sfx === undefined || SFX_MODES.includes(v.sfx as SfxMode))
     && (v.captionStyle === undefined || CAPTION_STYLES.some(c => c.id === v.captionStyle))
+    && (v.trim === undefined || (isObject(v.trim) && typeof v.trim.start === "number" && typeof v.trim.end === "number" && Number.isFinite(v.trim.start) && Number.isFinite(v.trim.end) && v.trim.start >= 0 && v.trim.end > v.trim.start))
     && (v.imported === null || isTranscript(v.imported))
     && (v.voiceMode === "ai" || v.voiceMode === "none") && (v.ttsLang === "id" || v.ttsLang === "en")
     && typeof v.ttsVoice === "number" && typeof v.ttsSpeed === "number";
