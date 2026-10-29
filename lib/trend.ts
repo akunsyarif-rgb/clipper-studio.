@@ -77,5 +77,5 @@ export async function writeTrendIdeas(b: TrendBrief, o: CleanupOptions, feedback
 export function addTrendChip(current: string, chip: string): string {
   const parts = current.split(/\s*,\s*/).map(s => s.trim()).filter(Boolean);
   if (parts.some(p => p.toLowerCase() === chip.toLowerCase())) return current;
-  return [...parts, chip].join(", ").slice(0, 300);
+  return [...parts, chip].join(", ").slice(0, 700);
 }
