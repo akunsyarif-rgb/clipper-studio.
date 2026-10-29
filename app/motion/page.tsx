@@ -31,7 +31,7 @@ import AiDirector from "../AiDirector";
 import SeoPanel, { type SeoSeed } from "../SeoPanel";
 import TrendStart from "../TrendStart";
 import { logDownload, logRender, logSeo, logTrend, scriptId, type HistoryEntry } from "@/lib/history";
-import { loadHistory, onHistoryChange, updateHistory } from "@/lib/history-store";
+import { loadHistory, onHistoryChange, startHistorySync, updateHistory } from "@/lib/history-store";
 import type { SeoPlatform, SeoResult } from "@/lib/seo";
 import { planStickers, STICKERS, STICKER_BY_ID, STICKER_CREDIT, matchSticker, type StickerMode } from "@/lib/stickers";
 import { planSfx, SFX_LABELS, SFX_MODES, SFX_VOLUME, type SfxMode } from "@/lib/sfx";
@@ -422,6 +422,7 @@ export default function MotionStudio() {
   // worked on are restored when its script is back, so making many videos and downloading them loses nothing.
   const [historyId, setHistoryId] = useState(() => scriptId(script));
   useEffect(() => { const t = setTimeout(() => setHistoryId(scriptId(script)), 800); return () => clearTimeout(t); }, [script]);
+  useEffect(() => { startHistorySync(); }, []);
   const [entrySeo, setEntrySeo] = useState<HistoryEntry["seo"]>({});
   useEffect(() => {
     let alive = true;

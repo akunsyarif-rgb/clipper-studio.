@@ -331,6 +331,73 @@ try {
     await ctxH.close();
   });
 
+  await step("history sync: a second device signed in to the same account sees the first device's history, and a deletion on one reaches the other", async () => {
+    const SB = "https://smwealrfgnzxquqqscxs.supabase.co";
+    const table = new Map(); // the fake app_history table
+    const calls = { pull: 0, push: 0 };
+    async function device() {
+      const c = await browser.newContext({ acceptDownloads: true });
+      await c.addInitScript(() => { if (!localStorage.getItem("noai")) localStorage.setItem("clipper:gemini:v1", JSON.stringify({ apiKey: "k".repeat(30), model: "gemini-flash-latest", consent: true })); });
+      await c.route("https://generativelanguage.googleapis.com/**", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ hookText: "Hook dari perangkat satu", voiceoverHook: "Pembuka.", caption: lorem(120), hashtags: ["#sinkron", "#disiplin", "#pagi"], thumbnailText: "SINKRON", searchTopics: ["a b", "c d", "e f"], seoReadinessScore: 77, quickFix: "Perbaikan." }) }] } }] }) }));
+      await c.route(SB + "/**", async route => {
+        const req = route.request(), u = new URL(req.url());
+        const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "POST, GET, OPTIONS" };
+        if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+        const send = (status, body) => route.fulfill({ status, headers: cors, contentType: "application/json", body: JSON.stringify(body) });
+        if (u.pathname === "/auth/v1/token") return send(200, { access_token: "AT", refresh_token: "RT", expires_in: 3600, user: { email: "saya@contoh.id" } });
+        if (u.pathname === "/rest/v1/app_history") {
+          if (req.method() === "GET") { calls.pull++; return send(200, [...table.values()]); }
+          calls.push++;
+          for (const r of JSON.parse(req.postData() ?? "[]")) table.set(r.id, r);
+          return route.fulfill({ status: 201, headers: cors });
+        }
+        if (u.pathname.startsWith("/rest/v1/")) return send(200, []);
+        return send(404, {});
+      });
+      const p = await c.newPage();
+      p.on("pageerror", e => pageErrors.push(e.message));
+      return { c, p };
+    }
+    // Device 1: signs in on the studio, makes a SEO pack.
+    const d1 = await device();
+    await d1.p.goto(BASE); await d1.p.getByTestId("fold-seo").waitFor({ timeout: 8000 }).catch(() => undefined);
+    await d1.p.getByTestId("cloud-open").click();
+    await d1.p.getByTestId("cloud-email").fill("saya@contoh.id");
+    await d1.p.getByTestId("cloud-password").fill("benar-sekali");
+    await d1.p.getByTestId("cloud-signin").click();
+    await d1.p.getByTestId("voice-none").click();
+    await d1.p.getByTestId("title").fill("Video Sinkron");
+    await d1.p.getByTestId("script").fill("Naskah untuk uji sinkron antar perangkat.\nKalimat kedua sinkron.");
+    await d1.p.getByTestId("fold-seo").waitFor({ timeout: 8000 }); await openFolds(d1.p);
+    await d1.p.getByTestId("seo-run").click();
+    await d1.p.getByTestId("seo-result").waitFor({ timeout: 10000 });
+    for (let i = 0; i < 80 && ![...table.values()].some(r => !r.deleted); i++) await d1.p.waitForTimeout(100);
+    const rows = [...table.values()];
+    assert(rows.length === 1 && rows[0].data.title === "Video Sinkron" && rows[0].data.seo.tiktok.result.score === 77 && rows[0].deleted === false, "device 1 pushed the entry: " + JSON.stringify(rows).slice(0, 200));
+    // Device 2: another browser, same account (token seeded), opens the history page and sees it.
+    const d2 = await device();
+    await d2.c.addInitScript(() => localStorage.setItem("clipper:cloud:v1", JSON.stringify({ accessToken: "AT", refreshToken: "RT", expiresAt: Date.now() + 36e5, email: "saya@contoh.id" })));
+    await d2.p.goto(BASE.replace("/motion", "/riwayat"));
+    await d2.p.getByTestId("history-entry").filter({ hasText: "Video Sinkron" }).waitFor({ timeout: 10000 });
+    assert(/Tersinkron/.test(await d2.p.getByTestId("history-sync").innerText()), "shows it is in sync");
+    await d2.p.getByTestId("history-entry").filter({ hasText: "Video Sinkron" }).getByTestId("history-toggle").click();
+    assert(/Hook dari perangkat satu/.test(await d2.p.getByTestId("history-detail").innerText()), "device 2 has the SEO pack made on device 1");
+    // Deleting on device 2 reaches device 1.
+    await d2.p.getByTestId("history-entry").filter({ hasText: "Video Sinkron" }).getByTestId("history-delete").click();
+    for (let i = 0; i < 80 && ![...table.values()].some(r => r.deleted); i++) await d2.p.waitForTimeout(100);
+    assert([...table.values()].some(r => r.deleted && r.data === null), "deletion pushed as a tombstone");
+    await d1.p.goto(BASE.replace("/motion", "/riwayat"));
+    await d1.p.getByTestId("history-sync").filter({ hasText: "Tersinkron" }).waitFor({ timeout: 10000 });
+    assert(await d1.p.getByTestId("history-entry").filter({ hasText: "Video Sinkron" }).count() === 0, "device 1 no longer has the deleted video");
+    // Signed out: it says history stays on this device.
+    const d3 = await device();
+    await d3.p.goto(BASE.replace("/motion", "/riwayat"));
+    await d3.p.getByTestId("history-sync").waitFor({ timeout: 5000 });
+    assert(/Belum masuk/.test(await d3.p.getByTestId("history-sync").innerText()), "signed-out note");
+    await d1.c.close(); await d2.c.close(); await d3.c.close();
+    return `pulls ${calls.pull}, pushes ${calls.push}`;
+  });
+
   await step("no uncaught page errors", async () => { assert(pageErrors.length === 0, pageErrors.join(" | ")); });
   await browser.close();
 } finally {

@@ -598,7 +598,9 @@ Page `/riwayat` (link "Riwayat" in the headers of the Clipper and the Motion stu
 
 In the studio, the SEO panel is tied to the video being worked on: a pack is saved when it is made, another script (after a short pause) shows that video's own packs and never the previous video's, and going back to the first script brings its packs back. The history page searches title, script and SEO text, filters (downloaded / rendered but not downloaded / without SEO pack), exports CSV (one row per platform pack) and JSON, reopens a script in the studio ("Buka di studio"), deletes one entry or all.
 
-Limits: the history lives in this browser only (it is lost when the site's data is cleared, and is not shared between devices), so export from time to time. Changing a script creates a new entry because the script identifies the video; the earlier entry stays in the history. Videos themselves are never stored.
+Sync between devices: when the creator is signed in, the history is also kept in the `app_history` table (one row per video, row-level security per owner, text only, under 500 KB per row). `lib/history-sync.ts` merges the two copies field by field (newest title and script, the newest SEO pack per platform, every render/download line, a "downloaded" mark is never lost), and a deleted video is kept as a small "deleted" row so another device does not bring it back unless it is changed afterwards. It syncs when a page opens, when the creator signs in, and a few seconds after each change; the history page shows the state and a retry. Signed out, nothing is sent.
+
+Limits: signed out, the history lives in this browser only (it is lost when the site's data is cleared), so export from time to time. Changing a script creates a new entry because the script identifies the video; the earlier entry stays in the history. Videos themselves are never stored.
 
 ## Typography, palettes, subtitle styles and backgrounds
 

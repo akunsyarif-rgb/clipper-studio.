@@ -77,6 +77,8 @@ describe("while signed out nothing is sent", () => {
     expect(await c.pullSession()).toBeNull();
     expect(await c.putTranscript("k", transcript)).toBe(false);
     expect(await c.getTranscript("k")).toBeNull();
+    expect(await c.pullHistory()).toBeNull();
+    expect(await c.pushHistory([{ id: "a", data: null, deleted: true, updated_ms: 1 }])).toBe(false);
     expect(calls).toHaveLength(0);
   });
 });
@@ -105,6 +107,19 @@ describe("syncing", () => {
     const get = await signedIn(json(200, [{ data: transcript }]));
     expect(await get.c.getTranscript("asr2:a|b/c")).toEqual(transcript);
     expect(get.calls[0].url).toContain(`cache_key=eq.${encodeURIComponent("asr2:a|b/c")}`);
+  });
+  it("pulls the history rows, drops damaged ones, and pushes in batches of 25", async () => {
+    const pull = await signedIn(json(200, [{ id: "m-1", data: {}, deleted: false, updated_ms: 5 }, { nope: 1 }, { id: 3, updated_ms: 1 }]));
+    expect((await pull.c.pullHistory())?.map(r => r.id)).toEqual(["m-1"]);
+    expect(pull.calls[0].url).toContain("/rest/v1/app_history?select=id,data,deleted,updated_ms");
+    const rows = Array.from({ length: 60 }, (_, i) => ({ id: "m-" + i, data: null, deleted: true, updated_ms: i }));
+    const push = await signedIn(new Response(null, { status: 201 }), new Response(null, { status: 201 }), new Response(null, { status: 201 }));
+    expect(await push.c.pushHistory(rows)).toBe(true);
+    expect(push.calls).toHaveLength(3);
+    expect(push.calls[0].url).toBe(`${URL_}/rest/v1/app_history?on_conflict=user_id,id`);
+    expect(JSON.parse(push.calls[2].init.body as string)).toHaveLength(10);
+    expect(await (await signedIn(json(500, {}))).c.pushHistory(rows)).toBe(false);
+    expect(await (await signedIn(json(500, {}))).c.pullHistory()).toBeNull();
   });
   it("fails soft: a server error or a lost connection is just 'not synced'", async () => {
     expect(await (await signedIn(json(500, {}))).c.pushSession(session())).toBe(false);

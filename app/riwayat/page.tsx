@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { copyText } from "../SeoPanel";
-import { filterEntries, removeEntry, toCsv, toJson, type Filter, type HistoryEntry } from "@/lib/history";
-import { loadHistory, onHistoryChange, saveHistory } from "@/lib/history-store";
+import { filterEntries, toCsv, toJson, type Filter, type HistoryEntry } from "@/lib/history";
+import { deleteHistory, loadHistory, onHistoryChange, onSyncChange, startHistorySync, syncHistory, syncState } from "@/lib/history-store";
+import { cloud } from "@/lib/cloud";
 import { seoToText, SEO_PLATFORMS } from "@/lib/seo";
 
 const fmtDate = (t: number) => new Date(t).toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -28,12 +29,16 @@ export default function HistoryPage() {
   const [copied, setCopied] = useState("");
   const [confirmClear, setConfirmClear] = useState(false);
 
+  const [sync, setSync] = useState<ReturnType<typeof syncState>>({ phase: "off" });
+  const [signedIn, setSignedIn] = useState(false); // read after mount: the server render cannot know
   useEffect(() => {
     let alive = true;
     const load = () => { void loadHistory().then(l => { if (alive) setList(l); }); };
     load();
-    const off = onHistoryChange(load);
-    return () => { alive = false; off(); };
+    startHistorySync();
+    const off = onHistoryChange(load), offSync = onSyncChange(() => setSync(syncState())), offCloud = cloud.subscribe(() => setSignedIn(!!cloud.user()));
+    setSync(syncState()); setSignedIn(!!cloud.user());
+    return () => { alive = false; off(); offSync(); offCloud(); };
   }, []);
 
   const shown = useMemo(() => filterEntries(list ?? [], filter), [list, filter]);
@@ -44,8 +49,8 @@ export default function HistoryPage() {
     setCopied(ok ? id : "gagal:" + id);
     setTimeout(() => setCopied(c => (c === id || c === "gagal:" + id ? "" : c)), 1800);
   }
-  async function remove(id: string) { const next = removeEntry(list ?? [], id); setList(next); await saveHistory(next); }
-  async function clearAll() { setList([]); setConfirmClear(false); await saveHistory([]); }
+  async function remove(id: string) { setList((list ?? []).filter(e => e.id !== id)); await deleteHistory([id]); }
+  async function clearAll() { const ids = (list ?? []).map(e => e.id); setList([]); setConfirmClear(false); await deleteHistory(ids); }
   function openInStudio(e: HistoryEntry) {
     try { sessionStorage.setItem("clipper:history:open", JSON.stringify({ script: e.script, title: e.title })); } catch { /* storage blocked */ }
     window.location.href = "/motion";
@@ -55,7 +60,15 @@ export default function HistoryPage() {
     <main className="history-page" style={{ maxWidth: 860, margin: "0 auto", padding: "16px" }}>
       <header className="topbar"><Link className="brand" href="/"><span className="logo">c</span><span>clipper<span className="light">studio</span></span></Link><Link className="text-link" href="/motion">Studio Motion →</Link></header>
       <h1>Riwayat produksi</h1>
-      <p className="field-hint" data-testid="history-intro">Naskah, paket SEO &amp; distribusi, dan catatan render/unduh setiap video, disimpan di perangkat ini saja (teks, bukan video). Tetap ada setelah video diunduh atau tab ditutup, tapi hilang jika data situs browser dihapus. Ekspor secara berkala.</p>
+      <p className="field-hint" data-testid="history-intro">Naskah, paket SEO &amp; distribusi, dan catatan render/unduh setiap video, disimpan di perangkat ini (teks, bukan video) dan, bila Anda masuk ke akun, disinkronkan ke perangkat lain. Tetap ada setelah video diunduh atau tab ditutup. Tanpa akun, riwayat hilang jika data situs browser dihapus, jadi ekspor secara berkala.</p>
+
+      <div className="notice" role="status" data-testid="history-sync">
+        {!signedIn ? <>Belum masuk: riwayat hanya ada di perangkat ini. Masuk ke akun di halaman utama untuk menyinkronkannya antar perangkat (hanya teks).</>
+          : sync.phase === "syncing" ? <>Menyinkronkan…</>
+          : sync.phase === "error" ? <>{sync.message} <button type="button" className="text-link" onClick={() => void syncHistory()} data-testid="history-sync-retry">Coba lagi</button></>
+          : sync.phase === "done" ? <>✓ Tersinkron dengan akun {cloud.user()} · {new Date(sync.at ?? Date.now()).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} <button type="button" className="text-link" onClick={() => void syncHistory()} data-testid="history-sync-now">Sinkron sekarang</button></>
+          : <>Menyiapkan sinkron…</>}
+      </div>
 
       {list === null ? <p>Memuat…</p> : list.length === 0
         ? <div className="notice" data-testid="history-empty">Belum ada riwayat. Setelah video dirender atau paket SEO dibuat di Studio Motion, atau klip diekspor di Clipper, catatannya muncul di sini.</div>

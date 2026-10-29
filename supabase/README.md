@@ -14,6 +14,7 @@ can be rebuilt by running them in order (SQL editor, or `supabase db push`).
 | `20261027124946_only_first_user_grant_auth_admin.sql` | lets the auth service run that trigger (without it every sign-up failed) |
 | `20261027125556_user_secrets_for_gemini.sql` | `user_secrets`: the owner's AI key, closed to every client (RLS on, no policies, no privileges) |
 | `20261027135153_user_secrets_provider.sql` | `provider` (`google` or `openai`) and `base_url` for OpenAI-format routers |
+| `20261029010000_app_history.sql` | `app_history`: the production history (text) per video, row-level security per owner, tombstone rows for deletions |
 | `20261029000000_user_youtube_api.sql` | `user_youtube_api`: the owner's YouTube Data API key for the trend radar, closed to every client like `user_pexels` |
 | `20261028020000_user_pexels.sql` | `user_pexels`: the owner's Pexels key, closed to every client like `user_secrets` (a table of its own, so forgetting the AI key does not delete it) |
 

@@ -174,9 +174,29 @@ export function createCloud(o: CloudOptions = {}) {
     } catch { return null; }
   }
 
+  // The production history: one row per video (see lib/history-sync.ts). Never throws; null / false means "not synced this time".
+  type HistoryRow = { id: string; data: unknown; deleted: boolean; updated_ms: number };
+  async function pullHistory(): Promise<HistoryRow[] | null> {
+    try {
+      const res = await rest("app_history?select=id,data,deleted,updated_ms&order=updated_ms.desc&limit=1000");
+      if (!res?.ok) return null;
+      const rows = (await json(res)) as HistoryRow[] | null;
+      return Array.isArray(rows) ? rows.filter(r => r && typeof r.id === "string" && typeof r.updated_ms === "number") : null;
+    } catch { return null; }
+  }
+  async function pushHistory(rows: HistoryRow[]): Promise<boolean> {
+    try {
+      for (let i = 0; i < rows.length; i += 25) {
+        const res = await rest("app_history?on_conflict=user_id,id", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(rows.slice(i, i + 25)) });
+        if (!res?.ok) return false;
+      }
+      return true;
+    } catch { return false; }
+  }
+
   return {
     user: () => read()?.email ?? null,
-    signIn, signUp, signOut, fn, pushSession, pullSession, putTranscript, getTranscript,
+    signIn, signUp, signOut, fn, pushSession, pullSession, putTranscript, getTranscript, pullHistory, pushHistory,
     subscribe: (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; },
   };
 }
