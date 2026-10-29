@@ -582,6 +582,12 @@ Under the render area of the motion studio, "Paket SEO & distribusi" asks the cr
 
 Limits: the AI has no live trend data, so nothing is claimed to be "trending now" unless the creator typed it; the prompt forbids inventing facts, numbers or testimonials; the readiness score is the AI's judgement corrected by rule checks, not a measurement of real platform performance.
 
+## Start from a trend
+
+The first fold of the studio ("0 · Mulai dari tren", content mode only) puts distribution before the script. The creator picks the platform, types the niche and the trend or season they saw (one-tap chips add recurring moments such as Ramadan or payday), optionally the audience, and a goal (education, entertainment, opinion). `lib/trend.ts` asks the creator's own AI for three ideas with different angles; each has a title, a hook, one sentence on why it fits the creator's trend text, and a 6-9 line script. "Pakai ide ini" fills the script and title, and hands the same platform, niche, audience and trend text to the SEO pack, which opens with those fields filled (still editable). The fields are remembered on this device only.
+
+Limits: the AI has no live trend data. The prompt says so and forbids "viral now" claims, view counts, account or song names and statistics that the creator did not write; the trend is only what the creator typed, and facts must be checked before posting. Only the typed fields are sent. Not available while editing over a source video or in affiliate mode.
+
 ## Typography, palettes, subtitle styles and backgrounds
 
 - **Type packs** (`lib/fonts.ts`): eight looks (Klasik, Impact, Cinema, Modern, Editorial, Street, Friendly, Tech) built from open-licence fonts (SIL OFL 1.1: Anton, Bebas Neue, Montserrat, Plus Jakarta Sans, Space Grotesk, Inter, Playfair Display, DM Serif Display, Caveat, JetBrains Mono, Poppins). The Latin woff2 files and each licence text live in `public/fonts` (16 files, about 400 KB, no new dependency); nothing is fetched from a third party. `TYPE` in `lib/layout.ts` follows the active pack, display faces such as Anton and Bebas Neue are drawn in capitals, and text is fitted with the real font metrics after `remotion/fonts.ts` has loaded the faces (the frame waits for them; the browser render loads them first). Classic keeps the system fonts, so older projects look the same.

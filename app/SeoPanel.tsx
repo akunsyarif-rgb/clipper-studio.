@@ -25,7 +25,9 @@ async function copyText(text: string): Promise<boolean> {
  * (the script, topic, audience and the trend note the creator typed); the AI has no live trend data and says nothing about
  * what is "viral now" unless the creator wrote it.
  */
-export default function SeoPanel({ transcript, topic, language }: { transcript: string; topic: string; language: "id" | "en" }) {
+export type SeoSeed = { platform: SeoPlatform; niche: string; audience: string; trends: string; nonce: number };
+
+export default function SeoPanel({ transcript, topic, language, seed }: { transcript: string; topic: string; language: "id" | "en"; /** Filled by "Mulai dari tren": applied once per nonce, the creator can still edit every field. */ seed?: SeoSeed | null }) {
   const access = useGeminiAccess();
   const [platform, setPlatform] = useState<SeoPlatform>("tiktok");
   const [niche, setNiche] = useState(topic);
@@ -38,8 +40,13 @@ export default function SeoPanel({ transcript, topic, language }: { transcript: 
   const [copied, setCopied] = useState("");
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (!seed) return;
+    seeded.current = true; setPlatform(seed.platform); setNiche(seed.niche); setNicheTouched(true); setAudience(seed.audience); setTrends(seed.trends); setError("");
+  }, [seed?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
   // The topic follows the video's title until the creator types their own.
-  useEffect(() => { if (!nicheTouched) setNiche(topic); }, [topic, nicheTouched]);
+  useEffect(() => { if (!nicheTouched && !seeded.current) setNiche(topic); }, [topic, nicheTouched]);
 
   const result = results[platform];
   const problem = seoProblem({ transcript, platform });

@@ -28,7 +28,8 @@ import { ScriptVideo } from "@/remotion/ScriptVideo";
 import TranscriptPanel from "../TranscriptPanel";
 import GeminiJudge from "../GeminiJudge";
 import AiDirector from "../AiDirector";
-import SeoPanel from "../SeoPanel";
+import SeoPanel, { type SeoSeed } from "../SeoPanel";
+import TrendStart from "../TrendStart";
 import { planStickers, STICKERS, STICKER_BY_ID, STICKER_CREDIT, matchSticker, type StickerMode } from "@/lib/stickers";
 import { planSfx, SFX_LABELS, SFX_MODES, SFX_VOLUME, type SfxMode } from "@/lib/sfx";
 import { sfxWav } from "@/lib/sfx-synth";
@@ -213,6 +214,7 @@ export default function MotionStudio() {
   const [affiliateBrief, setAffiliateBrief] = useState<AffiliateBrief | null>(null);
   // Which kind of content this is: ordinary, or a selling (affiliate) video. The last choice is remembered on this device.
   const [contentMode, setContentMode] = useState<Mode>("normal");
+  const [seoSeed, setSeoSeed] = useState<SeoSeed | null>(null);
   useEffect(() => { try { if (localStorage.getItem(MODE_KEY) === "affiliate") setContentMode("affiliate"); } catch { /* storage blocked: starts as ordinary content */ } }, []);
   function chooseMode(m: Mode) { setContentMode(m); try { localStorage.setItem(MODE_KEY, m); } catch { /* not remembered */ } }
   const [directorNote, setDirectorNote] = useState("");
@@ -750,6 +752,10 @@ export default function MotionStudio() {
             <button className="text-button" data-testid="restore-session" onClick={() => void restoreSession()}>Lanjutkan</button>{" "}
             <button className="text-button" data-testid="restore-discard" onClick={() => void discardSession()}>Mulai baru</button>
           </div>}
+          <TrendStart disabled={rendering || videoMode} onUse={(text, t, b) => {
+            setScript(text.slice(0, 3000)); if (t) setTitle(t.slice(0, 60)); setContentPreset("custom");
+            setSeoSeed({ platform: b.platform, niche: b.niche, audience: b.audience, trends: b.trend, nonce: Date.now() });
+          }} />
           <div className="step-title" data-testid="step-1"><b>1</b>{activeMode === "affiliate" ? "Produk dan naskah" : "Naskah"}</div>
           {offer && !imported && <div className="notice normal-only" data-testid="transcript-offer">
             Transkrip dari Clipper tersedia: <strong>{offer.source}</strong> ({allWords(offer.transcript).length} kata, {Math.round(offer.transcript.duration)} dtk).{" "}
@@ -978,7 +984,7 @@ export default function MotionStudio() {
           {errorDetail && <details className="error-details" open><summary>Detail teknis (kirimkan saat melapor)</summary><code data-testid="error-detail">{errorDetail}</code><button className="text-link" onClick={() => navigator.clipboard?.writeText(errorDetail).then(() => setStatus("Detail teknis disalin."), () => setStatus("Salin manual teks di atas."))}>Salin detail teknis</button></details>}
           {result && <div className="render-result" data-testid="result"><b>✓ MP4 siap</b><small>{WIDTH}×{HEIGHT} · {videoSeconds.toFixed(1)} dtk · {(result.size / 1024 ** 2).toFixed(1)} MB</small><a className="motion-primary" href={result.url} download={result.name} data-testid="download">Simpan MP4 ↓</a>{srtUrl && <a className="text-link" href={srtUrl} download={result.name.replace(/\.mp4$/i, "") + ".srt"} data-testid="download-srt">Unduh subtitle (.srt)</a>}</div>}
           {status && <p className="motion-status" role="status" data-testid="status">{status}</p>}
-          {timeline.ok && <SeoPanel transcript={timeline.scenes.map(sc => stripMarks(sc.text)).join(" ")} topic={title.trim()} language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"} />}
+          {timeline.ok && <SeoPanel seed={seoSeed} transcript={timeline.scenes.map(sc => stripMarks(sc.text)).join(" ")} topic={title.trim()} language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"} />}
         </section>
 
         <section className="preview-column">
