@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contentBox, contrast, estimateHeavy, fitText, SAFE, type Measure } from "./layout";
+import { ACTIVE_HEIGHT, CAPTION_BOTTOM, contentBox, contrast, estimateHeavy, fitText, SAFE, type Measure } from "./layout";
 import { HEIGHT, PALETTES, WIDTH } from "./script";
 
 // Monospace fake: every character is 60 px wide at 100 px, so expected wraps can be computed by hand.
@@ -10,9 +10,28 @@ describe("safe areas", () => {
     const withCaptions = contentBox(true), without = contentBox(false);
     expect(withCaptions.top).toBe(SAFE.top);
     expect(withCaptions.bottom).toBeLessThan(without.bottom);
-    expect(without.bottom).toBe(HEIGHT - SAFE.bottom);
+    expect(without.bottom).toBeLessThanOrEqual(HEIGHT - SAFE.bottom);
+    expect(without.top).toBeGreaterThanOrEqual(SAFE.top);
     expect(withCaptions.width + SAFE.side * 2).toBe(WIDTH);
     expect(withCaptions.height).toBeGreaterThan(900);
+  });
+});
+
+describe("platform safe zone (1080×1920)", () => {
+  it("follows the margin guidelines", () => {
+    expect(SAFE.top).toBeGreaterThanOrEqual(200); expect(SAFE.top).toBeLessThanOrEqual(250);
+    expect(SAFE.bottom).toBeGreaterThanOrEqual(350); expect(SAFE.bottom).toBeLessThanOrEqual(450);
+    expect(SAFE.side).toBeGreaterThanOrEqual(120); // the right rail needs 120–150; the left is kept equal
+    expect(SAFE.side).toBeLessThanOrEqual(150);
+  });
+  it("keeps main content in a centred band no taller than 1200 px, clear of top and bottom UI", () => {
+    const b = contentBox(false);
+    expect(b.height).toBeLessThanOrEqual(ACTIVE_HEIGHT);
+    expect(b.top - SAFE.top).toBe(HEIGHT - SAFE.bottom - b.bottom);
+    expect(contentBox(true).height).toBeLessThanOrEqual(ACTIVE_HEIGHT);
+  });
+  it("places captions 500–600 px above the bottom edge", () => {
+    expect(CAPTION_BOTTOM).toBeGreaterThanOrEqual(500); expect(CAPTION_BOTTOM).toBeLessThanOrEqual(600);
   });
 });
 

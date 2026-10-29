@@ -47,3 +47,21 @@ export function splitCause(text: string): { before: string; link: string; after:
   }
   return null;
 }
+
+/**
+ * Editorial scenes are not one template: the layout follows the scene's job. A hook or impact beat
+ * gets oversized type with no furniture; calm beats are quiet, and adjacent calm beats alternate
+ * between a centred and an offset layout so a run of reflective lines never repeats the same picture.
+ */
+export type Layout = "standard" | "impact" | "quiet-center" | "quiet-offset";
+
+export function planLayouts(scenes: { family: Family; role: NarrativeRole; intensity?: NarrativePlan["intensity"] }[]): Layout[] {
+  const out: Layout[] = [];
+  scenes.forEach((s, i) => {
+    if (s.family !== "editorial") { out.push("standard"); return; }
+    if (s.role === "hook" || s.intensity === "impact") { out.push("impact"); return; }
+    if (s.role === "resolution") { out.push("quiet-center"); return; }
+    out.push(out[i - 1] === "quiet-center" ? "quiet-offset" : "quiet-center");
+  });
+  return out;
+}
