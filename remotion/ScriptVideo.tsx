@@ -121,7 +121,8 @@ function SceneView({ scene, index, count, title, style, colors, layout, insets, 
   const fadeIn = index === 0 ? 1 : interpolate(frame, [0, calm ? 10 : style === "cinematic" ? 14 : 6], [0, 1], { extrapolateRight: "clamp" });
   const drift = interpolate(frame, [0, d], calm ? [6, 0] : style === "cinematic" ? [24, -18] : [14, -4], { easing: Easing.bezier(0.33, 0, 0.2, 1), extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const blur = style === "cinematic" && !calm && index > 0 ? interpolate(frame, [0, 14], [10, 0], { extrapolateRight: "clamp" }) : 0;
-  const popScale = style === "popup" && intensity === "impact" ? interpolate(spring({ frame, fps, config: MOTION.springFirm }), [0, 1], [0.94, 1]) : 1;
+  // Narrative intensity is meaningful across presets: impact scenes get a restrained spring entrance even in cinematic/kinetic styles.
+  const popScale = intensity === "impact" ? interpolate(spring({ frame, fps, config: MOTION.springFirm }), [0, 1], [0.94, 1]) : 1;
 
   const visual = scene.visual ?? detectVisual(scene.text);
   const role = scene.narrative?.role ?? (index === 0 ? "hook" : index === count - 1 ? "resolution" : "continuation");
