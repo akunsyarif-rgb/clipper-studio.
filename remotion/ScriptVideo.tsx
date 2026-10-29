@@ -106,8 +106,8 @@ function SceneImage({ src, index, length, colors }: { src: string; index: number
   );
 }
 
-function SceneView({ scene, index, count, title, style, colors, layout, insets }: {
-  layout: Layout; insets: { top: number; bottom: number }; scene: Scene; index: number; count: number; title: string; style: StyleId;
+function SceneView({ scene, index, count, title, style, colors, layout, insets, storyVisuals }: {
+  layout: Layout; insets: { top: number; bottom: number }; storyVisuals: boolean; scene: Scene; index: number; count: number; title: string; style: StyleId;
   colors: (typeof PALETTES)[keyof typeof PALETTES];
 }) {
   const frame = useCurrentFrame();
@@ -133,13 +133,13 @@ function SceneView({ scene, index, count, title, style, colors, layout, insets }
       {scene.image ? <SceneImage src={scene.image} index={index} length={d} colors={colors} /> : null}
       {/* Everything stays inside the platform safe area; the full safe box is used because text scenes carry no caption band. */}
       <div data-family={family} style={{ position: "absolute", top: box.top, left: SAFE.side, width: box.width, height: box.height, display: "flex", flexDirection: "column", justifyContent: "center", color: colors.text, transform: `translateY(${drift}px) scale(${popScale})`, filter: blur ? `blur(${blur}px)` : undefined }}>
-        <FamilyView family={family} scene={scene} visual={visual} role={role} index={index} count={count} title={title} style={style} colors={colors} layout={layout} box={{ width: box.width, height: box.height - 12 }} />
+        <FamilyView family={family} scene={scene} visual={visual} role={role} index={index} count={count} title={title} style={style} colors={colors} layout={layout} storyVisuals={storyVisuals} box={{ width: box.width, height: box.height - 12 }} />
       </div>
     </AbsoluteFill>
   );
 }
 
-export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech, video, overlay, brandMotion, watermark }) => {
+export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech, video, overlay, brandMotion, watermark, storyVisuals }) => {
   const frame = useCurrentFrame();
   const { durationInFrames, fps } = useVideoConfig();
   const colors = PALETTES[palette] ?? PALETTES.violet;
@@ -201,7 +201,7 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
                 {/* Cutaway: an opaque graphic over the speaker (at most 4 s); the video underneath keeps playing, so audio never breaks. */}
                 {scene.cut === "graphic" ? <Sequence from={0} durationInFrames={Math.min(scene.durationInFrames, 120)}><Cutaway scene={scene} colors={colors} length={Math.min(scene.durationInFrames, 120)} index={i} /></Sequence> : null}
               </>
-              : <SceneView scene={scene} index={i} count={scenes.length} title={title} style={style} colors={colors} layout={layouts[i]} insets={insets} />}
+              : <SceneView scene={scene} index={i} count={scenes.length} title={title} style={style} colors={colors} layout={layouts[i]} insets={insets} storyVisuals={storyVisuals !== false} />}
           </Sequence>
         );
       })}

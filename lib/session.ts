@@ -27,6 +27,7 @@ export type SessionData = {
   overlay?: OverlayPosition;
   density?: Density;
   brandMotion?: BrandMotion;
+  storyVisuals?: boolean;
   imported: Transcript | null;
   /** "manual" (a recording that is not kept) is stored as "none". */
   voiceMode: "ai" | "none";
@@ -56,6 +57,7 @@ export function isSession(v: unknown): v is SessionData {
     && (v.overlay === undefined || v.overlay === "top" || v.overlay === "lower")
     && (v.density === undefined || v.density === "sparse" || v.density === "balanced" || v.density === "rich")
     && (v.brandMotion === undefined || v.brandMotion === "simple" || v.brandMotion === "full")
+    && (v.storyVisuals === undefined || typeof v.storyVisuals === "boolean")
     && (v.imported === null || isTranscript(v.imported))
     && (v.voiceMode === "ai" || v.voiceMode === "none") && (v.ttsLang === "id" || v.ttsLang === "en")
     && typeof v.ttsVoice === "number" && typeof v.ttsSpeed === "number";

@@ -1,7 +1,8 @@
 // Storyboard: the structured, inspectable plan the Scene Engine will render (see docs/AI_DIRECTOR_PRODUCT_SPEC.md).
 // Pure and deterministic: built from the scenes the studio already has, validated before render. A passing
 // storyboard is not proof of a good render; it only catches what can be known without drawing frames.
-import { chooseFamily, planLayouts, type Family, type Layout } from "./composition";
+import { chooseFamily, planLayouts, splitCause, type Family, type Layout } from "./composition";
+import { chooseStoryVisual, type StoryVisualKind } from "./story-visual";
 import { contentBox, estimateHeavy, fitText } from "./layout";
 import type { MotionIntensity, NarrativeRole, VisualStrategy } from "./narrative";
 import { FPS, MIN_SCENE_SECONDS, type Scene } from "./script";
@@ -19,6 +20,8 @@ export type StoryboardScene = {
   intensity: MotionIntensity;
   family: Family;
   layout: Layout;
+  /** Accent object (Story Motion Lab) drawn above the text, or null. */
+  accent: StoryVisualKind | null;
   template: string;
   /** Library icon the scene shows, if any, and whether the user supplied a picture behind it. */
   asset: { icon?: string; image?: { src: string; available: boolean } };
@@ -36,6 +39,8 @@ export type StoryboardOptions = {
   /** Editing over a source video: scenes are not drawn as text compositions. */
   videoEdit?: boolean;
   captions?: boolean;
+  /** Accent objects are on unless this is false. */
+  storyVisuals?: boolean;
   /** Pictures known to be missing (e.g. a revoked blob URL); a scene referencing one is flagged. */
   missingImages?: ReadonlySet<string>;
 };
@@ -58,6 +63,10 @@ export function buildStoryboard(scenes: Scene[], o: StoryboardOptions = {}): Sto
     intensity: sc.narrative?.intensity ?? "emphasis",
     family,
     layout: layouts[i],
+    accent: videoEdit || o.storyVisuals === false ? null : chooseStoryVisual({
+      family, layout: layouts[i], role, template: visual.template, occupied: !!sc.image || !!(visual.iconPinned && visual.icon),
+      causeEffect: visual.template !== "list" && splitCause(stripMarks(sc.text)) !== null,
+    }),
     template: visual.template,
     asset: { ...(visual.icon ? { icon: visual.icon } : {}), ...(sc.image ? { image: { src: sc.image, available: !o.missingImages?.has(sc.image) } } : {}) },
     // Text scenes already show the whole narration as their headline; a caption bar would repeat it.

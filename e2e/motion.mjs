@@ -417,6 +417,39 @@ try {
     return `${info}, top band scene 1 rgb ${r1},${g1},${b1}, scene 2 rgb ${r2},-,${b2}`;
   });
 
+  await step("story objects (from the Story Motion Lab) appear above suited scenes, no extra text, can be switched off, and are in the rendered MP4", async () => {
+    await page.getByTestId("voice-none").click();
+    await page.getByTestId("music-none").click();
+    await page.getByTestId("style").selectOption("hybrid");
+    await page.getByTestId("palette").selectOption("violet");
+    await page.getByTestId("script").fill("Jangan tunggu semangat datang.\nMulailah, meski langkahmu kecil.\nDisiplin membuatmu tetap bergerak.\nSatu langkah hari ini lebih baik dari rencana sempurna.\nMulai sekarang.");
+    await page.getByTestId("duration").selectOption("15");
+    await page.evaluate(() => document.querySelectorAll("details.fold").forEach(d => { d.open = true; }));
+    const player = page.locator(".player-wrap");
+    assert(await page.getByTestId("story-visuals").isChecked(), "on by default");
+    // The storyboard names the object per scene: focal point, none, orbit, none, converging point.
+    const rows = await page.getByTestId("storyboard-scene").allInnerTexts();
+    assert(rows.length === 5 && /Titik fokus melayang/.test(rows[0]) && !/objek 3D/.test(rows[1]) && /Sistem orbit/.test(rows[2]) && !/objek 3D/.test(rows[3]) && /Satu titik tujuan/.test(rows[4]), "storyboard lists the objects: " + rows.join(" | "));
+    await page.getByTestId("scene-item").nth(0).locator(".scene-row").click();
+    await player.locator('[data-visual="story-orb"]').waitFor({ timeout: 8000 });
+    assert(!(await player.innerText()).match(/ORB|TITIK FOKUS|OBJEK/i), "the objects add no text to the picture");
+    // Rendered file: the area where the focal point sits differs between on and off; elsewhere it does not.
+    const region = (file, x, y, w, h) => execFileSync("ffmpeg", ["-v", "error", "-ss", "1", "-i", file, "-frames:v", "1", "-vf", `crop=${w}:${h}:${x}:${y}`, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], { maxBuffer: 1 << 26 });
+    const diff = (a, b) => { let t = 0; for (let i = 0; i < a.length; i++) t += Math.abs(a[i] - b[i]); return t / a.length; };
+    await renderAndCheck("story-on", false, 15);
+    await page.getByTestId("story-visuals").uncheck();
+    await player.locator('[data-visual="story-orb"]').waitFor({ state: "detached", timeout: 8000 });
+    assert((await page.getByTestId("storyboard-scene").allInnerTexts()).every(t => !/objek 3D/.test(t)), "storyboard shows none when off");
+    await renderAndCheck("story-off", false, 15);
+    const on = join(dir, "story-on.mp4"), off = join(dir, "story-off.mp4");
+    const orbArea = diff(region(on, 340, 300, 400, 340), region(off, 340, 300, 400, 340));
+    const lowerArea = diff(region(on, 100, 1560, 880, 200), region(off, 100, 1560, 880, 200));
+    assert(orbArea > 3, `the focal point is in the file (region change ${orbArea.toFixed(2)})`);
+    assert(lowerArea < 0.5, `nothing else changes (region change ${lowerArea.toFixed(2)})`);
+    await page.getByTestId("story-visuals").check();
+    return `focal point region change ${orbArea.toFixed(1)}, elsewhere ${lowerArea.toFixed(2)}`;
+  });
+
   await step("the watermark: previewed, burned into the MP4 only when on and non-empty, positioned, remembered for re-renders", async () => {
     await page.getByTestId("voice-none").click();
     await page.getByTestId("music-none").click();

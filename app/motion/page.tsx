@@ -31,6 +31,7 @@ import AiDirector from "../AiDirector";
 import WatermarkPanel from "../WatermarkPanel";
 import { DEFAULT_WATERMARK, isWatermarkActive, loadWatermark, saveWatermark, type Watermark } from "@/lib/watermark";
 import { CAPTION_BOTTOM, contentBox, SAFE, SQUARE_CROP } from "@/lib/layout";
+import { STORY_VISUAL_LABELS } from "@/lib/story-visual";
 import { buildStoryboard, validateExport, validateStoryboard, type Issue } from "@/lib/storyboard";
 import { emptyHistory, record, redo, undo, type History } from "@/lib/revision";
 import PexelsPanel from "../PexelsPanel";
@@ -185,6 +186,7 @@ export default function MotionStudio() {
   // Gemini's opinion per sentence (by its text); optional, kept for this visit only.
   const [aiScores, setAiScores] = useState<Record<string, SceneScore>>({});
   const [brandMotion, setBrandMotion] = useState<BrandMotion>("simple");
+  const [storyVisuals, setStoryVisuals] = useState(true);
   const [cutOverrides, setCutOverrides] = useState<Record<string, Cut>>({});
   // Scene pictures for faceless videos, keyed by scene text like the other per-scene choices.
   const [images, setImages] = useState<Record<string, SceneImageFile>>({});
@@ -315,12 +317,12 @@ export default function MotionStudio() {
   })) : [];
   const props: VideoProps | null = timeline.ok ? {
     title: title.trim(), scenes: sceneList, style, palette, audioSrc: narration?.url ?? null, captions, video: videoEdit && source ? { src: source.url, seconds: source.seconds, ...(isAudioFile(source.file) ? { audioOnly: true } : {}) } : null, overlay: overlayPos, brandMotion,
-    music, speech: narration?.speech ?? null, ...(isWatermarkActive(watermark) ? { watermark } : {}),
+    music, speech: narration?.speech ?? null, ...(isWatermarkActive(watermark) ? { watermark } : {}), ...(storyVisuals ? {} : { storyVisuals: false }),
   } : null;
   const snapshot = useMemo<SessionData>(() => ({
-    v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlay: overlayPos, density, brandMotion, imported,
+    v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlay: overlayPos, density, brandMotion, ...(storyVisuals ? {} : { storyVisuals: false }), imported,
     voiceMode: voiceMode === "ai" ? "ai" : "none", ttsLang, ttsVoice, ttsSpeed,
-  }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlayPos, density, brandMotion, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed]);
+  }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlayPos, density, brandMotion, storyVisuals, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed]);
   useEffect(() => {
     if (!autosave || isPristine(snapshot, SAMPLE, !!source)) return;
     const t = setTimeout(() => { const s = { ...snapshot, savedAt: Date.now() }; void saveSession(s); void cloud.pushSession(s); }, 1000);
@@ -348,7 +350,7 @@ export default function MotionStudio() {
     const s = saved;
     if (!s) return;
     setScript(s.script); setTitle(s.title); setStyle(s.style); setPalette(s.palette); setContentPreset(s.contentPreset); setTarget(s.target); setCaptions(s.captions);
-    setOverrides(s.overrides); setCutOverrides(s.cutOverrides); setClipStarts(s.clipStarts); setCaptionOffset(s.captionOffset); setOverlayPos(s.overlay ?? "top"); setDensity(s.density ?? "balanced"); setBrandMotion(s.brandMotion ?? "simple"); setImported(s.imported);
+    setOverrides(s.overrides); setCutOverrides(s.cutOverrides); setClipStarts(s.clipStarts); setCaptionOffset(s.captionOffset); setOverlayPos(s.overlay ?? "top"); setDensity(s.density ?? "balanced"); setBrandMotion(s.brandMotion ?? "simple"); setStoryVisuals(s.storyVisuals !== false); setImported(s.imported);
     setVoiceMode(s.voiceMode); setTtsLang(s.ttsLang); setTtsVoice(s.ttsVoice); setTtsSpeed(s.ttsSpeed);
     const rec = savedSource ? await loadSource() : null;
     if (rec) {
@@ -369,7 +371,7 @@ export default function MotionStudio() {
   async function discardSession() { await clearSession(); setSavedCloud(false); setSaved(null); setSavedSource(null); setAutosave(true); }
 
   // Structured plan the renderer will draw, checked before render (lib/storyboard.ts).
-  const storyboard = useMemo(() => buildStoryboard(sceneList, { captions, videoEdit: !!(videoEdit && source) }), [sceneList, captions, videoEdit, source]);
+  const storyboard = useMemo(() => buildStoryboard(sceneList, { captions, videoEdit: !!(videoEdit && source), storyVisuals }), [sceneList, captions, videoEdit, source, storyVisuals]);
   const storyIssues: Issue[] = useMemo(() => validateStoryboard(storyboard, { audioSeconds: mode.kind === "audio" ? narration?.seconds : undefined }), [storyboard, mode.kind, narration?.seconds]); // eslint-disable-line react-hooks/exhaustive-deps
   const storyErrors = storyIssues.filter(i => i.level === "error");
 
@@ -634,7 +636,7 @@ export default function MotionStudio() {
       });
       if (blob.size < 1024) throw new Error("Output MP4 kosong.");
       const facts = await probeRendered(blob);
-      const bad = validateExport(buildStoryboard(renderProps.scenes, { captions, videoEdit: !!(videoEdit && source) }), { bytes: blob.size, ...facts }).filter(i => i.level === "error");
+      const bad = validateExport(buildStoryboard(renderProps.scenes, { captions, videoEdit: !!(videoEdit && source), storyVisuals }), { bytes: blob.size, ...facts }).filter(i => i.level === "error");
       if (bad.length) { setRenderError(`Hasil render gagal diperiksa: ${bad.map(b => b.message).join(" ")} Coba render ulang.`); setStatus(""); return; }
       setResult({ url: URL.createObjectURL(blob), name: `${slug(title || script.slice(0, 30))}-1080x1920.mp4`, size: blob.size });
       setStatus("MP4 selesai dirender. Simpan hasilnya sebelum menutup tab.");
@@ -788,6 +790,8 @@ export default function MotionStudio() {
             <div><label className="field-label" htmlFor="motion-style">Gaya animasi</label><select id="motion-style" data-testid="style" value={style} onChange={e => { setStyle(e.target.value as StyleId); setContentPreset("custom"); }}>{STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></div>
             <div><label className="field-label" htmlFor="motion-palette">Palet warna</label><select id="motion-palette" data-testid="palette" value={palette} onChange={e => { setPalette(e.target.value as PaletteId); setContentPreset("custom"); }}>{(Object.keys(PALETTES) as PaletteId[]).map(p => <option key={p} value={p}>{PALETTES[p].label}</option>)}</select></div>
           </div>
+          
+            {!(videoEdit && source) && <label className="check-row" data-testid="story-visuals-toggle"><input type="checkbox" checked={storyVisuals} onChange={e => setStoryVisuals(e.target.checked)} data-testid="story-visuals" /> Objek visual 3D di atas teks <span className="field-hint">titik fokus untuk pembuka, langkah bertumbuh, orbit untuk renungan, satu titik untuk penutup; tanpa teks tambahan</span></label>}
           </details>
 
           <div className="step-title" data-testid="step-3"><b>3</b>Suara dan musik</div>
@@ -927,7 +931,7 @@ export default function MotionStudio() {
           <div className="timeline-heading"><h3>Timeline scene</h3><span>{timeline.ok ? `${timeline.scenes.length} scene · maks. ${MAX_SECONDS} dtk` : ""}</span></div>
           {timeline.ok && <details className="fold storyboard" data-testid="storyboard">
             <summary>Storyboard {storyIssues.length ? `· ${storyErrors.length} masalah, ${storyIssues.length - storyErrors.length} saran` : "· siap render"}</summary>
-            <ol>{storyboard.scenes.map(sc => <li key={sc.id} data-testid="storyboard-scene"><b>{sc.order + 1}.</b> {FAMILY_LABELS[sc.family]} · {sc.layout} · {sc.timing.seconds} dtk · {sc.continuity === "continues" ? "lanjutan visual" : sc.continuity === "start" ? "pembuka" : "visual baru"}{sc.captionPolicy === "suppressed-duplicate" ? " · tanpa subtitle ganda" : ""}</li>)}</ol>
+            <ol>{storyboard.scenes.map(sc => <li key={sc.id} data-testid="storyboard-scene"><b>{sc.order + 1}.</b> {FAMILY_LABELS[sc.family]} · {sc.layout} · {sc.timing.seconds} dtk · {sc.continuity === "continues" ? "lanjutan visual" : sc.continuity === "start" ? "pembuka" : "visual baru"}{sc.accent ? ` · objek 3D: ${STORY_VISUAL_LABELS[sc.accent]}` : ""}{sc.captionPolicy === "suppressed-duplicate" ? " · tanpa subtitle ganda" : ""}</li>)}</ol>
             {storyIssues.map((i, n) => <small key={n} className={i.level === "error" ? "notice notice-error" : "narrative-reason"} role={i.level === "error" ? "alert" : "status"} data-testid="storyboard-issue">{i.level === "error" ? "Perlu diperbaiki: " : "Saran: "}{i.message}</small>)}
           </details>}
           <div className="scene-list" data-testid="scenes">{timeline.ok && (() => { let t = 0; return timeline.scenes.map((s, i) => { const from = t; t += s.durationInFrames; return (
