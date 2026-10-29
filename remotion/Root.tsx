@@ -3,6 +3,7 @@ import { Composition } from "remotion";
 import { buildTimeline, FPS, HEIGHT, WIDTH, type VideoProps } from "../lib/script";
 import { calculateScriptMetadata, ScriptVideo } from "./ScriptVideo";
 import { MotionVideo } from "./Video";
+import { StoryMotionLab } from "./StoryMotionLab";
 
 const sample = buildTimeline("Jangan tunggu semangat datang. Mulailah, meski langkahmu kecil. Disiplin membuatmu tetap bergerak. Mulai sekarang.", { kind: "auto" });
 export const defaultScriptProps: VideoProps = {
@@ -27,6 +28,14 @@ export const RemotionRoot: React.FC = () => (
       height={HEIGHT}
       defaultProps={defaultScriptProps}
       calculateMetadata={calculateScriptMetadata}
+    />
+    <Composition
+      id="StoryMotionLab"
+      component={StoryMotionLab}
+      durationInFrames={360}
+      fps={30}
+      width={1080}
+      height={1920}
     />
     <Composition
       id="MotionGraphics30"
