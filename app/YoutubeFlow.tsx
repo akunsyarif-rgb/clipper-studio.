@@ -68,7 +68,8 @@ export default function YoutubeFlow({ room, onApprove, onPreview }: {
       const o = { apiKey: access.apiKey, model: access.model, language: source.language === "english" ? "en" : "id", signal: ctl.signal, transport: access.transport, format: access.format };
       const moments = await suggestMoments(source.transcript.segments.map(s => ({ start: s.start, end: s.end, text: s.text })), o, limitsForVideo(source.seconds));
       if (moments.length === 0) setError("AI tidak menemukan bagian yang layak dijadikan klip dari teks ini.");
-      setItems(moments.map((m, i) => ({ start: m.start, end: m.end, title: m.title, reason: m.reason, checked: i < Math.min(Math.max(room, 0), 5) })));
+      setItems(moments.map((m, i) => ({ start: m.start, end: m.end, title: m.title, reason: m.reason, checked: i < Math.min(Math.max(room, 0), 5),
+        ...(m.reachedBack ? { note: `Awal dimundurkan ${m.reachedBack} kalimat karena kalimat pilihan AI hanya melanjutkan kalimat sebelumnya. Bila kurang pas, geser lagi di "Sesuaikan waktu".` } : {}) })));
     } catch (e) { setError(e instanceof GeminiError ? e.message : "Gagal menghubungi layanan AI."); }
     finally { setBusy(null); }
   }
@@ -94,7 +95,7 @@ export default function YoutubeFlow({ room, onApprove, onPreview }: {
     </div>}
     {source && <div className="range-tools"><button className="primary-button" onClick={() => void suggest()} disabled={busy !== null || !access} data-testid="yt-suggest"><span>{busy === "suggest" ? "Memilih klip terbaik…" : items ? "Sarankan ulang" : "Sarankan klip dengan AI"}</span></button></div>}
     {source && !access && <div className="notice" data-testid="yt-needs-ai">Butuh kunci AI: masuk ke akun lalu simpan kunci di kotak &quot;Rapikan transkrip dengan Gemini&quot; (muncul setelah ada transkrip), atau pakai alur &quot;Klip otomatis dengan AI&quot; setelah memilih video.</div>}
-    {source && items && items.length > 0 && <SuggestionList items={items} onItems={setItems} duration={source.seconds}
+    {source && items && items.length > 0 && <SuggestionList items={items} onItems={setItems} duration={source.seconds} lines={source.transcript.segments.map(sg => ({ start: sg.start, end: sg.end, text: sg.text }))}
       intro={`${items.length} klip disarankan dari teks YouTube. Buka di YouTube untuk memeriksa, sesuaikan bila perlu, lalu centang yang Anda mau.`}
       actions={m => <a className="text-button" href={at(m.start)} target="_blank" rel="noopener noreferrer" data-testid="yt-open">▶ Buka di YouTube ({formatTime(m.start)})</a>}>
       <button className="secondary-button" disabled={chosen.length === 0 || chosen.length > room} onClick={() => onApprove(chosen.map(toClip), source.seconds, source.title)} data-testid="yt-continue">
