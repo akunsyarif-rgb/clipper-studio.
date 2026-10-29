@@ -4,6 +4,7 @@ import { CAPTION_STYLES, CONTENT_PRESETS, PALETTES, STYLES, type CaptionStyleId,
 import { TYPE_PACK_IDS, type TypePackId } from "./fonts";
 import { SFX_MODES, type SfxMode } from "./sfx";
 import type { Transcript } from "./transcript";
+import { isEdit, type Edit, type EditProfile } from "./edit-profile";
 import type { Density } from "./importance";
 import type { BrandMotion, OverlayPosition } from "./overlay";
 import type { Cut, VisualOverride } from "./visuals";
@@ -34,6 +35,8 @@ export type SessionData = {
   captionStyle?: CaptionStyleId;
   /** The part of the source video that is used (seconds into the file); absent = the whole video. */
   trim?: { start: number; end: number };
+  /** Editing profile over a source video and its reviewed edits (file time); absent = standard. */
+  edit?: { profile: EditProfile; edits: Edit[]; emphasis: { from: number; to: number }[]; sfx: boolean };
   stickerMode?: "off" | "auto";
   stickerOverrides?: Record<string, string>;
   sfx?: SfxMode;
@@ -76,6 +79,8 @@ export function isSession(v: unknown): v is SessionData {
     && (v.stickerOverrides === undefined || (isObject(v.stickerOverrides) && Object.values(v.stickerOverrides).every(x => typeof x === "string")))
     && (v.sfx === undefined || SFX_MODES.includes(v.sfx as SfxMode))
     && (v.captionStyle === undefined || CAPTION_STYLES.some(c => c.id === v.captionStyle))
+    && (v.edit === undefined || (isObject(v.edit) && (v.edit.profile === "standard" || v.edit.profile === "music" || v.edit.profile === "comedy") && Array.isArray(v.edit.edits) && v.edit.edits.every(isEdit)
+      && Array.isArray(v.edit.emphasis) && v.edit.emphasis.every(r => isObject(r) && typeof r.from === "number" && typeof r.to === "number") && typeof v.edit.sfx === "boolean"))
     && (v.trim === undefined || (isObject(v.trim) && typeof v.trim.start === "number" && typeof v.trim.end === "number" && Number.isFinite(v.trim.start) && Number.isFinite(v.trim.end) && v.trim.start >= 0 && v.trim.end > v.trim.start))
     && (v.imported === null || isTranscript(v.imported))
     && (v.voiceMode === "ai" || v.voiceMode === "none") && (v.ttsLang === "id" || v.ttsLang === "en")

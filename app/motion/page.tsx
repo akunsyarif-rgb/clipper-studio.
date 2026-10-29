@@ -31,7 +31,9 @@ import AiDirector from "../AiDirector";
 import SeoPanel, { type SeoSeed } from "../SeoPanel";
 import TrendStart from "../TrendStart";
 import TrimPanel from "../TrimPanel";
-import { absoluteWords, handoffTrim, reslice, trimSeconds, type Trim } from "@/lib/trim";
+import EditProfilePanel from "../EditProfilePanel";
+import { isEdit, toRenderEdits, type Edit, type EditProfile } from "@/lib/edit-profile";
+import { absoluteWords, clampTrim, handoffTrim, reslice, trimSeconds, type Trim } from "@/lib/trim";
 import { logDownload, logRender, logSeo, logTrend, scriptId, type HistoryEntry } from "@/lib/history";
 import { loadHistory, onHistoryChange, startHistorySync, updateHistory } from "@/lib/history-store";
 import type { SeoPlatform, SeoResult } from "@/lib/seo";
@@ -196,6 +198,11 @@ export default function MotionStudio() {
   const [trim, setTrim] = useState<Trim | null>(null);
   const [clipperTrim, setClipperTrim] = useState<Trim | null>(null);
   const [trimNote, setTrimNote] = useState("");
+  // Editing profile over a source video (music / comedy): reviewable picture-only edits and the punchlines' caption emphasis, in file time.
+  const [editProfile, setEditProfile] = useState<EditProfile>("standard");
+  const [edits, setEdits] = useState<Edit[]>([]);
+  const [emphasis, setEmphasis] = useState<{ from: number; to: number }[]>([]);
+  const [comedySfx, setComedySfx] = useState(false);
   const [captionOffset, setCaptionOffset] = useState(0);
   // Where animations drawn over the speaker sit: the empty space above the head, or just above the captions.
   const [overlayPos, setOverlayPos] = useState<OverlayPosition>("top");
@@ -269,7 +276,7 @@ export default function MotionStudio() {
     // The clip comes with a few seconds of footage on each side: it starts on the clip itself, and the trim can reach into the rest.
     const around = handoffTrim(h.padStart ?? 0, h.padEnd ?? 0, h.seconds);
     setSource({ file, url: URL.createObjectURL(file), seconds: (h.padStart ?? 0) + h.seconds + (h.padEnd ?? 0) });
-    setTrim(around); setClipperTrim(around); setTrimNote("");
+    setTrim(around); setClipperTrim(around); setTrimNote(""); setEdits([]); setEmphasis([]);
     // A clip the browser cannot read is reported at once, instead of showing a black player.
     void probeVideo(file).then(p => { if (!p.ok) { setSource(null); setVideoEdit(false); setHandoffNote(`Klip yang diterima tidak bisa diputar di browser ini. Kembali ke Clipper lalu ekspor ulang klipnya, atau pilih video langsung di sini. (Detail: ${p.detail})`); } });
     if (h.title) setTitle(h.title.slice(0, 48).trim());
@@ -319,7 +326,7 @@ export default function MotionStudio() {
     probe.onloadedmetadata = () => {
       if (!Number.isFinite(probe.duration) || probe.duration <= 0) { URL.revokeObjectURL(url); return setSourceError("Durasi berkas tidak dapat dibaca. Coba MP4 (H.264) atau audio MP3/M4A."); }
       if (probe.duration > MAX_SECONDS) { URL.revokeObjectURL(url); return setSourceError(`Video ${Math.round(probe.duration)} detik melebihi batas ${MAX_SECONDS} detik (3 menit). Potong dulu di Clipper Studio.`); }
-      setSource({ file: f, url, seconds: probe.duration }); setTrim(null); setClipperTrim(null); setTrimNote(""); makeSourceBase(f);
+      setSource({ file: f, url, seconds: probe.duration }); setTrim(null); setClipperTrim(null); setTrimNote(""); setEdits([]); setEmphasis([]); makeSourceBase(f);
     };
     probe.onerror = () => { URL.revokeObjectURL(url); setSourceError("Browser tidak dapat memutar berkas ini. Coba MP4 (H.264) atau audio MP3/M4A/WAV."); };
     probe.src = url;
@@ -374,7 +381,13 @@ export default function MotionStudio() {
     ...(stickerPlan[i] ? { sticker: stickerPlan[i]! } : {}),
   })) : [];
   // Sound effects: planned from the scenes, synthesised on the device into one small WAV that plays in the preview and the MP4.
-  const sfxPlan = planSfx(sceneList, sfxMode, { videoEdit: !!(videoEdit && source) });
+  const outLength = timeline.ok ? totalFrames(sceneList) / FPS : 0;
+  const editActive = !!(videoEdit && source) && editProfile !== "standard";
+  const renderEdits = editActive ? toRenderEdits(edits, trim?.start ?? 0, outLength) : [];
+  const renderEmphasis = editActive && editProfile === "comedy" ? emphasis.map(r => ({ from: r.from - (trim?.start ?? 0), to: r.to - (trim?.start ?? 0) })).filter(r => r.to > 0 && r.from < outLength) : [];
+  const sfxPlan = [...planSfx(sceneList, sfxMode, { videoEdit: !!(videoEdit && source) }),
+    // Comedy: a small pop on each punch-in (switched on by the creator; off by default).
+    ...(editActive && editProfile === "comedy" && comedySfx ? renderEdits.filter(e => e.kind === "punch").map(e => ({ frame: Math.round(e.at * FPS), kind: "pop" as const, gain: 0.5 })) : [])].sort((a, b) => a.frame - b.frame);
   // Keyed by what the track contains (not by array identity, which changes every render): the same effects keep the same WAV.
   const sfxFrames = totalFrames(sceneList);
   const sfxKey = JSON.stringify([sfxPlan, sfxFrames]);
@@ -383,13 +396,13 @@ export default function MotionStudio() {
   const sfxSrc = useMemo(() => sfxBytes ? URL.createObjectURL(new Blob([sfxBytes], { type: "audio/wav" })) : null, [sfxBytes]);
   useEffect(() => () => { if (sfxSrc) URL.revokeObjectURL(sfxSrc); }, [sfxSrc]);
   const props: VideoProps | null = timeline.ok ? {
-    title: title.trim(), scenes: sceneList, style, palette, audioSrc: narration?.url ?? null, captions, video: videoEdit && source ? { src: source.url, seconds: source.seconds, ...(trim ? { trimStart: trim.start } : {}), ...(isAudioFile(source.file) ? { audioOnly: true } : {}) } : null, overlay: overlayPos, brandMotion,
+    title: title.trim(), scenes: sceneList, style, palette, audioSrc: narration?.url ?? null, captions, video: videoEdit && source ? { src: source.url, seconds: source.seconds, ...(trim ? { trimStart: trim.start } : {}), ...(isAudioFile(source.file) ? { audioOnly: true } : {}) } : null, ...(renderEdits.length ? { edits: renderEdits } : {}), ...(renderEmphasis.length ? { captionEmphasis: renderEmphasis } : {}), overlay: overlayPos, brandMotion,
     music, speech: narration?.speech ?? null, ...(isWatermarkActive(watermark) ? { watermark } : {}), ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}), ...(sfxSrc ? { sfx: { src: sfxSrc, volume: SFX_VOLUME } } : {}),
   } : null;
   const snapshot = useMemo<SessionData>(() => ({
-    v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlay: overlayPos, density, brandMotion, ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(trim ? { trim } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}), ...(stickerMode !== "off" ? { stickerMode } : {}), ...(Object.keys(stickerOverrides).length ? { stickerOverrides } : {}), ...(sfxMode !== "off" ? { sfx: sfxMode } : {}), imported,
+    v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlay: overlayPos, density, brandMotion, ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(trim ? { trim } : {}), ...(editProfile !== "standard" ? { edit: { profile: editProfile, edits, emphasis, sfx: comedySfx } } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}), ...(stickerMode !== "off" ? { stickerMode } : {}), ...(Object.keys(stickerOverrides).length ? { stickerOverrides } : {}), ...(sfxMode !== "off" ? { sfx: sfxMode } : {}), imported,
     voiceMode: voiceMode === "ai" ? "ai" : "none", ttsLang, ttsVoice, ttsSpeed,
-  }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlayPos, density, brandMotion, storyVisuals, typography, captionStyle, backdrop, grain, stickerMode, stickerOverrides, sfxMode, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed, trim]);
+  }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlayPos, density, brandMotion, storyVisuals, typography, captionStyle, backdrop, grain, stickerMode, stickerOverrides, sfxMode, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed, trim, editProfile, edits, emphasis, comedySfx]);
   useEffect(() => {
     if (!autosave || isPristine(snapshot, SAMPLE, !!source)) return;
     const t = setTimeout(() => { const s = { ...snapshot, savedAt: Date.now() }; void saveSession(s); void cloud.pushSession(s); }, 1000);
@@ -424,6 +437,7 @@ export default function MotionStudio() {
       const file = rec.blob instanceof File ? rec.blob : new File([rec.blob], rec.name, { type: rec.type, lastModified: rec.lastModified });
       setSource({ file, url: URL.createObjectURL(file), seconds: rec.seconds });
       setTrim(s.trim ?? null); setClipperTrim(null);
+      setEditProfile(s.edit?.profile ?? "standard"); setEdits((s.edit?.edits ?? []).filter(isEdit)); setEmphasis(s.edit?.emphasis ?? []); setComedySfx(!!s.edit?.sfx);
       setVideoEdit(s.videoEdit);
     } else setVideoEdit(false); // editing over the video needs the video itself
     setSaved(null); setSavedCloud(false); setAutosave(true);
@@ -871,9 +885,12 @@ export default function MotionStudio() {
             : <div className="normal-only">
               <video ref={sourceVideo} src={source.url} controls playsInline preload="metadata" style={{ width: "100%", maxHeight: 220, borderRadius: 10, background: "#000" }} data-testid={isAudioFile(source.file) ? "source-audio-only" : undefined} />
               {isAudioFile(source.file) && <small className="field-hint" data-testid="audio-only-note">Audio saja: suaranya dipakai apa adanya, gambarnya latar studio dengan subtitle dan animasi.</small>}
-              <button className="text-button" disabled={asrBusy} onClick={() => { setSource(null); setTrim(null); setClipperTrim(null); setTrimNote(""); setImported(null); setVideoEdit(false); setCutOverrides({}); setClipStarts({}); if (script === VIDEO_ONLY || script === AUDIO_ONLY) { setScript(SAMPLE); setCaptions(true); } }}>Ganti video ({source.file.name})</button>
+              <button className="text-button" disabled={asrBusy} onClick={() => { setSource(null); setTrim(null); setClipperTrim(null); setTrimNote(""); setEdits([]); setEmphasis([]); setEditProfile("standard"); setImported(null); setVideoEdit(false); setCutOverrides({}); setClipStarts({}); if (script === VIDEO_ONLY || script === AUDIO_ONLY) { setScript(SAMPLE); setCaptions(true); } }}>Ganti video ({source.file.name})</button>
               <TrimPanel duration={source.seconds} trim={trim} onChange={applyTrim} video={sourceVideo} words={imported ? absoluteWords(allWords(imported), trim?.start ?? 0) : null} original={clipperTrim} disabled={asrBusy || rendering} />
               {trimNote && <div className="notice normal-only" role="status" data-testid="trim-note">{trimNote}</div>}
+              {videoEdit && <EditProfilePanel file={source.file} url={source.url} seconds={source.seconds} trim={trim} words={imported ? absoluteWords(allWords(imported), trim?.start ?? 0) : null} video={sourceVideo}
+                profile={editProfile} onProfile={setEditProfile} edits={edits} onEdits={setEdits} onEmphasis={setEmphasis} comedySfx={comedySfx} onComedySfx={setComedySfx}
+                onTrim={t => applyTrim(clampTrim(t, source.seconds))} audioOnly={isAudioFile(source.file)} disabled={asrBusy || rendering} />}
               <TranscriptPanel key={`${source.url}:${trim?.start ?? 0}:${trim?.end ?? 0}`} file={source.file} video={sourceVideo} range={{ start: trim?.start ?? 0, duration: trimSeconds(trim, source.seconds) }} locked={false} onWorking={setAsrBusy} onCopy={setScript} onUseTiming={useTimingOnly} preciseTiming={!!imported && imported.granularity !== "word" && videoEdit}
                 onUse={t => { setScript(scriptFromTranscript(t, FPS)); setImported(t); setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptions(true); setCaptionOffset(0); setPalette("pearl"); setContentPreset("custom"); setOffer(null); }} />
             </div>}
