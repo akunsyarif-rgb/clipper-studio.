@@ -69,7 +69,7 @@ function FloatingCore({ frame, mode }: { frame: number; mode: Beat["mode"] }) {
         borderRadius: mode === "steps" ? 42 : "50%",
         background: "linear-gradient(135deg, #f7f3df 0%, #9adbc8 34%, #6d8df2 68%, #c2a0f5 100%)",
         boxShadow: "inset -22px -24px 44px #121d3b88, inset 12px 14px 28px #ffffffbb, 0 36px 100px #4c74e855",
-        opacity: enter,
+        opacity: Math.max(0.25, enter),
         transform: `perspective(900px) translate3d(0px, ${drift + (1 - enter) * 90}px, 0px) rotateX(${rotate}deg) rotateY(${-rotate * 1.35}deg) rotateZ(${rotate * 0.3}deg) scale(${0.72 + enter * 0.28})`,
         transformStyle: "preserve-3d",
       }}
@@ -95,7 +95,7 @@ function StepPath({ frame }: { frame: number }) {
             background: `linear-gradient(160deg, ${["#d5f5d6", "#a8e5d3", "#91b7f7", "#d2a7f5"][step]}, #293b66)`,
             border: "1px solid #ffffff77",
             boxShadow: "0 24px 42px #0005, inset 0 2px 0 #ffffff99",
-            opacity: p,
+            opacity: Math.max(0.25, p),
             transform: `translateY(${(1 - p) * 110}px) rotateY(-22deg) rotateX(8deg) translateZ(${step * 10}px)`,
             transformStyle: "preserve-3d",
           }} />
@@ -109,7 +109,7 @@ function OrbitSystem({ frame }: { frame: number }) {
   const p = clamp(frame, 0, 20);
   const rotation = interpolate(frame, [0, 90], [-38, 322]);
   return (
-    <div data-visual="orbit-system" style={{ width: 440, height: 440, position: "relative", perspective: 900, opacity: p }}>
+    <div data-visual="orbit-system" style={{ width: 440, height: 440, position: "relative", perspective: 900, opacity: Math.max(0.25, p) }}>
       {[0, 1, 2].map((ring) => (
         <div key={ring} style={{
           position: "absolute", inset: 42 + ring * 26,
@@ -138,8 +138,9 @@ export const StoryMotionLab: React.FC = () => {
   const local = frame - index * sceneFrames;
   const beat = BEATS[index];
   const entrance = spring({ frame: local - 2, fps, config: { damping: 18, stiffness: 120, mass: 0.65 } });
-  const exit = interpolate(local, [sceneFrames - 8, sceneFrames], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const opacity = Math.min(entrance, exit);
+  // Beats are contiguous: no fade-out, and the text never starts from nothing, so no frame at a beat boundary is empty or dim.
+  // The opening beat is fully visible from frame 0 (thumbnails are never blank).
+  const opacity = index === 0 ? 1 : 0.55 + 0.45 * Math.min(1, entrance);
   const titleY = interpolate(entrance, [0, 1], [54, 0]);
   const accentWidth = interpolate(local, [4, 30], [0, 340], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
   const backgroundPosition = interpolate(frame, [0, 360], [0, 100]);
