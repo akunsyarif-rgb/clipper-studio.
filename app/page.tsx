@@ -20,6 +20,8 @@ import { saveClipHandoff } from "@/lib/session-store";
 import { clearClipperWork, loadClipperWork, saveClipperWork } from "@/lib/clipper-memory";
 import type { Transcript } from "@/lib/transcript";
 import { releaseAsr } from "@/lib/asr/client";
+import { clipId, logDownload, logRender } from "@/lib/history";
+import { updateHistory } from "@/lib/history-store";
 import { ExportCancelled, exportClip, isEngineLoaded, terminateEngine } from "@/lib/engine";
 
 type Clip = { id: number; start: number; end: number; title?: string; transcript?: Transcript };
@@ -33,6 +35,7 @@ export default function Home() {
   const picker = useRef<HTMLInputElement>(null);
   const player = useRef<HTMLVideoElement>(null);
   const cancelled = useRef(false);
+  const historyBase = useRef<{ id: string; kind: "clip"; title: string; script: string } | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [src, setSrc] = useState("");
   const [duration, setDuration] = useState(0);
@@ -190,7 +193,10 @@ export default function Home() {
       setEngineReady(true);
       if (job.after) { await job.after(blob); return; }
       const { width, height } = outputSize(aspect, quality);
-      setResult({ url: URL.createObjectURL(blob), name: exportFileName(file.name, aspect, quality, job.start), size: blob.size, label: `${width}×${height} · ${formatTime(job.duration)}` });
+      const name = exportFileName(file.name, aspect, quality, job.start), label = `${width}×${height} · ${formatTime(job.duration)}`;
+      setResult({ url: URL.createObjectURL(blob), name, size: blob.size, label });
+      historyBase.current = { id: clipId(file.name, job.start, job.duration), kind: "clip", title: file.name.replace(/\.[^.]+$/, "").slice(0, 80), script: "" };
+      void updateHistory(l => logRender(l, { ...historyBase.current!, now: Date.now() }, { name, size: blob.size, label }));
       say("MP4 berhasil dibuat di perangkat ini. Simpan hasilnya sebelum menutup tab.");
     } catch (err) {
       if (cancelled.current || err instanceof ExportCancelled) {
@@ -236,7 +242,7 @@ export default function Home() {
   const startSeconds = parseTime(start);
 
   return <main className="shell">
-    <header className="topbar"><Link className="brand" href="/"><span className="logo">c</span><span>clipper<span className="light">studio</span></span></Link><span className="pill"><i /> LOCAL-FIRST MVP</span></header>
+    <header className="topbar"><Link className="brand" href="/"><span className="logo">c</span><span>clipper<span className="light">studio</span></span></Link><span className="pill"><i /> LOCAL-FIRST MVP</span><Link className="text-link" href="/riwayat" data-testid="link-history">Riwayat</Link></header>
     <CloudAccount />
     <section className="hero"><div className="eyebrow"><span className="eyebrow-line" /> VIDEO WORKSPACE</div><h1>Video panjang.<br/><em>Potongan yang tepat.</em></h1><p>Potong video menjadi klip 9:16, 16:9, atau 1:1. Pilih video, atur rentang waktu, lalu ekspor MP4 langsung dari perangkat.</p><div className="hero-tags"><span><b>01</b> Lokal dahulu</span><span><b>02</b> Tanpa login</span><span><b>03</b> Maks. 1 GB</span></div></section>
     <section className="workspace">
@@ -279,7 +285,7 @@ export default function Home() {
       {busy&&<div className="progress-wrap" data-testid="progress"><div className="progress-label"><span>{phase === "loading" ? "Memuat mesin video…" : "Memproses video lokal…"}</span><strong>{phase === "loading" ? "…" : progress + "%"}</strong></div><div className="progress-track"><span style={{width:(phase === "loading" ? 4 : progress)+"%"}}/></div><small>Jangan tutup atau pindah tab hingga selesai. Safari dapat menghentikan proses di tab latar belakang.</small><button className="cancel-button" onClick={cancel} data-testid="cancel">Batalkan ekspor</button></div>}
       <button className="primary-button" disabled={!file||!duration||busy||asrBusy} onClick={exportCurrent} data-testid="export"><span>{busy?"Sedang memproses…":`Ekspor klip MP4 (${aspect}, ${quality}p)`}</span><svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
       {!busy && !asrBusy && lastJob && !result && <button className="secondary-button" onClick={() => runExport(lastJob)} data-testid="retry">↻ Ulangi ekspor terakhir</button>}
-      {result&&<div className="download-card" data-testid="result"><span className="download-check">✓</span><div><strong>Video selesai dibuat</strong><span>{result.label} · {formatBytes(result.size)}</span></div><a className="download-button" href={result.url} download={result.name} data-testid="download">Simpan MP4 ↓</a></div>}
+      {result&&<div className="download-card" data-testid="result"><span className="download-check">✓</span><div><strong>Video selesai dibuat</strong><span>{result.label} · {formatBytes(result.size)}</span></div><a className="download-button" href={result.url} download={result.name} data-testid="download" onClick={() => { const b = historyBase.current; if (b) void updateHistory(l => logDownload(l, { ...b, now: Date.now() }, { name: result.name, size: result.size, label: result.label })); }}>Simpan MP4 ↓</a></div>}
       {result&&<div className="result-tools"><video src={result.url} controls playsInline preload="metadata" className="result-video"/><button className="text-button" onClick={share}>Bagikan / simpan ke Photos</button></div>}
       {message&&<div className={"notice " + (isError ? "notice-error" : "")} role={isError ? "alert" : "status"} data-testid="message">{message}</div>}{errorDetail&&<details className="error-details"><summary>Detail teknis</summary><code>{errorDetail}</code></details>}
       <p className="fine-print">Batas: sumber 60 menit / 1 GB, satu klip maks. 5 menit. Kinerja bergantung pada perangkat, codec, dan memori browser. Di iPhone/iPad, 720p jauh lebih cepat daripada 1080p.</p>

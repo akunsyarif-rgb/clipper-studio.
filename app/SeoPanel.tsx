@@ -7,7 +7,7 @@ import { makeSeoPack, SEO_PLATFORMS, seoProblem, seoToJson, seoToText, type SeoP
 import { useGeminiAccess } from "./useGeminiAccess";
 
 /** Copies text; falls back to a hidden textarea where the clipboard API is missing (older Safari, insecure pages). */
-async function copyText(text: string): Promise<boolean> {
+export async function copyText(text: string): Promise<boolean> {
   try { await navigator.clipboard.writeText(text); return true; } catch { /* try the fallback */ }
   try {
     const ta = document.createElement("textarea");
@@ -27,7 +27,7 @@ async function copyText(text: string): Promise<boolean> {
  */
 export type SeoSeed = { platform: SeoPlatform; niche: string; audience: string; trends: string; nonce: number };
 
-export default function SeoPanel({ transcript, topic, language, seed }: { transcript: string; topic: string; language: "id" | "en"; /** Filled by "Mulai dari tren": applied once per nonce, the creator can still edit every field. */ seed?: SeoSeed | null }) {
+export default function SeoPanel({ transcript, topic, language, seed, stored, storedId, onResult }: { transcript: string; topic: string; language: "id" | "en"; /** Packs already made for this video (from the history), shown again when its id (`storedId`) comes back. */ stored?: Partial<Record<SeoPlatform, { at: number; result: SeoResult }>>; storedId?: string; /** Every new pack, so the history keeps it. */ onResult?: (platform: SeoPlatform, result: SeoResult) => void; /** Filled by "Mulai dari tren": applied once per nonce, the creator can still edit every field. */ seed?: SeoSeed | null }) {
   const access = useGeminiAccess();
   const [platform, setPlatform] = useState<SeoPlatform>("tiktok");
   const [niche, setNiche] = useState(topic);
@@ -41,6 +41,13 @@ export default function SeoPanel({ transcript, topic, language, seed }: { transc
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
   const seeded = useRef(false);
+  // Another video's script must never show the previous video's packs: they follow the video, and come back with it.
+  useEffect(() => {
+    if (storedId === undefined) return;
+    const next: Partial<Record<SeoPlatform, SeoResult>> = {};
+    for (const [k, v] of Object.entries(stored ?? {})) if (v) next[k as SeoPlatform] = v.result;
+    setResults(next); setError("");
+  }, [storedId, stored]);
   useEffect(() => {
     if (!seed) return;
     seeded.current = true; setPlatform(seed.platform); setNiche(seed.niche); setNicheTouched(true); setAudience(seed.audience); setTrends(seed.trends); setError("");
@@ -59,7 +66,7 @@ export default function SeoPanel({ transcript, topic, language, seed }: { transc
     const ctl = new AbortController(); abort.current = ctl;
     try {
       const pack = await makeSeoPack({ topic: niche, transcript, platform, audience, trends }, { apiKey: settings.apiKey, model: settings.model, language, signal: ctl.signal, transport: settings.transport, format: settings.format, timeoutMs: 90_000 });
-      setResults(prev => ({ ...prev, [platform]: pack }));
+      setResults(prev => ({ ...prev, [platform]: pack })); onResult?.(platform, pack);
     } catch (e) { setError(e instanceof GeminiError ? e.message : "Gagal menghubungi layanan AI."); }
     finally { setBusy(false); }
   }
