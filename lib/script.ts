@@ -3,6 +3,7 @@ import type { Music } from "./audio";
 import type { BrandMotion, OverlayPosition } from "./overlay";
 import type { Cut, SceneVisual } from "./visuals";
 import type { NarrativePlan } from "./narrative";
+import type { Watermark } from "./watermark";
 
 export const FPS = 30;
 export const WIDTH = 1080;
@@ -81,11 +82,13 @@ export type VideoProps = {
   speech: number[] | null;
   /** Source video edit: the video (with its own audio) is the base layer and scenes become overlays or cutaways. */
   /** `seconds` is the source length; it keeps a clip from running past the end of the video. */
-  video?: { src: string; seconds?: number } | null;
+  video?: { src: string; seconds?: number; /** The source has no picture (an audio file): its sound plays over the studio background. */ audioOnly?: boolean } | null;
   /** Where animations over the speaker sit: in the space above the head (default) or just above the captions. */
   overlay?: OverlayPosition;
   /** Popular names: "simple" (default) is calm, "full" adds a small animated scene of each service. */
   brandMotion?: BrandMotion;
+  /** Custom text watermark drawn over the whole video; absent, switched off or empty means none. */
+  watermark?: Watermark;
 };
 
 const words = (s: string) => s.split(/\s+/).filter(Boolean);

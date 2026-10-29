@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chooseFamily, splitCause } from "./composition";
+import { chooseFamily, planLayouts, splitCause } from "./composition";
 import { planNarrative } from "./narrative";
 import { detectVisual } from "./visuals";
 
@@ -18,15 +18,35 @@ describe("chooseFamily", () => {
       "73% orang berhenti sebelum minggu ketiga.",
       "Kesimpulannya, mulai dari langkah sekecil mungkin.",
     ];
-    expect(familyFor(texts)).toEqual(["editorial", "comparison", "kinetic", "explainer", "data", "editorial"]);
+    expect(familyFor(texts)).toEqual(["editorial", "comparison", "kinetic", "process", "data", "editorial"]);
   });
 
-  it("uses the explainer for numbered steps", () => {
-    expect(familyFor(["Hook pembuka.", "Pertama, tentukan target yang jelas."])[1]).toBe("explainer");
+  it("detects a natural contrast clause as a neutral comparison", () => {
+    expect(detectVisual("Kita punya niat, tetapi sering kembali ke pola lama.").compare).toEqual({
+      bad: "Kita punya niat",
+      good: "sering kembali ke pola lama",
+      neutral: true,
+    });
+    expect(familyFor(["Pembuka.", "Kita punya niat, tetapi sering kembali ke pola lama."])[1]).toBe("comparison");
+  });
+
+  it("uses process grammar for numbered steps", () => {
+    expect(familyFor(["Hook pembuka.", "Pertama, tentukan target yang jelas."])[1]).toBe("process");
   });
 
   it("treats a call to action after the hook as a product/action showcase", () => {
     expect(familyFor(["Hook pembuka.", "Ini penting.", "Ikuti untuk tips berikutnya."])[2]).toBe("data");
+  });
+
+  it("selects distinct families for metaphor and story intent", () => {
+    const plan = planNarrative([
+      "Aku pernah merasa semua pintu tertutup.",
+      "Ternyata, harapan adalah kompas saat kita tersesat.",
+    ]);
+    expect(plan[0].intent).toBe("story");
+    expect(chooseFamily(detectVisual("Aku pernah merasa semua pintu tertutup."), plan[0])).toBe("story");
+    expect(plan[1].strategy).toBe("metaphor");
+    expect(chooseFamily(detectVisual("Ternyata, harapan adalah kompas saat kita tersesat."), plan[1])).toBe("metaphor");
   });
 
   it("does not stage a year as a statistic", () => {
@@ -97,5 +117,26 @@ describe("manual icon override", () => {
     expect(resolveVisual("Pilih disiplin, bukan sekadar motivasi.", { template: "statement", icon: "money" })).toMatchObject({ icon: "money", iconPinned: true });
     expect(resolveVisual("Uang bukan segalanya.").iconPinned).toBeUndefined();
     expect(resolveVisual("Uang itu penting.", { icon: "none" }).iconPinned).toBeUndefined();
+  });
+});
+
+describe("five-scene sample: layouts follow scene function", () => {
+  const texts = ["Jangan tunggu semangat datang.", "Mulailah, meski langkahmu kecil.", "Disiplin membuatmu tetap bergerak.", "Satu langkah hari ini lebih baik dari rencana sempurna.", "Mulai sekarang."];
+  const plan = planNarrative(texts);
+  const items = texts.map((t, i) => ({ family: chooseFamily(detectVisual(t), plan[i]), role: plan[i].role, intensity: plan[i].intensity }));
+  it("gives scenes 1-3 three different pictures", () => {
+    const l = planLayouts(items);
+    // With intent routing, scene 2 ("meski ... kecil") is a contrast beat: kinetic type, not another editorial layout.
+    expect(l.slice(0, 3)).toEqual(["impact", "standard", "quiet-center"]);
+    expect(items.slice(0, 3).map(i => i.family)).toEqual(["editorial", "kinetic", "editorial"]);
+    expect(new Set(l.slice(0, 3)).size).toBe(3);
+  });
+  it("keeps comparison and CTA on their own families", () => {
+    expect(items.map(i => i.family).slice(3)).toEqual(["comparison", "data"]);
+    expect(planLayouts(items).slice(3)).toEqual(["standard", "standard"]);
+  });
+  it("alternates a long run of calm editorial scenes", () => {
+    const calm = { family: "editorial" as const, role: "continuation" as const, intensity: "quiet" as const };
+    expect(planLayouts([calm, calm, calm, calm])).toEqual(["quiet-center", "quiet-offset", "quiet-center", "quiet-offset"]);
   });
 });

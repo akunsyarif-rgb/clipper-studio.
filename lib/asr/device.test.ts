@@ -38,3 +38,25 @@ describe("run mark", () => {
     expect(parseRunMark("null")).toBeNull();
   });
 });
+
+describe("memory handling", () => {
+  it("recognises the iPad Safari failure and other out-of-memory reports, not network errors", async () => {
+    const { isMemoryError } = await import("./device");
+    expect(isMemoryError("no available backend found. ERR: [wasm] RangeError: Out of memory")).toBe(true);
+    expect(isMemoryError("RangeError: WebAssembly.Memory(): could not allocate memory")).toBe(true);
+    expect(isMemoryError("Failed to fetch model")).toBe(false);
+    expect(isMemoryError("no speech: tidak ada ucapan terdeteksi")).toBe(false);
+  });
+  it("steps down one model at a time and stops at the lightest", async () => {
+    const { memoryFallback } = await import("./device");
+    expect(memoryFallback("Xenova/whisper-small")).toBe("Xenova/whisper-base");
+    expect(memoryFallback("Xenova/whisper-base")).toBe("Xenova/whisper-tiny");
+    expect(memoryFallback("Xenova/whisper-tiny")).toBeNull();
+  });
+  it("always uses the plain CPU runtime (not the larger asyncify build) and low-memory sessions", async () => {
+    const { ortWasmPaths, LOW_MEMORY_SESSION } = await import("./device");
+    expect(ortWasmPaths().wasm).not.toMatch(/asyncify/);
+    expect(ortWasmPaths().mjs).not.toMatch(/asyncify/);
+    expect(LOW_MEMORY_SESSION).toMatchObject({ enableCpuMemArena: false, enableMemPattern: false });
+  });
+});

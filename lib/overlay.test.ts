@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contrast, SAFE } from "./layout";
+import { CAPTION_BOTTOM, contrast, SAFE } from "./layout";
 import { hasOverlay, MAX_OVERLAY_FRAMES, overlayBand, overlayColors, overlayKeyword, OVERLAY_HEIGHT, SCRIM } from "./overlay";
 import { HEIGHT, PALETTES } from "./script";
 import { detectVisual, resolveVisual } from "./visuals";
@@ -18,8 +18,8 @@ describe("overlayBand", () => {
     const top = overlayBand("top"), lower = overlayBand("lower");
     expect(top.top).toBe(SAFE.top);
     expect(lower.top).toBeGreaterThan(top.top + top.height);
-    // The caption block starts at 1920 - 380 - 24 - 170 = 1346; the band ends above it with a gap.
-    expect(lower.top + lower.height).toBeLessThan(HEIGHT - SAFE.bottom - 24 - 170);
+    // The caption block starts at 1920 - 520 - 170 = 1230; the band ends above it with a gap.
+    expect(lower.top + lower.height).toBeLessThan(HEIGHT - CAPTION_BOTTOM - 170);
   });
 
   it("keeps an animation short, like graphic cutaways", () => {

@@ -24,6 +24,8 @@ export type DirectorInput = {
   /** An affiliate (selling) video for this product: price and promo become number scenes, the buying prompt closes the video. */
   affiliate?: { product: string };
   language: "id" | "en";
+  /** A scoped revision: only these scene indexes may change; the answer is also filtered to them (lib/revision.ts). */
+  scope?: number[];
 };
 
 export type DirectorScene = { template?: Template; icon?: string; cut?: Cut; reason: string; /** What kind of photo fits, in Indonesian, for the creator to read. */ imageIdea?: string; /** The same as a search phrase in English, for the stock-photo search. */ imageQuery?: string };
@@ -66,6 +68,7 @@ export function directorPrompt(i: DirectorInput): string {
       `Ini video AFFILIATE untuk produk "${i.affiliate.product.replace(/\s+/g, " ").trim().slice(0, 80)}". Tambahan aturan: hook di scene 1 menyebut satu manfaat atau masalah nyata; kalimat berisi harga atau promo memakai tampilan number; ajakan membeli ada di scene terakhir dengan tampilan cta (hanya di sana); jangan menambah klaim lewat pilihan tampilan; imageQuery berisi kategori produk dan situasi pemakaian (mis. "water bottle office desk"), bukan merek atau logo.`,
       "",
     ] : []),
+    ...(i.scope ? [`REVISI TERBATAS: ubah HANYA scene dengan index ${i.scope.join(", ")}. Jangan mengubah style, palette, atau scene lain; jangan sertakan scene lain dalam jawaban. Teks naskah tidak boleh berubah.`] : []),
     `Sekarang: style=${i.style}, palette=${i.palette}.`,
     i.feedback ? `Masukan pembuat video tentang hasil sebelumnya (utamakan ini): "${i.feedback.replace(/\s+/g, " ").trim().slice(0, 400)}"` : "Belum ada masukan; susun yang terbaik menurut panduan.",
     "Beri alasan (reason) singkat dalam bahasa Indonesia, maksimal 10 kata, yang menjelaskan PILIHAN itu kepada pembuat video. Beri juga \"note\": satu kalimat ringkasan arah keseluruhan (maks. 25 kata).",

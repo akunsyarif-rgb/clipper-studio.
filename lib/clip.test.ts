@@ -155,3 +155,42 @@ describe.skipIf(!hasFfmpeg)("ffmpegArgs with native FFmpeg", () => {
     expect(statSync(args.at(-1)!).size).toBeGreaterThan(1000);
   }, 30_000);
 });
+
+
+describe("audio-only sources", () => {
+  const f = (name: string, type = "", size = 1000) => ({ name, type, size });
+  it("recognises audio by type or extension, and keeps video that could be either as video", async () => {
+    const { isAudioFile } = await import("./clip");
+    expect(isAudioFile(f("a.mp3", "audio/mpeg"))).toBe(true);
+    expect(isAudioFile(f("voice.m4a"))).toBe(true);
+    expect(isAudioFile(f("rekaman.WAV"))).toBe(true);
+    expect(isAudioFile(f("x.bin", "audio/ogg"))).toBe(true);
+    expect(isAudioFile(f("clip.mp4", "video/mp4"))).toBe(false);
+    expect(isAudioFile(f("clip.webm", "video/webm"))).toBe(false);
+    expect(isAudioFile(f("clip.webm"))).toBe(false);
+    expect(isAudioFile(f("note.txt", "text/plain"))).toBe(false);
+  });
+  it("lets audio through the source check with its own wording, and still rejects other files and empty or huge ones", () => {
+    expect(validateFile(f("podcast.mp3", "audio/mpeg"))).toEqual({ ok: true });
+    expect(validateFile(f("a.m4a"))).toEqual({ ok: true });
+    const bad = validateFile(f("catatan.txt", "text/plain"));
+    expect(bad.ok).toBe(false);
+    expect(!bad.ok && bad.error).toMatch(/Pilih berkas video .* atau audio/);
+    expect(validateFile(f("a.mp3", "audio/mpeg", 0))).toEqual({ ok: false, error: "Berkas audio kosong." });
+    expect(validateFile(f("a.mp3", "audio/mpeg", MAX_BYTES + 1)).ok).toBe(false);
+  });
+  it("builds a dark frame of the output size under the audio, with or without a watermark", () => {
+    const plain = ffmpegArgs("/input/a.mp3", { start: 2, duration: 5 }, "9:16", "480", "pad", null, true);
+    expect(plain).toEqual(expect.arrayContaining(["-f", "lavfi", "-map", "1:v:0", "-map", "0:a:0"]));
+    expect(plain.find(x => x.startsWith("color=c="))).toBe("color=c=0x10131c:s=480x854:r=30");
+    expect(plain).not.toContain("-vf");
+    expect(plain.indexOf("-t")).toBeGreaterThan(plain.lastIndexOf("-i"));
+    const marked = ffmpegArgs("/input/a.mp3", { start: 2, duration: 5 }, "16:9", "720", "pad", { file: "watermark.png", x: 40, y: 600 }, true);
+    expect(marked.filter(x => x === "-i")).toHaveLength(3);
+    expect(marked[marked.indexOf("-filter_complex") + 1]).toBe("[1:v][2:v]overlay=40:600:format=auto,format=yuv420p[out]");
+    expect(marked).toEqual(expect.arrayContaining(["-map", "[out]", "-map", "0:a:0"]));
+    expect(marked.find(x => x.startsWith("color=c="))).toBe("color=c=0x10131c:s=1280x720:r=30");
+    // The default (a video source) is unchanged.
+    expect(ffmpegArgs("/input/a.mp4", { start: 2, duration: 5 }, "9:16", "480", "pad")).toContain("-vf");
+  });
+});

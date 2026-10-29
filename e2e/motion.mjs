@@ -417,6 +417,63 @@ try {
     return `${info}, top band scene 1 rgb ${r1},${g1},${b1}, scene 2 rgb ${r2},-,${b2}`;
   });
 
+  await step("the watermark: previewed, burned into the MP4 only when on and non-empty, positioned, remembered for re-renders", async () => {
+    await page.getByTestId("voice-none").click();
+    await page.getByTestId("music-none").click();
+    await page.getByTestId("style").selectOption("hybrid");
+    await page.getByTestId("palette").selectOption("violet");
+    await page.getByTestId("script").fill("Watermark diuji di sini.\nScene kedua juga.");
+    await page.getByTestId("duration").selectOption("15");
+    await page.evaluate(() => document.querySelectorAll("details.fold").forEach(d => { d.open = true; }));
+    const player = page.locator(".player-wrap");
+    // Region of the frame (1080x1920) as raw RGB, and the mean absolute difference between two such regions.
+    const region = (file, x, y, w, h) => execFileSync("ffmpeg", ["-v", "error", "-ss", "1", "-i", file, "-frames:v", "1", "-vf", `crop=${w}:${h}:${x}:${y}`, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], { maxBuffer: 1 << 26 });
+    const diff = (a, b) => { let t = 0; for (let i = 0; i < a.length; i++) t += Math.abs(a[i] - b[i]); return t / a.length; };
+    const BR = [560, 1380, 400, 180], TL = [100, 200, 500, 180];
+
+    // A: text typed but switched off -> no watermark anywhere.
+    await page.getByTestId("wm-text").fill("@ArkaSenja");
+    assert(await player.getByTestId("watermark").count() === 0, "nothing in the preview while switched off");
+    await renderAndCheck("wm-off", false, 15);
+    // B: on, bottom-right (default): visible in the preview, then in the file.
+    await page.getByTestId("wm-enabled").check();
+    await page.getByTestId("wm-pos-bottom-right").click();
+    await player.getByTestId("watermark").waitFor({ timeout: 5000 });
+    assert((await player.getByTestId("watermark").textContent()) === "@ArkaSenja", "preview shows the typed text");
+    assert(await player.getByTestId("watermark").getAttribute("data-position") === "bottom-right", "preview position");
+    await renderAndCheck("wm-br", false, 15);
+    // C: on but empty text -> nothing.
+    await page.getByTestId("wm-text").fill("   ");
+    await page.getByTestId("wm-empty").waitFor({ timeout: 3000 });
+    assert(await player.getByTestId("watermark").count() === 0, "an empty text draws nothing in the preview");
+    await renderAndCheck("wm-empty", false, 15);
+    // D: top-left, larger and more opaque.
+    await page.getByTestId("wm-text").fill("@ArkaSenja");
+    await page.getByTestId("wm-pos-top-left").click();
+    await page.getByTestId("wm-size").fill("8");
+    await page.getByTestId("wm-opacity").fill("1");
+    assert(await player.getByTestId("watermark").getAttribute("data-position") === "top-left", "preview follows the position");
+    await renderAndCheck("wm-tl", false, 15);
+
+    const off = join(dir, "wm-off.mp4"), br = join(dir, "wm-br.mp4"), empty = join(dir, "wm-empty.mp4"), tl = join(dir, "wm-tl.mp4");
+    const offBR = region(off, ...BR), offTL = region(off, ...TL);
+    const brOnBR = diff(offBR, region(br, ...BR)), emptyOnBR = diff(offBR, region(empty, ...BR));
+    const tlOnTL = diff(offTL, region(tl, ...TL)), tlOnBR = diff(offBR, region(tl, ...BR));
+    assert(brOnBR > 2, `the bottom-right watermark is in the file (region change ${brOnBR.toFixed(2)})`);
+    assert(emptyOnBR < 0.5, `an empty text leaves the file as if switched off (region change ${emptyOnBR.toFixed(2)})`);
+    assert(tlOnTL > 2, `the top-left watermark is in the file (region change ${tlOnTL.toFixed(2)})`);
+    assert(tlOnBR < 0.5, `a top-left watermark leaves the bottom-right untouched (region change ${tlOnBR.toFixed(2)})`);
+    assert(diff(offTL, region(br, ...TL)) < 0.5, "a bottom-right watermark leaves the top-left untouched");
+    // Remembered for the editing session: the same settings are back after a reload, so re-rendering needs no re-typing.
+    await page.reload(); await openFolds(page);
+    await until(async () => (await page.getByTestId("wm-text").inputValue()) === "@ArkaSenja", "text remembered");
+    assert(await page.getByTestId("wm-enabled").isChecked() && await page.getByTestId("wm-pos-top-left").getAttribute("aria-pressed") === "true", "switch and position remembered");
+    assert(await page.getByTestId("wm-size").inputValue() === "8" && await page.getByTestId("wm-opacity").inputValue() === "1", "size and transparency remembered");
+    // Leave the session clean for the steps that follow.
+    await page.getByTestId("wm-enabled").uncheck();
+    return `file change: bottom-right ${brOnBR.toFixed(1)}, top-left ${tlOnTL.toFixed(1)}, empty ${emptyOnBR.toFixed(2)}, cross-talk ${tlOnBR.toFixed(2)}`;
+  });
+
   await step("the AI director arranges the video, shows its reasons, takes feedback, can be undone and edited by hand", async () => {
     const ai = await (await browser.newContext()).newPage();
     ai.on("pageerror", e => pageErrors.push(e.message));
@@ -463,7 +520,9 @@ try {
     // A manual change replaces the AI's reason for that scene only.
     await ai.getByTestId("scene-template").nth(1).selectOption("quote");
     assert((await ai.getByTestId("scene-director").allTextContents()).length === 2, "manual change drops that scene's AI reason");
-    // Undo restores everything from before the first pass.
+    // Each revision is a version: undo twice goes back through both passes to before the first one, and redo is offered.
+    await ai.getByTestId("director-undo").click();
+    await ai.getByTestId("director-redo").waitFor({ timeout: 5000 });
     await ai.getByTestId("director-undo").click();
     assert(await ai.getByTestId("style").inputValue() === before.style && await ai.getByTestId("palette").inputValue() === before.palette, "undo restores style and palette");
     assert(await ai.getByTestId("scene-director").count() === 0 && await ai.getByTestId("director-note").count() === 0, "undo clears the reasons");
@@ -870,6 +929,22 @@ try {
     await until(async () => /Kapasitas: 750 ml/.test(await p.getByTestId("aff-benefits").inputValue()), "the facts are remembered");
     await ctxR.close();
     return `${seen.searches.length} searches by the app, ${seen.pages.length} pages read, the AI only summarized (1 fabricated quote dropped), price only on request, 1 real picture through the server on 2 scenes with credit, AI and search failures keep the pages' own facts`;
+  });
+
+  await step("the safe-zone guide is a preview-only overlay and text stays inside the safe area", async () => {
+    const g = await browser.newPage();
+    g.on("pageerror", e => pageErrors.push(e.message));
+    await g.goto(BASE); await openFolds(g);
+    await g.getByTestId("voice-none").click();
+    assert(await g.getByTestId("safe-guide").count() === 0, "guide is off by default");
+    await g.getByTestId("safe-guide-toggle").locator("input").check();
+    await g.getByTestId("safe-guide").waitFor({ timeout: 5000 });
+    await g.getByTestId("safe-guide-legend").waitFor({ timeout: 5000 });
+    // Every fitted headline in the preview sits inside the 1080 px frame minus the 130 px side insets.
+    const box = await g.locator(".player-wrap [data-family]").first().evaluate(el => { const r = el.getBoundingClientRect(), f = el.closest(".player-wrap").getBoundingClientRect(); return { left: (r.left - f.left) / f.width, right: (f.right - r.right) / f.width, top: (r.top - f.top) / f.height, bottom: (f.bottom - r.bottom) / f.height }; });
+    assert(box.left >= 130 / 1080 - 0.01 && box.right >= 130 / 1080 - 0.01, `content keeps the side insets: ${JSON.stringify(box)}`);
+    assert(box.top >= 220 / 1920 - 0.01 && box.bottom >= 380 / 1920 - 0.01, `content keeps the top and bottom insets: ${JSON.stringify(box)}`);
+    await g.close();
   });
 
   await step("there is no limit on the number of scenes, and a long script still renders its timeline", async () => {

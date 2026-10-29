@@ -1,6 +1,6 @@
 // End-to-end check of the real export path: production server + Chromium + ffmpeg.wasm.
 // Needs `npm run build` first, plus ffmpeg/ffprobe on PATH to create and verify fixture videos.
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -34,6 +34,7 @@ async function step(name, fn) {
   try { const info = await fn(); results.push(`PASS ${name} (${((Date.now() - t) / 1000).toFixed(1)}s)${info ? " — " + info : ""}`); }
   catch (err) { failed = true; results.push(`FAIL ${name}: ${err instanceof Error ? err.message : err}`); }
 }
+async function until(check, message) { for (let i = 0; i < 80; i++) { if (await check().catch(() => false)) return; await new Promise(r => setTimeout(r, 100)); } throw new Error(message); }
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
 
 try {
@@ -56,6 +57,24 @@ try {
     await page.getByTestId("file-input").setInputFiles(source);
     await page.getByText("00:00:12").first().waitFor({ timeout: 15000 });
     assert(await page.getByTestId("end").inputValue() === "00:00:12", "end should clamp to the 12 s source");
+  });
+
+  await step("the video and cut settings survive a visit to the motion studio and back", async () => {
+    await page.getByTestId("start").fill("00:00:02");
+    await page.getByTestId("end").fill("00:00:09");
+    await page.getByTestId("aspect-1:1").click();
+    await page.getByTestId("motion-link").click();
+    await page.waitForURL(/\/motion/, { timeout: 10000 });
+    await page.getByRole("link", { name: /clipper/i }).first().click();
+    await page.waitForURL(u => !u.pathname.startsWith("/motion"), { timeout: 10000 });
+    await page.getByTestId("end").waitFor({ timeout: 10000 });
+    await page.getByText("dipulihkan").first().waitFor({ timeout: 5000 });
+    await page.waitForFunction(() => document.querySelector("video")?.duration > 0, null, { timeout: 15000 });
+    assert(await page.getByTestId("start").inputValue() === "00:00:02" && await page.getByTestId("end").inputValue() === "00:00:09", "cut range is kept");
+    // Restore the defaults the following steps expect.
+    await page.getByTestId("aspect-9:16").click();
+    await page.getByTestId("start").fill("00:00:00");
+    await page.getByTestId("end").fill("00:00:12");
   });
 
   await step("blocks an invalid range", async () => {
@@ -96,6 +115,75 @@ try {
   await step("exports 9:16 480p pad (first run loads engine)", () => exportAndCheck("a", { start: "00:00:02", end: "00:00:05", aspect: "9:16", quality: "480", fit: "pad", width: 480, height: 854 }));
   await step("exports 16:9 720p blur", () => exportAndCheck("b", { start: "1.5", end: "4", aspect: "16:9", quality: "720", fit: "blur", width: 1280, height: 720 }));
   await step("exports 1:1 480p crop", () => exportAndCheck("c", { start: "0:06", end: "0:09", aspect: "1:1", quality: "480", fit: "crop", width: 480, height: 480 }));
+
+  await step("the watermark: previewed, burned into the exported MP4 only when on and non-empty, positioned, remembered", async () => {
+    await page.evaluate(() => document.querySelectorAll("details").forEach(d => { d.open = true; }));
+    const spec = { start: "0:02", end: "0:05", aspect: "9:16", quality: "480", fit: "pad", width: 480, height: 854 };
+    // Region of the 480x854 frame as raw RGB; the pad bars (black) hold the corners, so a watermark is unambiguous there.
+    const region = (file, x, y, w, h) => execFileSync("ffmpeg", ["-v", "error", "-ss", "1", "-i", file, "-frames:v", "1", "-vf", `crop=${w}:${h}:${x}:${y}`, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], { maxBuffer: 1 << 26 });
+    const diff = (a, b) => { let t = 0; for (let i = 0; i < a.length; i++) t += Math.abs(a[i] - b[i]); return t / a.length; };
+    const BR = [200, 620, 260, 90], TL = [40, 90, 300, 70];
+
+    await page.getByTestId("wm-text").fill("@ArkaSenja");
+    await page.getByTestId("wm-enabled").uncheck();
+    assert(await page.getByTestId("wm-preview").count() === 0, "no preview watermark while switched off");
+    await exportAndCheck("wm-off", spec);
+    await page.getByTestId("wm-enabled").check();
+    await page.getByTestId("wm-pos-bottom-right").click();
+    await page.getByTestId("wm-preview").waitFor({ timeout: 5000 });
+    assert((await page.getByTestId("wm-preview").textContent()) === "@ArkaSenja" && await page.getByTestId("wm-preview").getAttribute("data-position") === "bottom-right", "the preview frame shows the typed text in its corner");
+    await exportAndCheck("wm-br", spec);
+    await page.getByTestId("wm-text").fill("  ");
+    assert(await page.getByTestId("wm-preview").count() === 0, "an empty text shows nothing in the preview");
+    await exportAndCheck("wm-empty", spec);
+    await page.getByTestId("wm-text").fill("@ArkaSenja");
+    await page.getByTestId("wm-pos-top-left").click();
+    await page.getByTestId("wm-opacity").fill("1");
+    await exportAndCheck("wm-tl", spec);
+
+    const off = join(dir, "wm-off.mp4"), br = join(dir, "wm-br.mp4"), empty = join(dir, "wm-empty.mp4"), tl = join(dir, "wm-tl.mp4");
+    const offBR = region(off, ...BR), offTL = region(off, ...TL);
+    const brOnBR = diff(offBR, region(br, ...BR)), emptyOnBR = diff(offBR, region(empty, ...BR));
+    const tlOnTL = diff(offTL, region(tl, ...TL)), tlOnBR = diff(offBR, region(tl, ...BR));
+    assert(brOnBR > 1, `the bottom-right watermark is in the file (region change ${brOnBR.toFixed(2)})`);
+    assert(emptyOnBR < 0.5, `an empty text leaves the file as if switched off (region change ${emptyOnBR.toFixed(2)})`);
+    assert(tlOnTL > 1, `the top-left watermark is in the file (region change ${tlOnTL.toFixed(2)})`);
+    assert(tlOnBR < 0.5, `a top-left watermark leaves the bottom-right untouched (region change ${tlOnBR.toFixed(2)})`);
+    // Remembered for the session, and shared with the motion studio.
+    await page.reload();
+    await until(async () => (await page.getByTestId("wm-text").inputValue()) === "@ArkaSenja", "text remembered");
+    assert(await page.getByTestId("wm-enabled").isChecked() && await page.getByTestId("wm-pos-top-left").getAttribute("aria-pressed") === "true", "switch and position remembered");
+    await page.getByTestId("wm-enabled").uncheck();
+    // A reload starts the clipper clean (by design), so the video is chosen again for the steps that follow.
+    await page.getByTestId("file-input").setInputFiles(source);
+    await page.getByText("00:00:12").first().waitFor({ timeout: 15000 });
+    return `file change: bottom-right ${brOnBR.toFixed(1)}, top-left ${tlOnTL.toFixed(1)}, empty ${emptyOnBR.toFixed(2)}, cross-talk ${tlOnBR.toFixed(2)}`;
+  });
+
+  await step("an audio-only file can be chosen, previewed and exported as an MP4 with a dark frame and its sound", async () => {
+    const audioFile = join(dir, "suara.mp3");
+    execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=8", "-c:a", "libmp3lame", "-b:a", "64k", audioFile]);
+    await page.getByTestId("file-input").setInputFiles(audioFile);
+    await page.getByText("Audio siap").waitFor({ timeout: 15000 });
+    assert(await page.getByTestId("end").inputValue() === "00:00:08", "end clamps to the 8 s audio");
+    const out = await exportAndCheck("audio-only", { start: "0:01", end: "0:05", aspect: "9:16", quality: "480", fit: "pad", width: 480, height: 854 });
+    const file = join(dir, "audio-only.mp4");
+    const p = probe(file);
+    assert(p.video === "h264" && p.audio === "aac", `codecs ${p.video}/${p.audio}`);
+    // The picture is the plain dark backdrop (no content from the source), the sound is the tone.
+    const px = execFileSync("ffmpeg", ["-v", "error", "-ss", "1", "-i", file, "-frames:v", "1", "-vf", "crop=100:100:190:350,scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+    assert(px[0] < 50 && px[1] < 50 && px[2] < 60, `dark backdrop, got rgb ${[...px]}`);
+    const log = spawnSync("ffmpeg", ["-hide_banner", "-i", file, "-af", "volumedetect", "-f", "null", "-"], { encoding: "utf8" }).stderr;
+    const vol = Number(/mean_volume: (-?[\d.]+) dB/.exec(log)?.[1] ?? "-91");
+    assert(vol > -40, `the tone is audible in the MP4, mean ${vol} dB`);
+    return `${out}; backdrop rgb ${[...px]}`;
+  });
+
+  // Back to the video for the steps that follow.
+  await step("the video is chosen again after the audio-only check", async () => {
+    await page.getByTestId("file-input").setInputFiles(source);
+    await page.getByText("Video siap").waitFor({ timeout: 15000 });
+  });
 
   await step("cancels a running export and retries it", async () => {
     await page.getByTestId("start").fill("0");
