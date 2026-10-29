@@ -164,3 +164,15 @@ button.scene-row{width:100%;text-align:left;color:inherit;font:inherit;backgroun
 .aff-facts small a,.aff-images small a,.aff-research a{color:#b8b0ff}
 .aff-images{display:flex;flex-direction:column;gap:8px}
 @media(max-width:520px){.aff-advanced input{font-size:16px}}
+.seo-panel .seo-card{border:1px solid #ffffff1f;border-radius:12px;padding:12px 14px;margin:10px 0;background:#ffffff08}
+.seo-panel .seo-card-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px}
+.seo-panel .seo-text{margin:0;line-height:1.5;font-size:14px}
+.seo-panel .seo-tags,.seo-panel .seo-list{margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:6px}
+.seo-panel .seo-tags li{background:#8c80fa33;border-radius:999px;padding:3px 10px;font-size:13px}
+.seo-panel .seo-list li{background:#ffffff12;border-radius:8px;padding:3px 10px;font-size:13px}
+.seo-panel .seo-score{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:12px 0 4px}
+.seo-panel .seo-score b{font-size:40px;line-height:1}
+.seo-panel .seo-score.seo-baik b{color:#67f5ae}.seo-panel .seo-score.seo-cukup b{color:#f6ce78}.seo-panel .seo-score.seo-rendah b{color:#ff7a8a}
+.seo-panel .seo-fix{margin:4px 0 8px;font-size:14px}
+.seo-panel .seo-checks{margin:6px 0 0;padding-left:0;list-style:none;font-size:13px}.seo-panel .seo-checks .bad{color:#ff9aa6}.seo-panel .seo-checks .ok{color:#9be8c0}
+.seo-panel .seo-platforms{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
