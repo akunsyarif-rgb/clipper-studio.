@@ -117,3 +117,30 @@ describe("directVideo", () => {
     await expect(directVideo({ ...input, scenes: [] }, { apiKey: "k".repeat(30), model: "m", language: "id" })).rejects.toThrow(/scene/);
   });
 });
+
+
+describe("typography, background and subtitle style", () => {
+  const input: DirectorInput = { scenes: [{ text: "A.", seconds: 2 }, { text: "B.", seconds: 2 }], videoEdit: false, style: "hybrid", palette: "violet", language: "id" };
+  it("offers the new palettes, type packs and background in the prompt, and subtitle styles only over a source video", () => {
+    const p = directorPrompt(input);
+    for (const id of ["sunset", "ocean", "crimson", "citrus", "mint", "lavender", "impact", "cinema", "editorial", "tech", "mesh"]) expect(p, id).toContain(id);
+    expect(p).toContain("Opsi latar (backdrop)");
+    expect(p).not.toContain("Opsi gaya subtitle");
+    const v = directorPrompt({ ...input, videoEdit: true });
+    expect(v).toContain("Opsi gaya subtitle (captionStyle): classic, pop, outline, box");
+    expect(v).not.toContain("Opsi latar (backdrop)");
+  });
+  it("carries the viral-rhythm and typography rules in the playbook", () => {
+    expect(PLAYBOOK.join("\n")).toMatch(/Ritme retensi/);
+    expect(PLAYBOOK.join("\n")).toMatch(/SATU untuk seluruh video/);
+  });
+  const answer = (extra: object) => ({ style: "kinetic", palette: "crimson", note: "n", scenes: [{ index: 0, template: "statement", reason: "r" }], ...extra });
+  it("reads valid values, and drops invented or misplaced ones", () => {
+    const ok = parseDirector(gem(answer({ typography: "impact", backdrop: "mesh", grain: true })), 1, false);
+    expect(ok).toMatchObject({ palette: "crimson", typography: "impact", backdrop: "mesh", grain: true, captionStyle: undefined });
+    const bad = parseDirector(gem(answer({ typography: "comic-sans", backdrop: "psychedelic", grain: "yes", captionStyle: "pop" })), 1, false);
+    expect(bad).toMatchObject({ typography: undefined, backdrop: undefined, grain: undefined, captionStyle: undefined });
+    const video = parseDirector(gem(answer({ typography: "street", backdrop: "mesh", grain: true, captionStyle: "pop" })), 1, true);
+    expect(video).toMatchObject({ typography: "street", captionStyle: "pop", backdrop: undefined, grain: undefined });
+  });
+});

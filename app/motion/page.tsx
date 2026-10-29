@@ -7,7 +7,7 @@ import { DEFAULT_MUSIC_VOLUME, encodeWav, MAX_RECORDING_SECONDS, MOODS, moodForS
 import { analyseNarration, decodeToMono, explainMicError, NarrationRecorder, recordingSupported, type Narration } from "@/lib/recorder";
 import { checkBrowserRender, environmentReport, RenderFailure, renderMp4 } from "@/lib/render";
 import {
-  buildTimeline, CONTENT_PRESETS, explainRenderError, fitScenesToVideo, FPS, HEIGHT, MAX_SECONDS, MIN_SCENE_SECONDS, PALETTES, slug, splitScript, splitScriptWithPauses, STYLES, totalFrames, validateAudioFile, validateTitle, WIDTH,
+  type CaptionStyleId, buildTimeline, CONTENT_PRESETS, explainRenderError, fitScenesToVideo, FPS, HEIGHT, MAX_SECONDS, MIN_SCENE_SECONDS, CAPTION_STYLES, PALETTES, slug, splitScript, splitScriptWithPauses, STYLES, totalFrames, validateAudioFile, validateTitle, WIDTH,
   type ContentPresetId, type DurationMode, type PaletteId, type StyleId, type VideoProps,
 } from "@/lib/script";
 import { explainVoiceError, loadVoiceEngine, MODEL_BYTES, VOICES } from "@/lib/tts/browser";
@@ -29,6 +29,8 @@ import TranscriptPanel from "../TranscriptPanel";
 import GeminiJudge from "../GeminiJudge";
 import AiDirector from "../AiDirector";
 import SeoPanel from "../SeoPanel";
+import { DEFAULT_TYPE_PACK, resolveTypePack, TYPE_PACK_IDS, TYPE_PACKS, type TypePackId } from "@/lib/fonts";
+import { ensureFonts } from "../../remotion/fonts";
 import WatermarkPanel from "../WatermarkPanel";
 import { DEFAULT_WATERMARK, isWatermarkActive, loadWatermark, saveWatermark, type Watermark } from "@/lib/watermark";
 import { CAPTION_BOTTOM, contentBox, SAFE, SQUARE_CROP } from "@/lib/layout";
@@ -188,6 +190,12 @@ export default function MotionStudio() {
   const [aiScores, setAiScores] = useState<Record<string, SceneScore>>({});
   const [brandMotion, setBrandMotion] = useState<BrandMotion>("simple");
   const [storyVisuals, setStoryVisuals] = useState(true);
+  const [backdrop, setBackdrop] = useState<"plain" | "mesh">("plain");
+  const [grain, setGrain] = useState(false);
+  const [captionStyle, setCaptionStyle] = useState<CaptionStyleId>("classic");
+  const [typography, setTypography] = useState<TypePackId>(DEFAULT_TYPE_PACK);
+  // Fonts of the chosen pack are fetched as soon as it is chosen, so the preview never shows a fallback face for long.
+  useEffect(() => { void ensureFonts(resolveTypePack(typography)); }, [typography]);
   const [cutOverrides, setCutOverrides] = useState<Record<string, Cut>>({});
   // Scene pictures for faceless videos, keyed by scene text like the other per-scene choices.
   const [images, setImages] = useState<Record<string, SceneImageFile>>({});
@@ -202,7 +210,7 @@ export default function MotionStudio() {
   useEffect(() => { try { if (localStorage.getItem(MODE_KEY) === "affiliate") setContentMode("affiliate"); } catch { /* storage blocked: starts as ordinary content */ } }, []);
   function chooseMode(m: Mode) { setContentMode(m); try { localStorage.setItem(MODE_KEY, m); } catch { /* not remembered */ } }
   const [directorNote, setDirectorNote] = useState("");
-  type DirectorSnap = { style: StyleId; palette: PaletteId; contentPreset: ContentPresetId | "custom"; overrides: Record<string, VisualOverride>; cutOverrides: Record<string, Cut>; info: Record<string, { reason: string; imageIdea?: string; imageQuery?: string }>; note: string };
+  type DirectorSnap = { typography: TypePackId; backdrop: "plain" | "mesh"; grain: boolean; captionStyle: CaptionStyleId; style: StyleId; palette: PaletteId; contentPreset: ContentPresetId | "custom"; overrides: Record<string, VisualOverride>; cutOverrides: Record<string, Cut>; info: Record<string, { reason: string; imageIdea?: string; imageQuery?: string }>; note: string };
   const [guide, setGuide] = useState(false);
   // Watermark: remembered for this editing session, so it is back for every re-render (and shared with the clipper).
   const [watermark, setWatermarkState] = useState<Watermark>(DEFAULT_WATERMARK);
@@ -318,12 +326,12 @@ export default function MotionStudio() {
   })) : [];
   const props: VideoProps | null = timeline.ok ? {
     title: title.trim(), scenes: sceneList, style, palette, audioSrc: narration?.url ?? null, captions, video: videoEdit && source ? { src: source.url, seconds: source.seconds, ...(isAudioFile(source.file) ? { audioOnly: true } : {}) } : null, overlay: overlayPos, brandMotion,
-    music, speech: narration?.speech ?? null, ...(isWatermarkActive(watermark) ? { watermark } : {}), ...(storyVisuals ? {} : { storyVisuals: false }),
+    music, speech: narration?.speech ?? null, ...(isWatermarkActive(watermark) ? { watermark } : {}), ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}),
   } : null;
   const snapshot = useMemo<SessionData>(() => ({
-    v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlay: overlayPos, density, brandMotion, ...(storyVisuals ? {} : { storyVisuals: false }), imported,
+    v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlay: overlayPos, density, brandMotion, ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}), imported,
     voiceMode: voiceMode === "ai" ? "ai" : "none", ttsLang, ttsVoice, ttsSpeed,
-  }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlayPos, density, brandMotion, storyVisuals, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed]);
+  }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlayPos, density, brandMotion, storyVisuals, typography, captionStyle, backdrop, grain, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed]);
   useEffect(() => {
     if (!autosave || isPristine(snapshot, SAMPLE, !!source)) return;
     const t = setTimeout(() => { const s = { ...snapshot, savedAt: Date.now() }; void saveSession(s); void cloud.pushSession(s); }, 1000);
@@ -351,7 +359,7 @@ export default function MotionStudio() {
     const s = saved;
     if (!s) return;
     setScript(s.script); setTitle(s.title); setStyle(s.style); setPalette(s.palette); setContentPreset(s.contentPreset); setTarget(s.target); setCaptions(s.captions);
-    setOverrides(s.overrides); setCutOverrides(s.cutOverrides); setClipStarts(s.clipStarts); setCaptionOffset(s.captionOffset); setOverlayPos(s.overlay ?? "top"); setDensity(s.density ?? "balanced"); setBrandMotion(s.brandMotion ?? "simple"); setStoryVisuals(s.storyVisuals !== false); setImported(s.imported);
+    setOverrides(s.overrides); setCutOverrides(s.cutOverrides); setClipStarts(s.clipStarts); setCaptionOffset(s.captionOffset); setOverlayPos(s.overlay ?? "top"); setDensity(s.density ?? "balanced"); setBrandMotion(s.brandMotion ?? "simple"); setStoryVisuals(s.storyVisuals !== false); setTypography(s.typography ?? DEFAULT_TYPE_PACK); setCaptionStyle(s.captionStyle ?? "classic"); setBackdrop(s.backdrop ?? "plain"); setGrain(s.grain === true); setImported(s.imported);
     setVoiceMode(s.voiceMode); setTtsLang(s.ttsLang); setTtsVoice(s.ttsVoice); setTtsSpeed(s.ttsSpeed);
     const rec = savedSource ? await loadSource() : null;
     if (rec) {
@@ -534,9 +542,9 @@ export default function MotionStudio() {
     }
   }
 
-  const directorSnap = (): DirectorSnap => ({ style, palette, contentPreset, overrides, cutOverrides, info: directorInfo, note: directorNote });
+  const directorSnap = (): DirectorSnap => ({ typography, backdrop, grain, captionStyle, style, palette, contentPreset, overrides, cutOverrides, info: directorInfo, note: directorNote });
   function restoreDirector(v: DirectorSnap) {
-    setStyle(v.style); setPalette(v.palette); setContentPreset(v.contentPreset);
+    setStyle(v.style); setPalette(v.palette); setContentPreset(v.contentPreset); setTypography(v.typography); setBackdrop(v.backdrop); setGrain(v.grain); setCaptionStyle(v.captionStyle);
     setOverrides(v.overrides); setCutOverrides(v.cutOverrides);
     setDirectorInfo(v.info); setDirectorNote(v.note);
   }
@@ -548,6 +556,10 @@ export default function MotionStudio() {
     setDirectorHistory(h => record(h, label, directorSnap()));
     if (plan.style) setStyle(plan.style);
     if (plan.palette) setPalette(plan.palette);
+    if (plan.typography) setTypography(plan.typography);
+    if (plan.backdrop) setBackdrop(plan.backdrop);
+    if (plan.grain !== undefined) setGrain(plan.grain);
+    if (plan.captionStyle) setCaptionStyle(plan.captionStyle);
     if (plan.style || plan.palette) setContentPreset("custom");
     setOverrides(prev => ({ ...prev, ...ov }));
     if (videoEdit && source) setCutOverrides(prev => ({ ...prev, ...cuts }));
@@ -792,6 +804,20 @@ export default function MotionStudio() {
             <div><label className="field-label" htmlFor="motion-palette">Palet warna</label><select id="motion-palette" data-testid="palette" value={palette} onChange={e => { setPalette(e.target.value as PaletteId); setContentPreset("custom"); }}>{(Object.keys(PALETTES) as PaletteId[]).map(p => <option key={p} value={p}>{PALETTES[p].label}</option>)}</select></div>
           </div>
           
+            <label className="field-label" htmlFor="typography">Tipografi <span className="field-hint">{resolveTypePack(typography).description}</span>
+              <select id="typography" value={typography} onChange={e => setTypography(e.target.value as TypePackId)} data-testid="typography">
+                {TYPE_PACK_IDS.map(id => <option key={id} value={id}>{TYPE_PACKS[id].label}</option>)}
+              </select>
+            </label>
+            {!(videoEdit && source) && <>
+              <label className="field-label" htmlFor="backdrop">Latar <span className="field-hint">mesh: bidang warna palet yang bergeser pelan</span>
+                <select id="backdrop" value={backdrop} onChange={e => setBackdrop(e.target.value as "plain" | "mesh")} data-testid="backdrop">
+                  <option value="plain">Polos (gradasi palet)</option>
+                  <option value="mesh">Mesh bergerak</option>
+                </select>
+              </label>
+              <label className="check-row" data-testid="grain-toggle"><input type="checkbox" checked={grain} onChange={e => setGrain(e.target.checked)} data-testid="grain" /> Tekstur film (grain halus)</label>
+            </>}
             {!(videoEdit && source) && <label className="check-row" data-testid="story-visuals-toggle"><input type="checkbox" checked={storyVisuals} onChange={e => setStoryVisuals(e.target.checked)} data-testid="story-visuals" /> Objek visual 3D di atas teks <span className="field-hint">titik fokus untuk pembuka, langkah bertumbuh, orbit untuk renungan, satu titik untuk penutup; tanpa teks tambahan</span></label>}
           </details>
 
@@ -879,6 +905,11 @@ export default function MotionStudio() {
           </details>
 
           <details className="fold" data-testid="fold-duration"><summary><b>Durasi dan subtitle</b> <small>{narration ? "Ikuti narasi" : voiceMode === "ai" ? "Ikuti suara otomatis" : target === "auto" ? "Otomatis" : `${target} detik`} · {captions ? "Subtitle tampil" : "Tanpa subtitle"}</small></summary>
+          {videoEdit && source && <label className="field-label" htmlFor="caption-style">Gaya subtitle <span className="field-hint">{CAPTION_STYLES.find(c => c.id === captionStyle)?.description}</span>
+            <select id="caption-style" value={captionStyle} onChange={e => setCaptionStyle(e.target.value as CaptionStyleId)} data-testid="caption-style">
+              {CAPTION_STYLES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+            </select>
+          </label>}
           <div className="field-row">
             <div><label className="field-label" htmlFor="motion-duration">Durasi</label>
               <select id="motion-duration" data-testid="duration" value={narration ? "audio" : voiceMode === "ai" ? "auto" : target} disabled={!!narration || voiceMode === "ai"} onChange={e => setTarget(e.target.value)}>
