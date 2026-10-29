@@ -45,7 +45,7 @@ export async function renderMp4(props: VideoProps, opts: { signal: AbortSignal; 
   const { ensureFonts } = await import("../remotion/fonts");
   const { resolveTypePack } = await import("./fonts");
   await ensureFonts(resolveTypePack(props.typography));
-  const muted = !props.audioSrc && !props.music && !props.video;
+  const muted = !props.audioSrc && !props.music && !props.video && !props.sfx;
   const failures: string[] = [];
   let tried = 0;
   for (const attempt of ATTEMPTS) {

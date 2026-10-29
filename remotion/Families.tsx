@@ -5,6 +5,7 @@ import { Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from "re
 import { splitCause, type Family, type Layout } from "../lib/composition";
 import { chooseStoryVisual } from "../lib/story-visual";
 import { StoryVisual } from "./StoryVisuals";
+import { StickerPop } from "./Stickers";
 import { estimateHeavy, fitText, MOTION, TYPE, type FitOptions, type Measure } from "../lib/layout";
 import type { NarrativeRole } from "../lib/narrative";
 import { spokenFrames, type Scene, type StyleId } from "../lib/script";
@@ -446,23 +447,26 @@ function FamilyBody(props: FamilyProps) {
 
 const ACCENT_GAP = 32;
 
-/** The scene's composition, with the Story Motion Lab accent object above it when the scene's job calls for one. */
+/**
+ * The scene's composition, with one accent above it: the scene's sticker if it has one, otherwise the Story Motion Lab object its
+ * job calls for. The text gets the height that remains and the accent is skipped when too little would be left.
+ */
 export function FamilyView(props: FamilyProps) {
   const { scene, visual, box, colors } = props;
   const text = stripMarks(scene.text);
-  const kind = props.storyVisuals === false ? null : chooseStoryVisual({
+  const sticker = scene.sticker && !scene.image ? scene.sticker : null;
+  const kind = sticker || props.storyVisuals === false ? null : chooseStoryVisual({
     family: props.family, layout: props.layout ?? "standard", role: props.role, template: visual.template,
     occupied: !!scene.image || !!(visual.iconPinned && visual.icon),
     causeEffect: visual.template !== "list" && splitCause(text) !== null,
   });
-  // Too little height left for text after the object: skip the object, the text matters more.
-  const size = Math.min(320, Math.round(box.height * 0.3));
-  if (!kind || box.height - size - ACCENT_GAP < 560) return <FamilyBody {...props} />;
-  const centred = props.family === "editorial";
+  const size = sticker ? Math.min(240, Math.round(box.height * 0.22)) : Math.min(320, Math.round(box.height * 0.3));
+  if ((!kind && !sticker) || box.height - size - ACCENT_GAP < 560) return <FamilyBody {...props} />;
+  const centred = props.family === "editorial" || !!sticker;
   return (
-    <div data-accent={kind} style={{ display: "flex", flexDirection: "column", alignItems: centred ? "center" : "flex-start", gap: ACCENT_GAP }}>
+    <div data-accent={sticker ? "sticker" : kind} style={{ display: "flex", flexDirection: "column", alignItems: centred ? "center" : "flex-start", gap: ACCENT_GAP }}>
       <div style={{ height: size, display: "flex", alignItems: "center", justifyContent: "center", alignSelf: centred ? "center" : "flex-start" }}>
-        <StoryVisual kind={kind} size={size} tone={colors} />
+        {sticker ? <StickerPop id={sticker} size={size} /> : <StoryVisual kind={kind!} size={size} tone={colors} />}
       </div>
       <FamilyBody {...props} box={{ width: box.width, height: box.height - size - ACCENT_GAP }} />
     </div>

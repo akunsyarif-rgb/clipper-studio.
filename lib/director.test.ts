@@ -144,3 +144,35 @@ describe("typography, background and subtitle style", () => {
     expect(video).toMatchObject({ typography: "street", captionStyle: "pop", backdrop: undefined, grain: undefined });
   });
 });
+
+describe("stickers and sound effects", () => {
+  const input: DirectorInput = { scenes: [{ text: "A.", seconds: 2 }, { text: "B.", seconds: 2 }], videoEdit: false, style: "hybrid", palette: "violet", language: "id" };
+  const answer = (extra: object, scene: object = {}) => ({ style: "kinetic", palette: "crimson", note: "n", scenes: [{ index: 0, template: "statement", reason: "r", ...scene }, { index: 1, template: "statement", reason: "r" }], ...extra });
+  it("lists the stickers and effect modes for text videos only", () => {
+    const p = directorPrompt(input);
+    expect(p).toContain("Opsi efek suara (sfx): off, subtle, punchy");
+    expect(p).toMatch(/Opsi stiker per scene \(sticker, atau "none"\): .*rocket.*fire/);
+    expect(p).toMatch(/stickers: off atau auto/);
+    const v = directorPrompt({ ...input, videoEdit: true });
+    expect(v).toContain("Opsi efek suara (sfx)");
+    expect(v).not.toContain("Opsi stiker per scene");
+  });
+  it("reads a valid sticker, effect mode and sticker switch, and drops invented ones", () => {
+    const ok = parseDirector(gem(answer({ sfx: "punchy", stickers: "auto" }, { sticker: "rocket" })), 2, false);
+    expect(ok).toMatchObject({ sfx: "punchy", stickers: "auto" });
+    expect(ok.scenes[0]?.sticker).toBe("rocket");
+    const none = parseDirector(gem(answer({}, { sticker: "none" })), 2, false);
+    expect(none.scenes[0]?.sticker).toBe("none");
+    const bad = parseDirector(gem(answer({ sfx: "loud", stickers: "yes" }, { sticker: "unicorn" })), 2, false);
+    expect(bad).toMatchObject({ sfx: undefined, stickers: undefined });
+    expect(bad.scenes[0]?.sticker).toBeUndefined();
+    const video = parseDirector(gem(answer({ sfx: "subtle", stickers: "auto" }, { sticker: "rocket" })), 2, true);
+    expect(video.sfx).toBe("subtle");
+    expect(video.stickers).toBeUndefined();
+    expect(video.scenes[0]?.sticker).toBeUndefined();
+  });
+  it("turns the chosen stickers into per-scene choices", () => {
+    const plan = parseDirector(gem(answer({}, { sticker: "fire" })), 2, false);
+    expect(planToOverrides(plan, ["A.", "B."]).stickers).toEqual({ "A.": "fire" });
+  });
+});

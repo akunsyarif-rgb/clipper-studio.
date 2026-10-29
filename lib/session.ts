@@ -2,6 +2,7 @@
 // Stored in the browser's own storage by session-store.ts; nothing is sent anywhere.
 import { CAPTION_STYLES, CONTENT_PRESETS, PALETTES, STYLES, type CaptionStyleId, type ContentPresetId, type PaletteId, type StyleId } from "./script";
 import { TYPE_PACK_IDS, type TypePackId } from "./fonts";
+import { SFX_MODES, type SfxMode } from "./sfx";
 import type { Transcript } from "./transcript";
 import type { Density } from "./importance";
 import type { BrandMotion, OverlayPosition } from "./overlay";
@@ -31,6 +32,9 @@ export type SessionData = {
   storyVisuals?: boolean;
   typography?: TypePackId;
   captionStyle?: CaptionStyleId;
+  stickerMode?: "off" | "auto";
+  stickerOverrides?: Record<string, string>;
+  sfx?: SfxMode;
   backdrop?: "plain" | "mesh";
   grain?: boolean;
   imported: Transcript | null;
@@ -66,6 +70,9 @@ export function isSession(v: unknown): v is SessionData {
     && (v.typography === undefined || TYPE_PACK_IDS.includes(v.typography as TypePackId))
     && (v.backdrop === undefined || v.backdrop === "plain" || v.backdrop === "mesh")
     && (v.grain === undefined || typeof v.grain === "boolean")
+    && (v.stickerMode === undefined || v.stickerMode === "off" || v.stickerMode === "auto")
+    && (v.stickerOverrides === undefined || (isObject(v.stickerOverrides) && Object.values(v.stickerOverrides).every(x => typeof x === "string")))
+    && (v.sfx === undefined || SFX_MODES.includes(v.sfx as SfxMode))
     && (v.captionStyle === undefined || CAPTION_STYLES.some(c => c.id === v.captionStyle))
     && (v.imported === null || isTranscript(v.imported))
     && (v.voiceMode === "ai" || v.voiceMode === "none") && (v.ttsLang === "id" || v.ttsLang === "en")

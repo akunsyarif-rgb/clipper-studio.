@@ -1,0 +1,4 @@
+Stickers in this folder are Twemoji graphics.
+Copyright 2019-present Twitter, Inc and other contributors (https://github.com/jdecked/twemoji).
+Licensed under CC-BY 4.0 (https://creativecommons.org/licenses/by/4.0/); full text in LICENSE-GRAPHICS.txt.
+Changes made: the width and height attributes (512) were added to each SVG so browsers know its size; the artwork itself is unchanged.

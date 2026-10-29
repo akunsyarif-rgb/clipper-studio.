@@ -22,6 +22,8 @@ export type StoryboardScene = {
   layout: Layout;
   /** Accent object (Story Motion Lab) drawn above the text, or null. */
   accent: StoryVisualKind | null;
+  /** Sticker id (lib/stickers.ts) popped in above the text, or null; it replaces the accent object. */
+  sticker: string | null;
   template: string;
   /** Library icon the scene shows, if any, and whether the user supplied a picture behind it. */
   asset: { icon?: string; image?: { src: string; available: boolean } };
@@ -63,7 +65,8 @@ export function buildStoryboard(scenes: Scene[], o: StoryboardOptions = {}): Sto
     intensity: sc.narrative?.intensity ?? "emphasis",
     family,
     layout: layouts[i],
-    accent: videoEdit || o.storyVisuals === false ? null : chooseStoryVisual({
+    sticker: !videoEdit && sc.sticker && !sc.image ? sc.sticker : null,
+    accent: videoEdit || o.storyVisuals === false || (sc.sticker && !sc.image) ? null : chooseStoryVisual({
       family, layout: layouts[i], role, template: visual.template, occupied: !!sc.image || !!(visual.iconPinned && visual.icon),
       causeEffect: visual.template !== "list" && splitCause(stripMarks(sc.text)) !== null,
     }),
