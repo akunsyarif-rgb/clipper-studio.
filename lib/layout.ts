@@ -50,13 +50,21 @@ export const MOTION = {
   springFirm: { damping: 16, stiffness: 150, mass: 0.6 },
 } as const;
 
+/** The typography the composition draws with. It follows the active type pack (see lib/fonts.ts), set once at the top of every render. */
+type ActiveType = { display: string; sans: string; serif: string; caps: boolean; tracking: number };
+let active: ActiveType = { display: "'Arial Black', 'Helvetica Neue', Arial, sans-serif", sans: "Arial, 'Helvetica Neue', sans-serif", serif: "Georgia, 'Times New Roman', serif", caps: false, tracking: -0.02 };
+export function setActiveType(t: ActiveType) { active = t; }
 export const TYPE = {
-  display: "'Arial Black', 'Helvetica Neue', Arial, sans-serif",
-  sans: "Arial, 'Helvetica Neue', sans-serif",
-  serif: "Georgia, 'Times New Roman', serif",
+  get display() { return active.display; },
+  get sans() { return active.sans; },
+  get serif() { return active.serif; },
+  /** Display headlines are drawn in capitals. */
+  get caps() { return active.caps; },
+  /** Letter spacing (em) of display text. */
+  get tracking() { return active.tracking; },
   kicker: 24,
   kickerSpacing: 6,
-} as const;
+};
 
 /** Width in px of `text` at 100 px font size. */
 export type Measure = (text: string) => number;

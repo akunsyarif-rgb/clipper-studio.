@@ -20,11 +20,13 @@ describe("parseScope", () => {
 });
 
 describe("restrictPlan", () => {
-  const plan: DirectorPlan = { style: "kinetic", palette: "gold", note: "n", scenes: [{ template: "statement", reason: "a" }, { template: "list", reason: "b" }, { template: "cta", reason: "c" }] };
+  const plan: DirectorPlan = { style: "kinetic", palette: "gold", typography: "impact", backdrop: "mesh", note: "n", scenes: [{ template: "statement", reason: "a" }, { template: "list", reason: "b" }, { template: "cta", reason: "c" }] };
   it("drops scenes outside the scope and any global change when scoped", () => {
     const r = restrictPlan(plan, { kind: "scenes", indices: [1] });
     expect(r.plan.scenes).toEqual([undefined, plan.scenes[1], undefined]);
     expect(r.plan.style).toBeUndefined();
+    expect(r.plan.typography).toBeUndefined();
+    expect(r.plan.backdrop).toBeUndefined();
     expect(r.dropped).toEqual([0, 2]);
   });
   it("keeps locked scenes untouched even for a global revision", () => {

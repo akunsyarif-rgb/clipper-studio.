@@ -1,6 +1,7 @@
 // What the motion studio remembers on this device between visits (pure types, validation and keys).
 // Stored in the browser's own storage by session-store.ts; nothing is sent anywhere.
-import { CONTENT_PRESETS, PALETTES, STYLES, type ContentPresetId, type PaletteId, type StyleId } from "./script";
+import { CAPTION_STYLES, CONTENT_PRESETS, PALETTES, STYLES, type CaptionStyleId, type ContentPresetId, type PaletteId, type StyleId } from "./script";
+import { TYPE_PACK_IDS, type TypePackId } from "./fonts";
 import type { Transcript } from "./transcript";
 import type { Density } from "./importance";
 import type { BrandMotion, OverlayPosition } from "./overlay";
@@ -28,6 +29,10 @@ export type SessionData = {
   density?: Density;
   brandMotion?: BrandMotion;
   storyVisuals?: boolean;
+  typography?: TypePackId;
+  captionStyle?: CaptionStyleId;
+  backdrop?: "plain" | "mesh";
+  grain?: boolean;
   imported: Transcript | null;
   /** "manual" (a recording that is not kept) is stored as "none". */
   voiceMode: "ai" | "none";
@@ -58,6 +63,10 @@ export function isSession(v: unknown): v is SessionData {
     && (v.density === undefined || v.density === "sparse" || v.density === "balanced" || v.density === "rich")
     && (v.brandMotion === undefined || v.brandMotion === "simple" || v.brandMotion === "full")
     && (v.storyVisuals === undefined || typeof v.storyVisuals === "boolean")
+    && (v.typography === undefined || TYPE_PACK_IDS.includes(v.typography as TypePackId))
+    && (v.backdrop === undefined || v.backdrop === "plain" || v.backdrop === "mesh")
+    && (v.grain === undefined || typeof v.grain === "boolean")
+    && (v.captionStyle === undefined || CAPTION_STYLES.some(c => c.id === v.captionStyle))
     && (v.imported === null || isTranscript(v.imported))
     && (v.voiceMode === "ai" || v.voiceMode === "none") && (v.ttsLang === "id" || v.ttsLang === "en")
     && typeof v.ttsVoice === "number" && typeof v.ttsSpeed === "number";

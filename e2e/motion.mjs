@@ -417,6 +417,63 @@ try {
     return `${info}, top band scene 1 rgb ${r1},${g1},${b1}, scene 2 rgb ${r2},-,${b2}`;
   });
 
+  await step("typography packs, new palettes and backgrounds: fonts load, text is fitted with them, and they are in the rendered MP4", async () => {
+    await page.getByTestId("voice-none").click();
+    await page.getByTestId("music-none").click();
+    await page.getByTestId("style").selectOption("hybrid");
+    await page.getByTestId("palette").selectOption("violet");
+    await page.getByTestId("script").fill("Jangan tunggu semangat datang.\nMulailah, meski langkahmu kecil.");
+    await page.getByTestId("duration").selectOption("15");
+    await page.getByTestId("story-visuals").uncheck();
+    await page.evaluate(() => document.querySelectorAll("details.fold").forEach(d => { d.open = true; }));
+    const player = page.locator(".player-wrap");
+    const region = (file, x, y, w, h) => execFileSync("ffmpeg", ["-v", "error", "-ss", "1", "-i", file, "-frames:v", "1", "-vf", `crop=${w}:${h}:${x}:${y}`, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], { maxBuffer: 1 << 26 });
+    const diff = (a, b) => { let t = 0; for (let i = 0; i < a.length; i++) t += Math.abs(a[i] - b[i]); return t / a.length; };
+    const TEXT = [100, 500, 880, 700], EMPTY = [700, 1650, 300, 120];
+
+    assert((await page.getByTestId("typography").locator("option").count()) === 8, "eight type packs offered");
+    const palettes = await page.getByTestId("palette").locator("option").allInnerTexts();
+    assert(["Sunset / Peach", "Deep Ocean / Aqua", "Noir / Crimson", "Moss / Neon Lime", "Mint / Evergreen", "Lavender / Violet"].every(n => palettes.includes(n)), "new palettes offered: " + palettes.join("|"));
+    await page.getByTestId("scene-item").nth(0).locator(".scene-row").click();
+    await player.locator("[data-fit]").first().waitFor({ timeout: 8000 });
+    await renderAndCheck("type-classic", false, 15);
+
+    // Impact: Anton, capitals. The font file really loaded, and the preview text is drawn in it.
+    await page.getByTestId("typography").selectOption("impact");
+    await page.waitForFunction(() => document.fonts.check("100px Anton") && [...document.fonts].some(f => f.family.replace(/"/g, "") === "Anton" && f.status === "loaded"), null, { timeout: 15000 });
+    await until(async () => /anton/i.test(await player.locator("[data-fit]").first().evaluate(el => getComputedStyle(el).fontFamily)), "preview headline uses Anton");
+    assert((await player.locator("[data-fit]").first().innerText()).replace(/\s+/g, " ").trim() === "JANGAN TUNGGU SEMANGAT DATANG.", "display text is in capitals");
+    assert(await player.locator('[data-fit="floor"]').count() === 0, "text still fits at a readable size");
+    await renderAndCheck("type-impact", false, 15);
+
+    // A new palette, then the moving background, then the grain: each on its own, so each can be shown to be in the file.
+    await page.getByTestId("palette").selectOption("sunset");
+    await renderAndCheck("type-sunset", false, 15);
+    await page.getByTestId("backdrop").selectOption("mesh");
+    await player.locator('[data-backdrop="mesh"]').waitFor({ timeout: 8000 });
+    await renderAndCheck("type-mesh", false, 15);
+    await page.getByTestId("grain").check();
+    await player.locator('[data-backdrop="grain"]').waitFor({ timeout: 8000 });
+    await renderAndCheck("type-grain", false, 15);
+
+    const f = n => join(dir, n + ".mp4");
+    const classicVsImpact = diff(region(f("type-classic"), ...TEXT), region(f("type-impact"), ...TEXT));
+    assert(classicVsImpact > 8, `the type pack is in the file (headline region change ${classicVsImpact.toFixed(1)})`);
+    const paletteVsViolet = diff(region(f("type-impact"), ...EMPTY), region(f("type-sunset"), ...EMPTY));
+    assert(paletteVsViolet > 10, `the new palette is in the file (empty region change ${paletteVsViolet.toFixed(1)})`);
+    const meshVsPlain = diff(region(f("type-sunset"), ...EMPTY), region(f("type-mesh"), ...EMPTY));
+    assert(meshVsPlain > 1, `the mesh background is in the file (empty region change ${meshVsPlain.toFixed(2)})`);
+    const grainVsMesh = diff(region(f("type-mesh"), ...EMPTY), region(f("type-grain"), ...EMPTY));
+    assert(grainVsMesh > 0.4, `the grain texture is in the file (empty region change ${grainVsMesh.toFixed(2)})`);
+    // Switching back restores the exact classic picture.
+    await page.getByTestId("typography").selectOption("classic");
+    await page.getByTestId("palette").selectOption("violet");
+    await page.getByTestId("backdrop").selectOption("plain");
+    await page.getByTestId("grain").uncheck();
+    await page.getByTestId("story-visuals").check();
+    return `type pack ${classicVsImpact.toFixed(0)}, palette ${paletteVsViolet.toFixed(0)}, mesh ${meshVsPlain.toFixed(1)}, grain ${grainVsMesh.toFixed(2)}`;
+  });
+
   await step("story objects (from the Story Motion Lab) appear above suited scenes, no extra text, can be switched off, and are in the rendered MP4", async () => {
     await page.getByTestId("voice-none").click();
     await page.getByTestId("music-none").click();

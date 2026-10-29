@@ -10,6 +10,7 @@ import type { NarrativeRole } from "../lib/narrative";
 import { spokenFrames, type Scene, type StyleId } from "../lib/script";
 import { ICONS, stripMarks, wordKey, type SceneVisual } from "../lib/visuals";
 import { LineIcon } from "./SceneVisuals";
+import { onFontsLoaded } from "./fonts";
 
 export type Colors = { bg1: string; bg2: string; accent: string; text: string };
 
@@ -19,6 +20,8 @@ export const ROLE_LABELS: Record<NarrativeRole, string> = {
 };
 
 const measures = new Map<string, Measure>();
+// Measurements made before a font arrived used the fallback font: forget them when new fonts load.
+onFontsLoaded(() => measures.clear());
 /**
  * Width of text at 100 px in the font the browser will actually use (canvas resolves fallbacks
  * the same way the DOM does). Outside a browser it falls back to a conservative estimate.
@@ -86,11 +89,14 @@ export function Headline(p: HeadlineProps) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const font = p.font ?? TYPE.display;
+  const isDisplay = font === TYPE.display;
   const weight = p.weight ?? 900;
   const lineHeight = p.lineHeight ?? 1.06;
-  const letterSpacing = p.letterSpacing ?? -0.02;
+  const letterSpacing = p.letterSpacing ?? (isDisplay ? TYPE.tracking : -0.02);
+  // Display faces such as Anton and Bebas Neue are drawn in capitals; words keep their identity (emphasis matches case-insensitively).
+  const shown = isDisplay && TYPE.caps ? p.text.toLocaleUpperCase("id") : p.text;
   const opts: FitOptions = { maxWidth: p.width * 0.97, maxHeight: p.height, maxSize: p.maxSize, minSize: p.minSize, lineHeight, letterSpacing };
-  const fit = fitText(p.text, measureFor(font, weight), opts);
+  const fit = fitText(shown, measureFor(font, weight), opts);
   const sceneWords = stripMarks(p.scene.text).split(/\s+/).filter(Boolean).length;
   let k = 0;
   return (
