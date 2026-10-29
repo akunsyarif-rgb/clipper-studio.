@@ -99,7 +99,7 @@ export type VideoProps = {
   speech: number[] | null;
   /** Source video edit: the video (with its own audio) is the base layer and scenes become overlays or cutaways. */
   /** `seconds` is the source length; it keeps a clip from running past the end of the video. */
-  video?: { src: string; seconds?: number; /** The source has no picture (an audio file): its sound plays over the studio background. */ audioOnly?: boolean } | null;
+  video?: { src: string; /** Length of the whole file. */ seconds?: number; /** The video starts this many seconds into the file (the creator trimmed its start). */ trimStart?: number; /** The source has no picture (an audio file): its sound plays over the studio background. */ audioOnly?: boolean } | null;
   /** Where animations over the speaker sit: in the space above the head (default) or just above the captions. */
   overlay?: OverlayPosition;
   /** Popular names: "simple" (default) is calm, "full" adds a small animated scene of each service. */

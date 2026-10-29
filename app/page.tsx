@@ -21,6 +21,7 @@ import { clearClipperWork, loadClipperWork, saveClipperWork } from "@/lib/clippe
 import type { Transcript } from "@/lib/transcript";
 import { releaseAsr } from "@/lib/asr/client";
 import { clipId, logDownload, logRender } from "@/lib/history";
+import { handoffRange } from "@/lib/trim";
 import { startHistorySync, updateHistory } from "@/lib/history-store";
 import { ExportCancelled, exportClip, isEngineLoaded, terminateEngine } from "@/lib/engine";
 
@@ -147,19 +148,21 @@ export default function Home() {
   /** Cuts one clip (always 9:16, what the motion studio edits) and hands it over, with its own subtitles, to the motion studio. */
   function sendToMotion(c: { start: number; end: number; title?: string; transcript?: Transcript | null }) {
     if (!file) return;
-    const name = exportFileName(file.name, "9:16", quality, c.start);
+    // The clip comes with up to 3 s of footage on each side, so the motion studio can still move its start or end.
+    const around = handoffRange(c.start, c.end, duration);
+    const name = exportFileName(file.name, "9:16", quality, around.start);
     void runExport({
-      start: c.start, duration: c.end - c.start, aspect: "9:16", noWatermark: true,
+      start: around.start, duration: around.duration, aspect: "9:16", noWatermark: true,
       after: async blob => {
         const checked = await checkedVideo(blob);
         if (!checked.probe.ok) {
           const { width, height } = outputSize("9:16", quality);
-          setResult({ url: URL.createObjectURL(blob), name, size: blob.size, label: `${width}×${height} · ${formatTime(c.end - c.start)}` });
+          setResult({ url: URL.createObjectURL(blob), name, size: blob.size, label: `${width}×${height} · ${formatTime(around.duration)}` });
           setErrorDetail(checked.probe.detail);
           say("Hasil potongan tidak bisa diputar di browser ini, jadi tidak dikirim ke Motion. Coba unduh hasilnya, atau ekspor ulang (kualitas lebih rendah bisa membantu).", true);
           return;
         }
-        const ok = await saveClipHandoff({ blob: checked.blob, name, type: "video/mp4", seconds: c.end - c.start, title: c.title ?? "", transcript: c.transcript ?? null, at: Date.now() });
+        const ok = await saveClipHandoff({ blob: checked.blob, name, type: "video/mp4", seconds: c.end - c.start, padStart: around.padStart, padEnd: around.padEnd, title: c.title ?? "", transcript: c.transcript ?? null, at: Date.now() });
         if (!ok) { say("Browser menolak menyimpan klip untuk dikirim. Ekspor dulu lalu pilih videonya di Motion Graphics.", true); return; }
         router.push("/motion");
       },

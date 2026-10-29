@@ -161,6 +161,57 @@ try {
     await ctx.close();
   });
 
+  await step("trimming the start and end in the motion studio: footage around a clip from the Clipper can be reached, and the render follows the trim", async () => {
+    // 12 s: red 0-3 (the margin before), blue 3-9 (the clip), red 9-12 (the margin after), with sound.
+    const rb = join(dir, "merah-biru.mp4");
+    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=320x240:r=30:d=3", "-f", "lavfi", "-i", "color=c=blue:s=320x240:r=30:d=6", "-f", "lavfi", "-i", "color=c=red:s=320x240:r=30:d=3", "-f", "lavfi", "-i", "sine=frequency=300:duration=12",
+      "-filter_complex", "[0:v][1:v][2:v]concat=n=3:v=1:a=0[v]", "-map", "[v]", "-map", "3:a", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", rb]);
+    const ctx = await browser.newContext({ acceptDownloads: true });
+    const p = await ctx.newPage();
+    p.on("pageerror", e => pageErrors.push(e.message));
+    await p.goto(BASE + "/motion");
+    await p.evaluate(async arr => {
+      const db = await new Promise((res, rej) => { const r = indexedDB.open("clipper-studio", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+      const blob = new Blob([new Uint8Array(arr)], { type: "video/mp4" });
+      await new Promise(res => { const tx = db.transaction("kv", "readwrite"); tx.objectStore("kv").put({ blob, name: "klip-dengan-margin.mp4", type: "video/mp4", seconds: 6, padStart: 3, padEnd: 3, title: "Klip", transcript: null, at: Date.now() }, "handoff-clip"); tx.oncomplete = res; });
+    }, [...readFileSync(rb)]);
+    await p.reload(); await openFolds(p);
+    await p.getByTestId("trim-panel").waitFor({ timeout: 20000 });
+    assert(/6\.0s/.test(await p.locator(".preview-badge").innerText()), "the video starts as the clip itself: " + await p.locator(".preview-badge").innerText());
+    assert(await p.getByTestId("trim-original").count() === 0 && await p.getByTestId("trim-whole").isVisible(), "on the clip: no way back needed, the whole footage is offered");
+    // Reach 1.5 s into the footage before the clip.
+    const setRange = (id, v) => p.getByTestId(id).evaluate((el, value) => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; set.call(el, String(value)); el.dispatchEvent(new Event("input", { bubbles: true })); }, v);
+    await setRange("trim-start", 1.5);
+    await p.waitForFunction(() => /7\.5s/.test(document.querySelector(".preview-badge").textContent), null, { timeout: 5000 });
+    await p.getByTestId("trim-original").waitFor({ timeout: 3000 });
+    await p.getByTestId("render").click();
+    await p.getByTestId("result").waitFor({ timeout: 300000 });
+    const [download] = await Promise.all([p.waitForEvent("download"), p.getByTestId("download").click()]);
+    const out = join(dir, "dipotong.mp4");
+    await download.saveAs(out);
+    const dur = Number(spawnSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", out]).stdout.toString().trim());
+    assert(Math.abs(dur - 7.5) < 0.6, "the render lasts as long as the trim: " + dur);
+    // The first second shows the red footage before the clip; after 1.5 s the blue clip begins.
+    const hue = at => { const r = spawnSync("ffmpeg", ["-v", "error", "-ss", String(at), "-i", out, "-frames:v", "1", "-vf", "crop=iw:ih/5:0:ih/6,scale=1:1,format=rgb24", "-f", "rawvideo", "-"], { encoding: "buffer" }); return [...r.stdout.subarray(0, 3)]; };
+    const early = hue(0.5), late = hue(4);
+    assert(early[0] > early[2] + 60, "the extended start shows the red footage: " + early);
+    assert(late[2] > late[0] + 60, "then the clip itself (blue): " + late);
+    // The clip's own range can be restored, and the whole footage chosen.
+    await p.getByTestId("trim-original").click();
+    await p.waitForFunction(() => /6\.0s/.test(document.querySelector(".preview-badge").textContent), null, { timeout: 5000 });
+    await p.getByTestId("trim-whole").click();
+    await p.waitForFunction(() => /12\.0s/.test(document.querySelector(".preview-badge").textContent), null, { timeout: 5000 });
+    // A trim survives a reload (saved with the session).
+    await setRange("trim-end", 8);
+    await p.waitForFunction(() => /8\.0s/.test(document.querySelector(".preview-badge").textContent), null, { timeout: 5000 });
+    await p.waitForTimeout(2500);
+    await p.reload();
+    await p.getByTestId("restore-session").click();
+    await p.waitForFunction(() => /8\.0s/.test(document.querySelector(".preview-badge")?.textContent ?? ""), null, { timeout: 15000 });
+    await ctx.close();
+    return `render ${dur.toFixed(1)} s, early ${early}, late ${late}`;
+  });
+
   await step("a refresh offers to continue the last session, including the video, and the saved transcript returns", async () => {
     const ctx = await browser.newContext();
     const p = await ctx.newPage();
