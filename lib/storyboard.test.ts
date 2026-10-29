@@ -15,7 +15,7 @@ describe("storyboard for the five-scene sample", () => {
   const sb = buildStoryboard(scenes(FIVE), { captions: true });
   it("keeps narration whole and maps each scene to a purposeful composition", () => {
     expect(sb.scenes.map(s => s.narrationText)).toEqual(FIVE);
-    expect(sb.scenes.map(s => `${s.family}/${s.layout}`)).toEqual(["editorial/impact", "editorial/quiet-center", "editorial/quiet-offset", "comparison/standard", "data/standard"]);
+    expect(sb.scenes.map(s => `${s.family}/${s.layout}`)).toEqual(["editorial/impact", "kinetic/standard", "editorial/quiet-center", "comparison/standard", "data/standard"]);
     expect(sb.scenes.map(s => s.continuity)).toEqual(["start", "reset", "reset", "reset", "reset"]);
   });
   it("never adds a second caption bar to text scenes", () => {

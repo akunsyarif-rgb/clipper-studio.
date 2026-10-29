@@ -278,6 +278,9 @@ export function detectCompare(text: string): CompareInfo | null {
   if (m) return { bad: trimPhrase(m[2]), good: trimPhrase(m[1]), neutral: false };
   m = /^(.+?)\s+(?:vs\.?|versus|atau|or)\s+(.+?)\??$/i.exec(t);
   if (m && /\b(vs\.?|versus)\b/i.test(t)) return { bad: trimPhrase(m[1]), good: trimPhrase(m[2]), neutral: true };
+  // Ordinary contrast clauses also have two usable sides, even without an explicit "not X but Y" construction.
+  m = /^(.+?),?\s+(?:tetapi|tapi|namun|whereas|but|however)\s+(.+)$/i.exec(t);
+  if (m) return { bad: trimPhrase(m[1]), good: trimPhrase(m[2]), neutral: true };
   return null;
 }
 

@@ -18,15 +18,35 @@ describe("chooseFamily", () => {
       "73% orang berhenti sebelum minggu ketiga.",
       "Kesimpulannya, mulai dari langkah sekecil mungkin.",
     ];
-    expect(familyFor(texts)).toEqual(["editorial", "comparison", "kinetic", "explainer", "data", "editorial"]);
+    expect(familyFor(texts)).toEqual(["editorial", "comparison", "kinetic", "process", "data", "editorial"]);
   });
 
-  it("uses the explainer for numbered steps", () => {
-    expect(familyFor(["Hook pembuka.", "Pertama, tentukan target yang jelas."])[1]).toBe("explainer");
+  it("detects a natural contrast clause as a neutral comparison", () => {
+    expect(detectVisual("Kita punya niat, tetapi sering kembali ke pola lama.").compare).toEqual({
+      bad: "Kita punya niat",
+      good: "sering kembali ke pola lama",
+      neutral: true,
+    });
+    expect(familyFor(["Pembuka.", "Kita punya niat, tetapi sering kembali ke pola lama."])[1]).toBe("comparison");
+  });
+
+  it("uses process grammar for numbered steps", () => {
+    expect(familyFor(["Hook pembuka.", "Pertama, tentukan target yang jelas."])[1]).toBe("process");
   });
 
   it("treats a call to action after the hook as a product/action showcase", () => {
     expect(familyFor(["Hook pembuka.", "Ini penting.", "Ikuti untuk tips berikutnya."])[2]).toBe("data");
+  });
+
+  it("selects distinct families for metaphor and story intent", () => {
+    const plan = planNarrative([
+      "Aku pernah merasa semua pintu tertutup.",
+      "Ternyata, harapan adalah kompas saat kita tersesat.",
+    ]);
+    expect(plan[0].intent).toBe("story");
+    expect(chooseFamily(detectVisual("Aku pernah merasa semua pintu tertutup."), plan[0])).toBe("story");
+    expect(plan[1].strategy).toBe("metaphor");
+    expect(chooseFamily(detectVisual("Ternyata, harapan adalah kompas saat kita tersesat."), plan[1])).toBe("metaphor");
   });
 
   it("does not stage a year as a statistic", () => {
@@ -72,7 +92,9 @@ describe("five-scene sample: layouts follow scene function", () => {
   const items = texts.map((t, i) => ({ family: chooseFamily(detectVisual(t), plan[i]), role: plan[i].role, intensity: plan[i].intensity }));
   it("gives scenes 1-3 three different pictures", () => {
     const l = planLayouts(items);
-    expect(l.slice(0, 3)).toEqual(["impact", "quiet-center", "quiet-offset"]);
+    // With intent routing, scene 2 ("meski ... kecil") is a contrast beat: kinetic type, not another editorial layout.
+    expect(l.slice(0, 3)).toEqual(["impact", "standard", "quiet-center"]);
+    expect(items.slice(0, 3).map(i => i.family)).toEqual(["editorial", "kinetic", "editorial"]);
     expect(new Set(l.slice(0, 3)).size).toBe(3);
   });
   it("keeps comparison and CTA on their own families", () => {
