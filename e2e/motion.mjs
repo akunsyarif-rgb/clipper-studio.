@@ -50,7 +50,9 @@ function volumeLog(file) {
 const server = spawn("npx", ["next", "start", "-p", String(PORT)], { stdio: ["ignore", "pipe", "pipe"], detached: true });
 const results = [];
 let failed = false;
+// E2E_ONLY=<regular expression> runs only the matching steps (for working on one step; the full suite is the real check).
 async function step(name, fn) {
+  if (process.env.E2E_ONLY && !new RegExp(process.env.E2E_ONLY, "i").test(name)) return;
   const t = Date.now();
   try { const info = await fn(); results.push(`PASS ${name} (${((Date.now() - t) / 1000).toFixed(1)}s)${info ? " — " + info : ""}`); }
   catch (err) { failed = true; results.push(`FAIL ${name}: ${err instanceof Error ? err.message : err}`); }
@@ -70,7 +72,7 @@ try {
   page.on("requestfailed", r => { if (r.url().startsWith("https://www.remotion.pro/")) telemetryBlocked = true; });
   await page.goto(BASE); await openFolds(page);
 
-  async function renderAndCheck(label, expectAudio, expectedSeconds) {
+  async function renderAndCheck(label, expectAudio, expectedSeconds, minVolume = -40) {
     await page.getByTestId("render").click();
     await page.getByTestId("result").waitFor({ timeout: 300000 });
     const [download] = await Promise.all([page.waitForEvent("download"), page.getByTestId("download").click()]);
@@ -91,7 +93,7 @@ try {
     if (expectAudio) {
       assert(p.audio === "aac", `audio ${p.audio}`);
       const vol = volumeLog(out);
-      assert(vol > -40, `narration should be audible, mean volume ${vol} dB`);
+      assert(vol > minVolume, `audio should be audible, mean volume ${vol} dB (floor ${minVolume})`);
       return `${download.suggestedFilename()} 1080x1920 30fps ${p.duration.toFixed(2)}s h264/aac, mean ${vol} dB`;
     }
     assert(p.audio === null, `expected no audio stream, got ${p.audio}`);
@@ -472,6 +474,63 @@ try {
     await page.getByTestId("grain").uncheck();
     await page.getByTestId("story-visuals").check();
     return `type pack ${classicVsImpact.toFixed(0)}, palette ${paletteVsViolet.toFixed(0)}, mesh ${meshVsPlain.toFixed(1)}, grain ${grainVsMesh.toFixed(2)}`;
+  });
+
+  await step("stickers and sound effects: chosen by meaning, credited, overridable, and really in the rendered MP4", async () => {
+    await page.getByTestId("voice-none").click();
+    await page.getByTestId("music-none").click();
+    await page.getByTestId("style").selectOption("hybrid");
+    await page.getByTestId("palette").selectOption("violet");
+    await page.getByTestId("script").fill("Jangan tunggu semangat datang.\nMulailah, meski langkahmu kecil.\nDisiplin membuatmu tetap bergerak.");
+    await page.getByTestId("duration").selectOption("15");
+    await page.evaluate(() => document.querySelectorAll("details.fold").forEach(d => { d.open = true; }));
+    const player = page.locator(".player-wrap");
+    const region = (file, x, y, w, h) => execFileSync("ffmpeg", ["-v", "error", "-ss", "1", "-i", file, "-frames:v", "1", "-vf", `crop=${w}:${h}:${x}:${y}`, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], { maxBuffer: 1 << 26 });
+    const diff = (a, b) => { let t = 0; for (let i = 0; i < a.length; i++) t += Math.abs(a[i] - b[i]); return t / a.length; };
+    const hasAudio = file => probe(file).audio === "aac";
+
+    // Off by default: no sticker, no sound.
+    assert(await page.getByTestId("sticker-mode").inputValue() === "off" && await page.getByTestId("sfx-mode").inputValue() === "off", "both are off by default");
+    assert(await page.getByTestId("scene-sticker").count() === 0, "no per-scene choice while off");
+    await renderAndCheck("fx-off", false, 15);
+    assert(!hasAudio(join(dir, "fx-off.mp4")), "no audio track while effects are off");
+
+    // Stickers: by meaning, per-scene choice, credit.
+    await page.getByTestId("sticker-mode").selectOption("auto");
+    assert(/Twemoji/.test(await page.getByTestId("sticker-credit").innerText()) && /CC-BY 4\.0/.test(await page.getByTestId("sticker-credit").innerText()), "the credit is shown");
+    const rows = await page.getByTestId("storyboard-scene").allInnerTexts();
+    // At most 60% of the scenes carry a sticker (2 of 3); the third keeps the accent object its job calls for.
+    assert(/stiker: ⌛/.test(rows[0]) && /stiker: 🌱/.test(rows[1]) && !/stiker/.test(rows[2]) && /objek 3D/.test(rows[2]), "storyboard names the stickers: " + rows.join(" | "));
+    await page.getByTestId("scene-item").nth(0).locator(".scene-row").click();
+    await player.locator('[data-sticker="hourglass"]').waitFor({ timeout: 8000 });
+    assert(!(await player.innerText()).match(/⌛|stiker|hourglass/i), "the sticker is a picture, no text is added");
+    await page.getByTestId("scene-sticker").nth(0).selectOption("fire");
+    await player.locator('[data-sticker="fire"]').waitFor({ timeout: 8000 });
+    await page.getByTestId("scene-sticker").nth(0).selectOption("none");
+    await player.locator("[data-sticker]").waitFor({ state: "detached", timeout: 8000 });
+    await page.getByTestId("scene-sticker").nth(0).selectOption("auto");
+    await player.locator('[data-sticker="hourglass"]').waitFor({ timeout: 8000 });
+    await renderAndCheck("fx-sticker", false, 15);
+    const topCentre = [340, 280, 400, 260];
+    const stickerDiff = diff(region(join(dir, "fx-off.mp4"), ...topCentre), region(join(dir, "fx-sticker.mp4"), ...topCentre));
+    assert(stickerDiff > 3, `the sticker is in the file (region change ${stickerDiff.toFixed(1)})`);
+
+    // Sound effects: an audio track appears, with a whoosh into the second scene and silence between effects.
+    await page.getByTestId("sfx-mode").selectOption("punchy");
+    await renderAndCheck("fx-sound", true, 15, -75);
+    const out = join(dir, "fx-sound.mp4");
+    assert(hasAudio(out), "an audio track exists once effects are on");
+    const rowsNow = await page.getByTestId("storyboard-scene").allInnerTexts();
+    const secs = rowsNow.map(t => Number(/([\d.]+) dtk/.exec(t)?.[1]));
+    const b1 = secs[0];
+    const around = segmentVolume(out, b1 - 0.2, b1 + 0.45), quiet = segmentVolume(out, b1 + 1.6, b1 + 2.4);
+    assert(around > -45, `a whoosh plays into scene 2 (mean ${around} dB)`);
+    assert(quiet < -60, `silence between effects (mean ${quiet} dB)`);
+    // The picture is unchanged by the sound.
+    assert(diff(region(join(dir, "fx-sticker.mp4"), ...topCentre), region(out, ...topCentre)) < 0.5, "sound does not change the picture");
+    await page.getByTestId("sfx-mode").selectOption("off");
+    await page.getByTestId("sticker-mode").selectOption("off");
+    return `sticker region change ${stickerDiff.toFixed(1)}, whoosh ${around} dB vs ${quiet} dB`;
   });
 
   await step("story objects (from the Story Motion Lab) appear above suited scenes, no extra text, can be switched off, and are in the rendered MP4", async () => {

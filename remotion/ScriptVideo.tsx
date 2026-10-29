@@ -162,7 +162,7 @@ function SceneView({ scene, index, count, title, style, colors, layout, insets, 
   );
 }
 
-export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech, video, overlay, brandMotion, watermark, storyVisuals, typography, captionStyle, backdrop, grain }) => {
+export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech, video, overlay, brandMotion, watermark, storyVisuals, typography, captionStyle, backdrop, grain, sfx }) => {
   // The type pack is set before anything below draws or measures text, and the frame waits for its fonts.
   const pack = resolveTypePack(typography);
   setActiveType(pack);
@@ -199,6 +199,7 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
       {backdrop === "mesh" && !video ? <MeshBackdrop colors={colors} /> : null}
       {video ? (video.audioOnly ? <Audio src={resolveAudio(video.src)} /> : <AbsoluteFill><Video src={resolveAudio(video.src)} objectFit="cover" /></AbsoluteFill>) : null}
       {audioSrc ? <Audio src={resolveAudio(audioSrc)} /> : null}
+      {sfx ? <Audio src={resolveAudio(sfx.src)} volume={sfx.volume} /> : null}
       {music ? (
         <Audio
           src={resolveAudio(music.src)}

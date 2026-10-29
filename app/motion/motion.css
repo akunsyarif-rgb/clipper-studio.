@@ -176,3 +176,4 @@ button.scene-row{width:100%;text-align:left;color:inherit;font:inherit;backgroun
 .seo-panel .seo-fix{margin:4px 0 8px;font-size:14px}
 .seo-panel .seo-checks{margin:6px 0 0;padding-left:0;list-style:none;font-size:13px}.seo-panel .seo-checks .bad{color:#ff9aa6}.seo-panel .seo-checks .ok{color:#9be8c0}
 .seo-panel .seo-platforms{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
+.scene-sticker{display:flex;align-items:center;gap:8px;font-size:12px;margin:6px 0}.scene-sticker select{flex:1;min-width:0}

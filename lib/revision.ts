@@ -48,7 +48,7 @@ export function restrictPlan(plan: DirectorPlan, scope: RevisionScope, locked: R
   const ok = new Set(editableScenes(scope, plan.scenes.length, locked));
   const dropped: number[] = [];
   const scenes = plan.scenes.map((s, i) => { if (s && !ok.has(i)) { dropped.push(i); return undefined; } return s; });
-  return { plan: { ...plan, scenes, ...(scope.kind === "all" ? {} : { style: undefined, palette: undefined, typography: undefined, backdrop: undefined, grain: undefined, captionStyle: undefined }) }, dropped };
+  return { plan: { ...plan, scenes, ...(scope.kind === "all" ? {} : { style: undefined, palette: undefined, typography: undefined, backdrop: undefined, grain: undefined, captionStyle: undefined, sfx: undefined, stickers: undefined }) }, dropped };
 }
 
 export function describeScope(scope: RevisionScope, count: number): string {

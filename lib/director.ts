@@ -5,6 +5,8 @@
 import { answerJson, ask, GeminiError, type CleanupOptions } from "./gemini";
 import { CAPTION_STYLES, PALETTES, STYLES, type CaptionStyleId, type PaletteId, type StyleId } from "./script";
 import { TYPE_PACK_IDS, type TypePackId } from "./fonts";
+import { STICKER_BY_ID, STICKERS } from "./stickers";
+import { SFX_MODES, type SfxMode } from "./sfx";
 import { detectNumber, ICONS, resolveVisual, TEMPLATES, type Cut, type Template, type VisualOverride } from "./visuals";
 
 const STYLE_IDS = STYLES.map(s => s.id);
@@ -31,8 +33,8 @@ export type DirectorInput = {
   scope?: number[];
 };
 
-export type DirectorScene = { template?: Template; icon?: string; cut?: Cut; reason: string; /** What kind of photo fits, in Indonesian, for the creator to read. */ imageIdea?: string; /** The same as a search phrase in English, for the stock-photo search. */ imageQuery?: string };
-export type DirectorPlan = { style?: StyleId; palette?: PaletteId; /** Type pack, background and grain, and (over a source video) the subtitle style: whole-video looks, never per scene. */ typography?: TypePackId; backdrop?: "plain" | "mesh"; grain?: boolean; captionStyle?: CaptionStyleId; scenes: (DirectorScene | undefined)[]; note: string };
+export type DirectorScene = { /** Sticker id, or "none" to give this scene no sticker. */ sticker?: string; template?: Template; icon?: string; cut?: Cut; reason: string; /** What kind of photo fits, in Indonesian, for the creator to read. */ imageIdea?: string; /** The same as a search phrase in English, for the stock-photo search. */ imageQuery?: string };
+export type DirectorPlan = { style?: StyleId; palette?: PaletteId; /** Type pack, background and grain, and (over a source video) the subtitle style: whole-video looks, never per scene. */ typography?: TypePackId; backdrop?: "plain" | "mesh"; grain?: boolean; captionStyle?: CaptionStyleId; /** Sound effects and whether stickers are used at all: whole-video looks. */ sfx?: SfxMode; stickers?: "off" | "auto"; scenes: (DirectorScene | undefined)[]; note: string };
 
 /**
  * The craft rules the model works from. Distilled (not copied) from the Remotion agent skills, claude-remotion-skill
@@ -49,6 +51,7 @@ export const PLAYBOOK = [
   "Ritme retensi (pola umum Shorts/Reels/TikTok, bukan jaminan): hook pendek di scene 1 (maks. 8 kata), ganti tampilan atau gerak tiap 2-3 detik, satu ide per scene, kalimat kontras tinggi, dan akhiri dengan ajakan atau kalimat yang mendorong ditonton ulang.",
   "Tipografi: pilih SATU untuk seluruh video, jangan dicampur. impact/cinema/street = hook tegas dan konten sosial cepat (huruf kapital); editorial = refleksi dan cerita; modern = edukasi dan bisnis; friendly = santai, UMKM, gaya hidup; tech = AI dan teknologi; classic bila ragu.",
   "Estetika: palet sunset (hangat: kuliner, gaya hidup), ocean (tenang: kesehatan, teknologi), crimson (urgensi, drama), citrus (energi: olahraga, tips cepat), mint (segar), lavender (lembut: kecantikan, refleksi). Latar \"mesh\" memberi gerak halus yang modern; grain=true memberi nuansa sinematik atau retro. Keduanya hanya untuk video tanpa video sumber; jangan berlebihan, cukup salah satu bila ragu.",
+  "Efek suara (sfx: off, subtle, punchy): halus untuk konten tenang atau edukasi, tegas untuk hook cepat dan konten sosial; jangan pakai tegas untuk renungan. Stiker (stickers: auto atau off) cocok untuk konten santai, tips, dan promosi; pilih satu stiker per scene hanya bila maknanya jelas, dan jangan di setiap scene. Keduanya hanya untuk video tanpa video sumber, kecuali efek suara.",
   "Subtitle di atas video sumber (captionStyle): pop untuk hook viral, box untuk gaya TikTok, outline untuk latar ramai, classic untuk yang tenang.",
   "Ide gambar: untuk setiap scene beri \"imageIdea\" (2-4 kata bahasa Indonesia untuk dibaca pembuat video) dan \"imageQuery\" (2-4 kata bahasa INGGRIS untuk mencari foto vertikal di situs foto stok): benda atau situasi nyata yang mudah dicari, bukan konsep abstrak; hindari orang tertentu, teks, dan logo.",
 ];
@@ -67,6 +70,8 @@ export function directorPrompt(i: DirectorInput): string {
     `Opsi gaya (style): ${STYLE_IDS.join(", ")}`,
     `Opsi palet (palette): ${PALETTE_IDS.join(", ")}`,
     `Opsi tipografi (typography): ${TYPE_PACK_IDS.join(", ")}`,
+    `Opsi efek suara (sfx): ${SFX_MODES.join(", ")}`,
+    ...(i.videoEdit ? [] : [`Opsi stiker per scene (sticker, atau "none"): ${STICKERS.map(s => s.id).join(", ")}; stickers: off atau auto`]),
     i.videoEdit ? `Opsi gaya subtitle (captionStyle): ${CAPTION_STYLE_IDS.join(", ")}` : `Opsi latar (backdrop): ${BACKDROPS.join(", ")}; grain: true atau false`,
     `Opsi tampilan (template): ${TEMPLATE_IDS.join(", ")}`,
     `Opsi ikon (icon, atau "none"): ${iconList()}`,
@@ -81,7 +86,7 @@ export function directorPrompt(i: DirectorInput): string {
     `Sekarang: style=${i.style}, palette=${i.palette}.`,
     i.feedback ? `Masukan pembuat video tentang hasil sebelumnya (utamakan ini): "${i.feedback.replace(/\s+/g, " ").trim().slice(0, 400)}"` : "Belum ada masukan; susun yang terbaik menurut panduan.",
     "Beri alasan (reason) singkat dalam bahasa Indonesia, maksimal 10 kata, yang menjelaskan PILIHAN itu kepada pembuat video. Beri juga \"note\": satu kalimat ringkasan arah keseluruhan (maks. 25 kata).",
-    "Balas hanya JSON: {\"style\":\"...\",\"palette\":\"...\",\"typography\":\"...\",\"backdrop\":\"...\",\"grain\":false,\"captionStyle\":\"...\",\"note\":\"...\",\"scenes\":[{\"index\":n,\"template\":\"...\",\"icon\":\"...\",\"cut\":\"...\",\"reason\":\"...\",\"imageIdea\":\"...\",\"imageQuery\":\"...\"}]} untuk setiap kalimat.",
+    "Balas hanya JSON: {\"style\":\"...\",\"palette\":\"...\",\"typography\":\"...\",\"backdrop\":\"...\",\"grain\":false,\"captionStyle\":\"...\",\"sfx\":\"...\",\"stickers\":\"...\",\"note\":\"...\",\"scenes\":[{\"index\":n,\"template\":\"...\",\"icon\":\"...\",\"cut\":\"...\",\"reason\":\"...\",\"sticker\":\"...\",\"imageIdea\":\"...\",\"imageQuery\":\"...\"}]} untuk setiap kalimat.",
     "",
     "Kalimat (JSON):",
     JSON.stringify(i.scenes.map((s, index) => ({ index, text: s.text.replace(/\*/g, ""), seconds: Math.round(s.seconds * 10) / 10, ...(i.current?.[index] ? { sekarang: i.current[index] } : {}) }))),
@@ -102,8 +107,9 @@ export function parseDirector(response: unknown, expected: number, videoEdit: bo
     const template = TEMPLATE_IDS.includes(it.template as Template) ? it.template as Template : undefined;
     const icon = typeof it.icon === "string" && (it.icon === "none" || it.icon in ICONS) ? it.icon : undefined;
     const cut = videoEdit && CUTS.includes(it.cut as Cut) ? it.cut as Cut : undefined;
-    if (!template && !icon && !cut) continue;
-    scenes[it.index] = { template, icon, cut, reason: clean(it.reason, 80), imageIdea: clean(it.imageIdea, 60) || undefined, imageQuery: clean(it.imageQuery, 60) || undefined };
+    const sticker = !videoEdit && typeof it.sticker === "string" && (it.sticker === "none" || it.sticker in STICKER_BY_ID) ? it.sticker : undefined;
+    if (!template && !icon && !cut && !sticker) continue;
+    scenes[it.index] = { sticker, template, icon, cut, reason: clean(it.reason, 80), imageIdea: clean(it.imageIdea, 60) || undefined, imageQuery: clean(it.imageQuery, 60) || undefined };
   }
   if (!scenes.some(Boolean)) throw new GeminiError("format", "AI tidak memberi susunan yang bisa dipakai. Coba lagi.");
   return {
@@ -113,6 +119,8 @@ export function parseDirector(response: unknown, expected: number, videoEdit: bo
     backdrop: BACKDROPS.includes(obj?.backdrop as "plain" | "mesh") && !videoEdit ? obj!.backdrop as "plain" | "mesh" : undefined,
     grain: typeof obj?.grain === "boolean" && !videoEdit ? obj.grain : undefined,
     captionStyle: videoEdit && CAPTION_STYLE_IDS.includes(obj?.captionStyle as CaptionStyleId) ? obj!.captionStyle as CaptionStyleId : undefined,
+    sfx: SFX_MODES.includes(obj?.sfx as SfxMode) ? obj!.sfx as SfxMode : undefined,
+    stickers: !videoEdit && (obj?.stickers === "off" || obj?.stickers === "auto") ? obj.stickers : undefined,
     scenes,
     note: clean(obj?.note, 200),
   };
@@ -123,9 +131,10 @@ export function parseDirector(response: unknown, expected: number, videoEdit: bo
  * without a number, "compare" without two sides) is dropped, a call to action never opens the video, and icons are not
  * set on templates that have none.
  */
-export function planToOverrides(plan: DirectorPlan, texts: string[]): { overrides: Record<string, VisualOverride>; cuts: Record<string, Cut> } {
+export function planToOverrides(plan: DirectorPlan, texts: string[]): { overrides: Record<string, VisualOverride>; cuts: Record<string, Cut>; stickers: Record<string, string> } {
   const overrides: Record<string, VisualOverride> = {};
   const cuts: Record<string, Cut> = {};
+  const stickers: Record<string, string> = {};
   plan.scenes.forEach((s, i) => {
     const text = texts[i];
     if (!s || text === undefined) return;
@@ -139,14 +148,15 @@ export function planToOverrides(plan: DirectorPlan, texts: string[]): { override
     const icon = template === "compare" || template === "cta" ? undefined : s.icon;
     if (template || icon) overrides[text] = { ...(template ? { template } : {}), ...(icon ? { icon } : {}) };
     if (s.cut) cuts[text] = s.cut;
+    if (s.sticker) stickers[text] = s.sticker;
   });
-  return { overrides, cuts };
+  return { overrides, cuts, stickers };
 }
 
 /** Asks the model to arrange the video. Only the sentences' text (and the creator's feedback) is sent. */
 export async function directVideo(input: DirectorInput, o: CleanupOptions): Promise<DirectorPlan> {
   if (input.scenes.length === 0) throw new GeminiError("format", "Belum ada scene untuk disusun.");
-  const sceneSchema = { type: "OBJECT", properties: { index: { type: "INTEGER" }, template: { type: "STRING" }, icon: { type: "STRING" }, cut: { type: "STRING" }, reason: { type: "STRING" }, imageIdea: { type: "STRING" }, imageQuery: { type: "STRING" } }, required: ["index", "template", "reason"] };
-  const schema = { type: "OBJECT", properties: { style: { type: "STRING" }, palette: { type: "STRING" }, typography: { type: "STRING" }, backdrop: { type: "STRING" }, grain: { type: "BOOLEAN" }, captionStyle: { type: "STRING" }, note: { type: "STRING" }, scenes: { type: "ARRAY", items: sceneSchema } }, required: ["style", "palette", "note", "scenes"] };
+  const sceneSchema = { type: "OBJECT", properties: { sticker: { type: "STRING" }, index: { type: "INTEGER" }, template: { type: "STRING" }, icon: { type: "STRING" }, cut: { type: "STRING" }, reason: { type: "STRING" }, imageIdea: { type: "STRING" }, imageQuery: { type: "STRING" } }, required: ["index", "template", "reason"] };
+  const schema = { type: "OBJECT", properties: { style: { type: "STRING" }, palette: { type: "STRING" }, typography: { type: "STRING" }, backdrop: { type: "STRING" }, grain: { type: "BOOLEAN" }, captionStyle: { type: "STRING" }, sfx: { type: "STRING" }, stickers: { type: "STRING" }, note: { type: "STRING" }, scenes: { type: "ARRAY", items: sceneSchema } }, required: ["style", "palette", "note", "scenes"] };
   return ask(o, [{ text: directorPrompt(input) }], schema, json => parseDirector(json, input.scenes.length, input.videoEdit));
 }

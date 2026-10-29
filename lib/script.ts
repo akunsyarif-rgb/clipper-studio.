@@ -71,6 +71,8 @@ export type Scene = {
   cut?: Cut;
   /** cut "clip" only: second of the source video at which the clip starts (the clip plays on from there, muted). */
   clipFrom?: number;
+  /** A sticker (id from lib/stickers.ts) popped in above the text of a text scene; the credit it needs is in the UI and the brief. */
+  sticker?: string;
   /** Faceless videos only: the creator's picture behind the scene (blob:/http(s):/data: URL, or a file name inside public/ for CLI renders). */
   image?: string;
 };
@@ -114,6 +116,8 @@ export type VideoProps = {
   backdrop?: "plain" | "mesh";
   /** A fine film-grain texture over text scenes. */
   grain?: boolean;
+  /** Sound-effects track (WAV, synthesised on the device) mixed under the narration; absent means none. */
+  sfx?: { src: string; volume: number } | null;
 };
 
 const words = (s: string) => s.split(/\s+/).filter(Boolean);

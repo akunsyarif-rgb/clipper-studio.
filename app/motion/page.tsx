@@ -29,6 +29,9 @@ import TranscriptPanel from "../TranscriptPanel";
 import GeminiJudge from "../GeminiJudge";
 import AiDirector from "../AiDirector";
 import SeoPanel from "../SeoPanel";
+import { planStickers, STICKERS, STICKER_BY_ID, STICKER_CREDIT, matchSticker, type StickerMode } from "@/lib/stickers";
+import { planSfx, SFX_LABELS, SFX_MODES, SFX_VOLUME, type SfxMode } from "@/lib/sfx";
+import { sfxWav } from "@/lib/sfx-synth";
 import { DEFAULT_TYPE_PACK, resolveTypePack, TYPE_PACK_IDS, TYPE_PACKS, type TypePackId } from "@/lib/fonts";
 import { ensureFonts } from "../../remotion/fonts";
 import WatermarkPanel from "../WatermarkPanel";
@@ -190,6 +193,9 @@ export default function MotionStudio() {
   const [aiScores, setAiScores] = useState<Record<string, SceneScore>>({});
   const [brandMotion, setBrandMotion] = useState<BrandMotion>("simple");
   const [storyVisuals, setStoryVisuals] = useState(true);
+  const [stickerMode, setStickerMode] = useState<StickerMode>("off");
+  const [stickerOverrides, setStickerOverrides] = useState<Record<string, string>>({});
+  const [sfxMode, setSfxMode] = useState<SfxMode>("off");
   const [backdrop, setBackdrop] = useState<"plain" | "mesh">("plain");
   const [grain, setGrain] = useState(false);
   const [captionStyle, setCaptionStyle] = useState<CaptionStyleId>("classic");
@@ -210,7 +216,7 @@ export default function MotionStudio() {
   useEffect(() => { try { if (localStorage.getItem(MODE_KEY) === "affiliate") setContentMode("affiliate"); } catch { /* storage blocked: starts as ordinary content */ } }, []);
   function chooseMode(m: Mode) { setContentMode(m); try { localStorage.setItem(MODE_KEY, m); } catch { /* not remembered */ } }
   const [directorNote, setDirectorNote] = useState("");
-  type DirectorSnap = { typography: TypePackId; backdrop: "plain" | "mesh"; grain: boolean; captionStyle: CaptionStyleId; style: StyleId; palette: PaletteId; contentPreset: ContentPresetId | "custom"; overrides: Record<string, VisualOverride>; cutOverrides: Record<string, Cut>; info: Record<string, { reason: string; imageIdea?: string; imageQuery?: string }>; note: string };
+  type DirectorSnap = { stickerMode: StickerMode; stickerOverrides: Record<string, string>; sfxMode: SfxMode; typography: TypePackId; backdrop: "plain" | "mesh"; grain: boolean; captionStyle: CaptionStyleId; style: StyleId; palette: PaletteId; contentPreset: ContentPresetId | "custom"; overrides: Record<string, VisualOverride>; cutOverrides: Record<string, Cut>; info: Record<string, { reason: string; imageIdea?: string; imageQuery?: string }>; note: string };
   const [guide, setGuide] = useState(false);
   // Watermark: remembered for this editing session, so it is back for every re-render (and shared with the clipper).
   const [watermark, setWatermarkState] = useState<Watermark>(DEFAULT_WATERMARK);
@@ -319,19 +325,30 @@ export default function MotionStudio() {
     ? planAnimations(timeline.scenes.map((sc, i) => ({ text: sc.text, visual: sceneVisuals[i], seconds: sc.durationInFrames / FPS })), density, timeline.scenes.map(sc => aiScores[sc.text]))
     : { cuts: [], judgements: [] };
   const planned = animationPlan.cuts;
+  const stickerPlan = timeline.ok && !(videoEdit && source) ? planStickers(timeline.scenes.map(sc => sc.text), { mode: stickerMode, overrides: stickerOverrides }) : [];
   const sceneList = timeline.ok ? (videoEdit && source ? (list: typeof timeline.scenes) => fitScenesToVideo(list, Math.round(source.seconds * FPS)) : (list: typeof timeline.scenes) => list)(timeline.scenes).map((sc, i) => ({
     ...sc, visual: sceneVisuals[i], narrative: narrativePlan[i], ...(timed && !aiFresh ? { wordStarts: timed.wordStarts[i], wordEnds: timed.wordEnds[i], pauseFrames: undefined } : {}),
     ...(videoEdit && source ? { cut: cutOverrides[sc.text] ?? planned[i], ...(cutOverrides[sc.text] === "clip" ? { clipFrom: clipStarts[sc.text] ?? 0 } : {}) } : {}),
     ...(images[sc.text] ? { image: images[sc.text].url } : {}),
+    ...(stickerPlan[i] ? { sticker: stickerPlan[i]! } : {}),
   })) : [];
+  // Sound effects: planned from the scenes, synthesised on the device into one small WAV that plays in the preview and the MP4.
+  const sfxPlan = planSfx(sceneList, sfxMode, { videoEdit: !!(videoEdit && source) });
+  // Keyed by what the track contains (not by array identity, which changes every render): the same effects keep the same WAV.
+  const sfxFrames = totalFrames(sceneList);
+  const sfxKey = JSON.stringify([sfxPlan, sfxFrames]);
+  const sfxBytes = useMemo(() => sfxPlan.length ? sfxWav(sfxPlan, sfxFrames, FPS) : null, [sfxKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The WAV gets its address in the same render as the plan, so a render started right after a change always has the matching sound.
+  const sfxSrc = useMemo(() => sfxBytes ? URL.createObjectURL(new Blob([sfxBytes], { type: "audio/wav" })) : null, [sfxBytes]);
+  useEffect(() => () => { if (sfxSrc) URL.revokeObjectURL(sfxSrc); }, [sfxSrc]);
   const props: VideoProps | null = timeline.ok ? {
     title: title.trim(), scenes: sceneList, style, palette, audioSrc: narration?.url ?? null, captions, video: videoEdit && source ? { src: source.url, seconds: source.seconds, ...(isAudioFile(source.file) ? { audioOnly: true } : {}) } : null, overlay: overlayPos, brandMotion,
-    music, speech: narration?.speech ?? null, ...(isWatermarkActive(watermark) ? { watermark } : {}), ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}),
+    music, speech: narration?.speech ?? null, ...(isWatermarkActive(watermark) ? { watermark } : {}), ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}), ...(sfxSrc ? { sfx: { src: sfxSrc, volume: SFX_VOLUME } } : {}),
   } : null;
   const snapshot = useMemo<SessionData>(() => ({
-    v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlay: overlayPos, density, brandMotion, ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}), imported,
+    v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlay: overlayPos, density, brandMotion, ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}), ...(stickerMode !== "off" ? { stickerMode } : {}), ...(Object.keys(stickerOverrides).length ? { stickerOverrides } : {}), ...(sfxMode !== "off" ? { sfx: sfxMode } : {}), imported,
     voiceMode: voiceMode === "ai" ? "ai" : "none", ttsLang, ttsVoice, ttsSpeed,
-  }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlayPos, density, brandMotion, storyVisuals, typography, captionStyle, backdrop, grain, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed]);
+  }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlayPos, density, brandMotion, storyVisuals, typography, captionStyle, backdrop, grain, stickerMode, stickerOverrides, sfxMode, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed]);
   useEffect(() => {
     if (!autosave || isPristine(snapshot, SAMPLE, !!source)) return;
     const t = setTimeout(() => { const s = { ...snapshot, savedAt: Date.now() }; void saveSession(s); void cloud.pushSession(s); }, 1000);
@@ -359,7 +376,7 @@ export default function MotionStudio() {
     const s = saved;
     if (!s) return;
     setScript(s.script); setTitle(s.title); setStyle(s.style); setPalette(s.palette); setContentPreset(s.contentPreset); setTarget(s.target); setCaptions(s.captions);
-    setOverrides(s.overrides); setCutOverrides(s.cutOverrides); setClipStarts(s.clipStarts); setCaptionOffset(s.captionOffset); setOverlayPos(s.overlay ?? "top"); setDensity(s.density ?? "balanced"); setBrandMotion(s.brandMotion ?? "simple"); setStoryVisuals(s.storyVisuals !== false); setTypography(s.typography ?? DEFAULT_TYPE_PACK); setCaptionStyle(s.captionStyle ?? "classic"); setBackdrop(s.backdrop ?? "plain"); setGrain(s.grain === true); setImported(s.imported);
+    setOverrides(s.overrides); setCutOverrides(s.cutOverrides); setClipStarts(s.clipStarts); setCaptionOffset(s.captionOffset); setOverlayPos(s.overlay ?? "top"); setDensity(s.density ?? "balanced"); setBrandMotion(s.brandMotion ?? "simple"); setStoryVisuals(s.storyVisuals !== false); setTypography(s.typography ?? DEFAULT_TYPE_PACK); setCaptionStyle(s.captionStyle ?? "classic"); setBackdrop(s.backdrop ?? "plain"); setGrain(s.grain === true); setStickerMode(s.stickerMode ?? "off"); setStickerOverrides(s.stickerOverrides ?? {}); setSfxMode(s.sfx ?? "off"); setImported(s.imported);
     setVoiceMode(s.voiceMode); setTtsLang(s.ttsLang); setTtsVoice(s.ttsVoice); setTtsSpeed(s.ttsSpeed);
     const rec = savedSource ? await loadSource() : null;
     if (rec) {
@@ -542,9 +559,9 @@ export default function MotionStudio() {
     }
   }
 
-  const directorSnap = (): DirectorSnap => ({ typography, backdrop, grain, captionStyle, style, palette, contentPreset, overrides, cutOverrides, info: directorInfo, note: directorNote });
+  const directorSnap = (): DirectorSnap => ({ stickerMode, stickerOverrides, sfxMode, typography, backdrop, grain, captionStyle, style, palette, contentPreset, overrides, cutOverrides, info: directorInfo, note: directorNote });
   function restoreDirector(v: DirectorSnap) {
-    setStyle(v.style); setPalette(v.palette); setContentPreset(v.contentPreset); setTypography(v.typography); setBackdrop(v.backdrop); setGrain(v.grain); setCaptionStyle(v.captionStyle);
+    setStyle(v.style); setPalette(v.palette); setContentPreset(v.contentPreset); setStickerMode(v.stickerMode); setStickerOverrides(v.stickerOverrides); setSfxMode(v.sfxMode); setTypography(v.typography); setBackdrop(v.backdrop); setGrain(v.grain); setCaptionStyle(v.captionStyle);
     setOverrides(v.overrides); setCutOverrides(v.cutOverrides);
     setDirectorInfo(v.info); setDirectorNote(v.note);
   }
@@ -552,7 +569,7 @@ export default function MotionStudio() {
   function applyDirector(plan: DirectorPlan, label: string) {
     if (!timeline.ok) return;
     const texts = timeline.scenes.map(sc => sc.text);
-    const { overrides: ov, cuts } = planToOverrides(plan, texts);
+    const { overrides: ov, cuts, stickers: stk } = planToOverrides(plan, texts);
     setDirectorHistory(h => record(h, label, directorSnap()));
     if (plan.style) setStyle(plan.style);
     if (plan.palette) setPalette(plan.palette);
@@ -560,6 +577,9 @@ export default function MotionStudio() {
     if (plan.backdrop) setBackdrop(plan.backdrop);
     if (plan.grain !== undefined) setGrain(plan.grain);
     if (plan.captionStyle) setCaptionStyle(plan.captionStyle);
+    if (plan.sfx) setSfxMode(plan.sfx);
+    if (plan.stickers) setStickerMode(plan.stickers);
+    if (Object.keys(stk).length) { setStickerOverrides(prev => ({ ...prev, ...stk })); if (!plan.stickers) setStickerMode("auto"); }
     if (plan.style || plan.palette) setContentPreset("custom");
     setOverrides(prev => ({ ...prev, ...ov }));
     if (videoEdit && source) setCutOverrides(prev => ({ ...prev, ...cuts }));
@@ -634,7 +654,7 @@ export default function MotionStudio() {
     if (gone.length) { setRenderError(`Gambar untuk scene "${gone.join('", "')}" tidak bisa dibaca lagi. Pilih ulang gambarnya lalu render.`); return; }
     // The speech model is no longer needed; its memory goes to the renderer.
     releaseAsr();
-    const support = await checkBrowserRender(!renderProps.audioSrc && !renderProps.music && !renderProps.video).catch(e => String(e));
+    const support = await checkBrowserRender(!renderProps.audioSrc && !renderProps.music && !renderProps.video && !renderProps.sfx).catch(e => String(e));
     if (support) { setRenderError(support); return; }
     player.current?.pause();
     const controller = new AbortController();
@@ -691,6 +711,7 @@ export default function MotionStudio() {
       "MOTION GRAPHICS BRIEF", `Judul: ${title}`, `Gaya: ${STYLES.find(s => s.id === style)?.label}`, `Palet: ${PALETTES[palette].label}`,
       `Format: 9:16, ${WIDTH}x${HEIGHT}, ${FPS} fps`, `Narasi: ${narration ? narration.file.name : "tanpa narasi"}`,
       `Backsound: ${musicMode === "auto" ? `otomatis (${mood})` : musicMode === "upload" ? uploadedMusic?.file.name : "tanpa backsound"}`,
+      ...(stickerPlan.some(Boolean) ? [STICKER_CREDIT] : []),
       ...(timeline.ok ? timeline.scenes.map((s, i) => `Scene ${i + 1} (${(s.durationInFrames / FPS).toFixed(1)} dtk): ${s.text}${images[s.text] ? ` [gambar: ${images[s.text].name}${images[s.text].credit ? ` — ${images[s.text].credit!.text}` : ""}]` : ""}`) : []),
     ].join("\n");
     try { await navigator.clipboard.writeText(brief); setStatus("Brief disalin ke clipboard."); }
@@ -926,6 +947,21 @@ export default function MotionStudio() {
             <WatermarkPanel value={watermark} onChange={setWatermark} disabled={rendering} note="Terlihat langsung di pratinjau." />
           </details>
 
+          <details className="fold" data-testid="fold-fx"><summary><b>Efek suara &amp; stiker</b> <small>{SFX_LABELS[sfxMode]} · {stickerMode === "auto" ? "stiker otomatis" : "tanpa stiker"}</small></summary>
+            <label className="field-label" htmlFor="sfx-mode">Efek suara <span className="field-hint">whoosh saat pindah scene, pop saat stiker muncul, dentang di ajakan; dibuat di perangkat, di bawah suara narasi</span>
+              <select id="sfx-mode" value={sfxMode} onChange={e => setSfxMode(e.target.value as SfxMode)} data-testid="sfx-mode">
+                {SFX_MODES.map(m => <option key={m} value={m}>{SFX_LABELS[m]}</option>)}
+              </select>
+            </label>
+            {!(videoEdit && source) && <label className="field-label" htmlFor="sticker-mode">Stiker <span className="field-hint">emoji kecil yang muncul di atas teks sesuai makna kalimat (maksimal 60% scene); bisa diganti per scene di daftar scene</span>
+              <select id="sticker-mode" value={stickerMode} onChange={e => setStickerMode(e.target.value as StickerMode)} data-testid="sticker-mode">
+                <option value="off">Mati</option>
+                <option value="auto">Otomatis (sesuai makna)</option>
+              </select>
+            </label>}
+            {stickerMode === "auto" && !(videoEdit && source) && <small className="field-hint" data-testid="sticker-credit">{STICKER_CREDIT}. Sebutkan kredit ini di deskripsi video Anda.</small>}
+          </details>
+
           <div className="step-title" data-testid="step-4"><b>4</b>Render</div>
           {blocker && <p className="field-error" role="alert" data-testid="blocker">{blocker}</p>}
           {timeline.ok && timeline.warnings.map(w => <p className="field-warning" key={w}>{w}</p>)}
@@ -964,7 +1000,7 @@ export default function MotionStudio() {
           <div className="timeline-heading"><h3>Timeline scene</h3><span>{timeline.ok ? `${timeline.scenes.length} scene · maks. ${MAX_SECONDS} dtk` : ""}</span></div>
           {timeline.ok && <details className="fold storyboard" data-testid="storyboard">
             <summary>Storyboard {storyIssues.length ? `· ${storyErrors.length} masalah, ${storyIssues.length - storyErrors.length} saran` : "· siap render"}</summary>
-            <ol>{storyboard.scenes.map(sc => <li key={sc.id} data-testid="storyboard-scene"><b>{sc.order + 1}.</b> {FAMILY_LABELS[sc.family]} · {sc.layout} · {sc.timing.seconds} dtk · {sc.continuity === "continues" ? "lanjutan visual" : sc.continuity === "start" ? "pembuka" : "visual baru"}{sc.accent ? ` · objek 3D: ${STORY_VISUAL_LABELS[sc.accent]}` : ""}{sc.captionPolicy === "suppressed-duplicate" ? " · tanpa subtitle ganda" : ""}</li>)}</ol>
+            <ol>{storyboard.scenes.map(sc => <li key={sc.id} data-testid="storyboard-scene"><b>{sc.order + 1}.</b> {FAMILY_LABELS[sc.family]} · {sc.layout} · {sc.timing.seconds} dtk · {sc.continuity === "continues" ? "lanjutan visual" : sc.continuity === "start" ? "pembuka" : "visual baru"}{sc.sticker && STICKER_BY_ID[sc.sticker] ? ` · stiker: ${STICKER_BY_ID[sc.sticker].emoji} ${STICKER_BY_ID[sc.sticker].label}` : sc.accent ? ` · objek 3D: ${STORY_VISUAL_LABELS[sc.accent]}` : ""}{sc.captionPolicy === "suppressed-duplicate" ? " · tanpa subtitle ganda" : ""}</li>)}</ol>
             {storyIssues.map((i, n) => <small key={n} className={i.level === "error" ? "notice notice-error" : "narrative-reason"} role={i.level === "error" ? "alert" : "status"} data-testid="storyboard-issue">{i.level === "error" ? "Perlu diperbaiki: " : "Saran: "}{i.message}</small>)}
           </details>}
           <div className="scene-list" data-testid="scenes">{timeline.ok && (() => { let t = 0; return timeline.scenes.map((s, i) => { const from = t; t += s.durationInFrames; return (
@@ -984,6 +1020,12 @@ export default function MotionStudio() {
                 onClipHere={() => setClipStarts(prev => ({ ...prev, [s.text]: Math.min(sourceVideo.current?.currentTime ?? 0, source?.seconds ?? 0) }))}
                 onClipSeek={t => { if (sourceVideo.current) { sourceVideo.current.currentTime = t; } }}
                 onChange={o => { manualChoice(s.text); setOverrides(prev => { const next = { ...prev }; if (o.template || o.icon) next[s.text] = o; else delete next[s.text]; return next; }); }} />
+              {stickerMode === "auto" && !(videoEdit && source) && <label className="scene-sticker" data-testid="scene-sticker-row"><span>Stiker</span>
+                <select value={stickerOverrides[s.text] ?? "auto"} onChange={e => setStickerOverrides(prev => { const next = { ...prev }; if (e.target.value === "auto") delete next[s.text]; else next[s.text] = e.target.value; return next; })} data-testid="scene-sticker">
+                  <option value="auto">{matchSticker(s.text) ? `Otomatis · ${matchSticker(s.text)!.emoji} ${matchSticker(s.text)!.label}` : "Otomatis · tanpa"}</option>
+                  <option value="none">Tanpa stiker</option>
+                  {STICKERS.map(st => <option key={st.id} value={st.id}>{st.emoji} {st.label}</option>)}
+                </select></label>}
               {<div className="scene-image" data-testid="scene-image">
                 {/* eslint-disable-next-line @next/next/no-img-element -- a local blob: thumbnail, nothing for next/image to optimise */}
                 {images[s.text] ? <img src={images[s.text].url} alt="" className="scene-thumb" /> : null}
