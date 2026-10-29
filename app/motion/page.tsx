@@ -28,6 +28,11 @@ import { ScriptVideo } from "@/remotion/ScriptVideo";
 import TranscriptPanel from "../TranscriptPanel";
 import GeminiJudge from "../GeminiJudge";
 import AiDirector from "../AiDirector";
+import WatermarkPanel from "../WatermarkPanel";
+import { DEFAULT_WATERMARK, isWatermarkActive, loadWatermark, saveWatermark, type Watermark } from "@/lib/watermark";
+import { CAPTION_BOTTOM, contentBox, SAFE, SQUARE_CROP } from "@/lib/layout";
+import { buildStoryboard, validateExport, validateStoryboard, type Issue } from "@/lib/storyboard";
+import { emptyHistory, record, redo, undo, type History } from "@/lib/revision";
 import PexelsPanel from "../PexelsPanel";
 import AffiliatePanel from "../AffiliatePanel";
 import { removeLine, scenesForProductPhoto, type AffiliateBrief } from "@/lib/affiliate";
@@ -37,7 +42,7 @@ import { planToOverrides, type DirectorPlan } from "@/lib/director";
 import CloudAccount from "../CloudAccount";
 import { cloud } from "@/lib/cloud";
 import type { SceneScore } from "@/lib/gemini";
-import { probeVideo, validateFile } from "@/lib/clip";
+import { isAudioFile, probeVideo, SOURCE_ACCEPT, validateFile } from "@/lib/clip";
 import { imageProblem, prepareImage } from "@/lib/scene-image";
 import "./motion.css";
 
@@ -72,6 +77,40 @@ type AiNarration = { key: string; narration: Narration; sceneSeconds: number[] }
 type VoiceProgress = { phase: "download" | "synth"; loaded: number; total: number; label: string };
 
 /** Reads an audio file's duration, decoding it when the media element cannot (e.g. some WAV/OGG on Safari). */
+/** Safe-zone guide drawn over the preview only (percentages of the 1080×1920 frame); never part of the rendered video. */
+function SafeGuide() {
+  const x = (v: number) => `${(v / WIDTH) * 100}%`, y = (v: number) => `${(v / HEIGHT) * 100}%`;
+  const box = contentBox(false);
+  const shade = { position: "absolute" as const, background: "rgba(255,60,60,0.22)" };
+  return (
+    <div data-testid="safe-guide" aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+      <div style={{ ...shade, left: 0, right: 0, top: 0, height: y(SAFE.top) }} />
+      <div style={{ ...shade, left: 0, right: 0, bottom: 0, height: y(SAFE.bottom) }} />
+      <div style={{ ...shade, left: 0, width: x(SAFE.side), top: y(SAFE.top), bottom: y(SAFE.bottom) }} />
+      <div style={{ ...shade, right: 0, width: x(SAFE.side), top: y(SAFE.top), bottom: y(SAFE.bottom) }} />
+      <div style={{ position: "absolute", left: 0, right: 0, top: y(SQUARE_CROP.top), height: y(SQUARE_CROP.bottom - SQUARE_CROP.top), border: "1px dashed #59b7ff" }} />
+      <div style={{ position: "absolute", left: x(SAFE.side), right: x(SAFE.side), top: y(box.top), height: y(box.height), border: "1px dashed #ffffffcc" }} />
+      <div style={{ position: "absolute", left: x(SAFE.side), right: x(SAFE.side), top: y(HEIGHT - CAPTION_BOTTOM), borderTop: "2px solid #ffe066" }} />
+    </div>
+  );
+}
+
+/** Size and length of a finished MP4 as the browser reads them; undefined where this browser cannot say (checked then skipped). */
+async function probeRendered(blob: Blob): Promise<{ width?: number; height?: number; seconds?: number }> {
+  const url = URL.createObjectURL(blob);
+  try {
+    return await new Promise(resolve => {
+      const v = document.createElement("video");
+      const done = (r: { width?: number; height?: number; seconds?: number }) => { v.removeAttribute("src"); v.load(); resolve(r); };
+      const t = setTimeout(() => done({}), 5000);
+      v.preload = "metadata"; v.muted = true;
+      v.onloadedmetadata = () => { clearTimeout(t); done({ width: v.videoWidth || undefined, height: v.videoHeight || undefined, seconds: Number.isFinite(v.duration) ? v.duration : undefined }); };
+      v.onerror = () => { clearTimeout(t); done({}); };
+      v.src = url;
+    });
+  } finally { URL.revokeObjectURL(url); }
+}
+
 async function audioDuration(file: File, url: string): Promise<number> {
   const fromElement = await new Promise<number>(resolve => {
     const el = new Audio();
@@ -160,7 +199,13 @@ export default function MotionStudio() {
   useEffect(() => { try { if (localStorage.getItem(MODE_KEY) === "affiliate") setContentMode("affiliate"); } catch { /* storage blocked: starts as ordinary content */ } }, []);
   function chooseMode(m: Mode) { setContentMode(m); try { localStorage.setItem(MODE_KEY, m); } catch { /* not remembered */ } }
   const [directorNote, setDirectorNote] = useState("");
-  const [beforeDirector, setBeforeDirector] = useState<{ style: StyleId; palette: PaletteId; contentPreset: ContentPresetId | "custom"; overrides: Record<string, VisualOverride>; cutOverrides: Record<string, Cut> } | null>(null);
+  type DirectorSnap = { style: StyleId; palette: PaletteId; contentPreset: ContentPresetId | "custom"; overrides: Record<string, VisualOverride>; cutOverrides: Record<string, Cut>; info: Record<string, { reason: string; imageIdea?: string; imageQuery?: string }>; note: string };
+  const [guide, setGuide] = useState(false);
+  // Watermark: remembered for this editing session, so it is back for every re-render (and shared with the clipper).
+  const [watermark, setWatermarkState] = useState<Watermark>(DEFAULT_WATERMARK);
+  useEffect(() => { setWatermarkState(loadWatermark()); }, []);
+  const setWatermark = (w: Watermark) => { setWatermarkState(w); saveWatermark(w); };
+  const [directorHistory, setDirectorHistory] = useState<History<DirectorSnap>>(emptyHistory());
   const imagesRef = useRef(images);
   imagesRef.current = images;
   // Where in the source video a "clip" scene starts (seconds), per scene text.
@@ -214,11 +259,11 @@ export default function MotionStudio() {
     const probe = document.createElement("video");
     probe.preload = "metadata";
     probe.onloadedmetadata = () => {
-      if (!Number.isFinite(probe.duration) || probe.duration <= 0) { URL.revokeObjectURL(url); return setSourceError("Durasi video tidak dapat dibaca. Coba MP4 (H.264)."); }
+      if (!Number.isFinite(probe.duration) || probe.duration <= 0) { URL.revokeObjectURL(url); return setSourceError("Durasi berkas tidak dapat dibaca. Coba MP4 (H.264) atau audio MP3/M4A."); }
       if (probe.duration > MAX_SECONDS) { URL.revokeObjectURL(url); return setSourceError(`Video ${Math.round(probe.duration)} detik melebihi batas ${MAX_SECONDS} detik (3 menit). Potong dulu di Clipper Studio.`); }
       setSource({ file: f, url, seconds: probe.duration });
     };
-    probe.onerror = () => { URL.revokeObjectURL(url); setSourceError("Browser tidak dapat memutar video ini. Coba MP4 (H.264)."); };
+    probe.onerror = () => { URL.revokeObjectURL(url); setSourceError("Browser tidak dapat memutar berkas ini. Coba MP4 (H.264) atau audio MP3/M4A/WAV."); };
     probe.src = url;
   }
   useEffect(() => { try { setOffer(parseHandoff(sessionStorage.getItem(HANDOFF_KEY))); } catch { /* storage blocked: no offer */ } }, []);
@@ -266,11 +311,11 @@ export default function MotionStudio() {
   const sceneList = timeline.ok ? (videoEdit && source ? (list: typeof timeline.scenes) => fitScenesToVideo(list, Math.round(source.seconds * FPS)) : (list: typeof timeline.scenes) => list)(timeline.scenes).map((sc, i) => ({
     ...sc, visual: sceneVisuals[i], narrative: narrativePlan[i], ...(timed && !aiFresh ? { wordStarts: timed.wordStarts[i], wordEnds: timed.wordEnds[i], pauseFrames: undefined } : {}),
     ...(videoEdit && source ? { cut: cutOverrides[sc.text] ?? planned[i], ...(cutOverrides[sc.text] === "clip" ? { clipFrom: clipStarts[sc.text] ?? 0 } : {}) } : {}),
-    ...(!(videoEdit && source) && images[sc.text] ? { image: images[sc.text].url } : {}),
+    ...(images[sc.text] ? { image: images[sc.text].url } : {}),
   })) : [];
   const props: VideoProps | null = timeline.ok ? {
-    title: title.trim(), scenes: sceneList, style, palette, audioSrc: narration?.url ?? null, captions, video: videoEdit && source ? { src: source.url, seconds: source.seconds } : null, overlay: overlayPos, brandMotion,
-    music, speech: narration?.speech ?? null,
+    title: title.trim(), scenes: sceneList, style, palette, audioSrc: narration?.url ?? null, captions, video: videoEdit && source ? { src: source.url, seconds: source.seconds, ...(isAudioFile(source.file) ? { audioOnly: true } : {}) } : null, overlay: overlayPos, brandMotion,
+    music, speech: narration?.speech ?? null, ...(isWatermarkActive(watermark) ? { watermark } : {}),
   } : null;
   const snapshot = useMemo<SessionData>(() => ({
     v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlay: overlayPos, density, brandMotion, imported,
@@ -323,8 +368,14 @@ export default function MotionStudio() {
   }
   async function discardSession() { await clearSession(); setSavedCloud(false); setSaved(null); setSavedSource(null); setAutosave(true); }
 
+  // Structured plan the renderer will draw, checked before render (lib/storyboard.ts).
+  const storyboard = useMemo(() => buildStoryboard(sceneList, { captions, videoEdit: !!(videoEdit && source) }), [sceneList, captions, videoEdit, source]);
+  const storyIssues: Issue[] = useMemo(() => validateStoryboard(storyboard, { audioSeconds: mode.kind === "audio" ? narration?.seconds : undefined }), [storyboard, mode.kind, narration?.seconds]); // eslint-disable-line react-hooks/exhaustive-deps
+  const storyErrors = storyIssues.filter(i => i.level === "error");
+
   const blocker = !timeline.ok ? timeline.error : titleError
     ?? (recording ? "Selesaikan perekaman narasi terlebih dahulu." : null)
+    ?? (storyErrors[0]?.message ?? null)
     ?? (voiceMode === "ai" && !aiFresh ? (aiNarration ? "Naskah, bahasa, suara, atau kecepatan berubah. Ketuk “Buat suara otomatis” lagi." : "Ketuk “Buat suara otomatis” untuk membuat voice over dari naskah.") : null);
 
   // Inputs changed after a render: the downloaded file no longer matches the preview.
@@ -332,7 +383,7 @@ export default function MotionStudio() {
   const srtText = result && timeline.ok && captions && !videoEdit ? scenesToSrt(sceneList) : null;
   const srtUrl = useMemo(() => srtText ? URL.createObjectURL(new Blob([srtText], { type: "text/plain;charset=utf-8" })) : null, [srtText]);
   useEffect(() => () => { if (srtUrl) URL.revokeObjectURL(srtUrl); }, [srtUrl]);
-  useEffect(() => { setResult(null); }, [script, title, style, palette, target, captions, narration, musicMode, musicTrack, musicVolume, duck]);
+  useEffect(() => { setResult(null); }, [script, title, style, palette, target, captions, narration, musicMode, musicTrack, musicVolume, duck, watermark]);
 
   const generate = useCallback(async (seconds: number, m: Mood, s: number): Promise<Generated | null> => {
     setMusicBusy(true); setMusicError("");
@@ -480,27 +531,37 @@ export default function MotionStudio() {
     }
   }
 
-  /** Applies one pass of the AI director as ordinary choices; the previous state is kept so the whole pass can be undone. */
-  function applyDirector(plan: DirectorPlan) {
+  const directorSnap = (): DirectorSnap => ({ style, palette, contentPreset, overrides, cutOverrides, info: directorInfo, note: directorNote });
+  function restoreDirector(v: DirectorSnap) {
+    setStyle(v.style); setPalette(v.palette); setContentPreset(v.contentPreset);
+    setOverrides(v.overrides); setCutOverrides(v.cutOverrides);
+    setDirectorInfo(v.info); setDirectorNote(v.note);
+  }
+  /** Applies one revision of the AI director as ordinary choices; the state before it is kept as a version so it can be undone and redone. */
+  function applyDirector(plan: DirectorPlan, label: string) {
     if (!timeline.ok) return;
     const texts = timeline.scenes.map(sc => sc.text);
     const { overrides: ov, cuts } = planToOverrides(plan, texts);
-    setBeforeDirector(prev => prev && Object.keys(directorInfo).length ? prev : { style, palette, contentPreset, overrides, cutOverrides });
+    setDirectorHistory(h => record(h, label, directorSnap()));
     if (plan.style) setStyle(plan.style);
     if (plan.palette) setPalette(plan.palette);
     if (plan.style || plan.palette) setContentPreset("custom");
     setOverrides(prev => ({ ...prev, ...ov }));
     if (videoEdit && source) setCutOverrides(prev => ({ ...prev, ...cuts }));
-    const info: Record<string, { reason: string; imageIdea?: string; imageQuery?: string }> = {};
+    const info: Record<string, { reason: string; imageIdea?: string; imageQuery?: string }> = { ...directorInfo };
     plan.scenes.forEach((s, i) => { if (s) info[texts[i]] = { reason: s.reason, imageIdea: s.imageIdea, imageQuery: s.imageQuery }; });
     setDirectorInfo(info);
     setDirectorNote(plan.note);
   }
   function undoDirector() {
-    if (!beforeDirector) return;
-    setStyle(beforeDirector.style); setPalette(beforeDirector.palette); setContentPreset(beforeDirector.contentPreset);
-    setOverrides(beforeDirector.overrides); setCutOverrides(beforeDirector.cutOverrides);
-    setDirectorInfo({}); setDirectorNote(""); setBeforeDirector(null);
+    const r = undo(directorHistory, directorSnap());
+    if (!r) return;
+    setDirectorHistory(r.history); restoreDirector(r.state);
+  }
+  function redoDirector() {
+    const r = redo(directorHistory, directorSnap());
+    if (!r) return;
+    setDirectorHistory(r.history); restoreDirector(r.state);
   }
   /** A choice made by hand replaces the AI's reason for that scene; the picture idea stays. */
   function manualChoice(text: string) {
@@ -522,6 +583,8 @@ export default function MotionStudio() {
     const blob = await prepareImage(file);
     const url = URL.createObjectURL(blob);
     setImages(prev => { if (prev[text]) URL.revokeObjectURL(prev[text].url); return { ...prev, [text]: { url, name: file.name, credit } }; });
+    // Over a source video a picture can only be seen as a full-screen cutaway, so choosing one makes the scene a cutaway.
+    if (videoEdit && source) setCutOverrides(prev => prev[text] === "graphic" ? prev : { ...prev, [text]: "graphic" });
   }
   /** The creator's own product photo behind every scene that names the product, and the last one; resolves with how many. */
   async function placeProductPhoto(file: File, brief: AffiliateBrief, credit?: SceneImageFile["credit"]): Promise<number> {
@@ -550,6 +613,10 @@ export default function MotionStudio() {
       if (!g) return;
       renderProps = { ...props, music: { src: g.url, volume: musicVolume / 100, duck, loop: false } };
     }
+    // A picture whose temporary URL is gone would render as an empty frame: say so before spending minutes rendering.
+    const gone: string[] = [];
+    for (const sc of renderProps.scenes) if (sc.image) { try { await (await fetch(sc.image)).blob(); } catch { gone.push(stripMarks(sc.text).slice(0, 30)); } }
+    if (gone.length) { setRenderError(`Gambar untuk scene "${gone.join('", "')}" tidak bisa dibaca lagi. Pilih ulang gambarnya lalu render.`); return; }
     // The speech model is no longer needed; its memory goes to the renderer.
     releaseAsr();
     const support = await checkBrowserRender(!renderProps.audioSrc && !renderProps.music && !renderProps.video).catch(e => String(e));
@@ -566,6 +633,9 @@ export default function MotionStudio() {
         onRetry: () => setStatus("Percobaan pertama gagal. Mencoba lagi dengan pengaturan encoder lain…"),
       });
       if (blob.size < 1024) throw new Error("Output MP4 kosong.");
+      const facts = await probeRendered(blob);
+      const bad = validateExport(buildStoryboard(renderProps.scenes, { captions, videoEdit: !!(videoEdit && source) }), { bytes: blob.size, ...facts }).filter(i => i.level === "error");
+      if (bad.length) { setRenderError(`Hasil render gagal diperiksa: ${bad.map(b => b.message).join(" ")} Coba render ulang.`); setStatus(""); return; }
       setResult({ url: URL.createObjectURL(blob), name: `${slug(title || script.slice(0, 30))}-1080x1920.mp4`, size: blob.size });
       setStatus("MP4 selesai dirender. Simpan hasilnya sebelum menutup tab.");
     } catch (err) {
@@ -606,7 +676,7 @@ export default function MotionStudio() {
       "MOTION GRAPHICS BRIEF", `Judul: ${title}`, `Gaya: ${STYLES.find(s => s.id === style)?.label}`, `Palet: ${PALETTES[palette].label}`,
       `Format: 9:16, ${WIDTH}x${HEIGHT}, ${FPS} fps`, `Narasi: ${narration ? narration.file.name : "tanpa narasi"}`,
       `Backsound: ${musicMode === "auto" ? `otomatis (${mood})` : musicMode === "upload" ? uploadedMusic?.file.name : "tanpa backsound"}`,
-      ...(timeline.ok ? timeline.scenes.map((s, i) => `Scene ${i + 1} (${(s.durationInFrames / FPS).toFixed(1)} dtk): ${s.text}${images[s.text] && !(videoEdit && source) ? ` [gambar: ${images[s.text].name}${images[s.text].credit ? ` — ${images[s.text].credit!.text}` : ""}]` : ""}`) : []),
+      ...(timeline.ok ? timeline.scenes.map((s, i) => `Scene ${i + 1} (${(s.durationInFrames / FPS).toFixed(1)} dtk): ${s.text}${images[s.text] ? ` [gambar: ${images[s.text].name}${images[s.text].credit ? ` — ${images[s.text].credit!.text}` : ""}]` : ""}`) : []),
     ].join("\n");
     try { await navigator.clipboard.writeText(brief); setStatus("Brief disalin ke clipboard."); }
     catch { setStatus("Browser tidak memberi izin clipboard. Gunakan Ekspor proyek JSON."); }
@@ -682,11 +752,12 @@ export default function MotionStudio() {
           </div>}
           {timed && timed.aligned && <div className="notice normal-only" data-testid="aligned-notice">Naskah sudah diedit setelah transkripsi; kata-katanya diselaraskan dengan ucapan asli, jadi waktu caption mungkin bergeser sedikit di bagian yang diubah.</div>}
           {timed && timed.tooShort > 0 && <div className="notice normal-only" data-testid="short-warning">{timed.tooShort} scene lebih pendek dari {MIN_SCENE_SECONDS} dtk. Waktu subtitle tetap tepat dengan ucapan, tetapi teks scene itu tampil sebentar saja. Gabungkan barisnya di kolom Naskah (kata-katanya tidak diubah) bila ingin lebih nyaman dibaca.</div>}
-          <div className="field-label normal-only">Video sumber <span className="field-hint">opsional · unggah video, ucapannya jadi naskah &amp; subtitle otomatis (maks. 3 menit)</span></div>
+          <div className="field-label normal-only">Video sumber <span className="field-hint">opsional · unggah video atau audio saja, ucapannya jadi naskah &amp; subtitle otomatis (maks. 3 menit)</span></div>
           {!source
-            ? <label className="upload-source normal-only"><input type="file" accept="video/*,.mp4,.mov,.m4v,.webm" onChange={onSourceVideo} data-testid="source-video" /></label>
+            ? <label className="upload-source normal-only"><input type="file" accept={SOURCE_ACCEPT} onChange={onSourceVideo} data-testid="source-video" /></label>
             : <div className="normal-only">
-              <video ref={sourceVideo} src={source.url} controls playsInline preload="metadata" style={{ width: "100%", maxHeight: 220, borderRadius: 10, background: "#000" }} />
+              <video ref={sourceVideo} src={source.url} controls playsInline preload="metadata" style={{ width: "100%", maxHeight: 220, borderRadius: 10, background: "#000" }} data-testid={isAudioFile(source.file) ? "source-audio-only" : undefined} />
+              {isAudioFile(source.file) && <small className="field-hint" data-testid="audio-only-note">Audio saja: suaranya dipakai apa adanya, gambarnya latar studio dengan subtitle dan animasi.</small>}
               <button className="text-button" disabled={asrBusy} onClick={() => { setSource(null); setImported(null); setVideoEdit(false); setCutOverrides({}); setClipStarts({}); }}>Ganti video ({source.file.name})</button>
               <TranscriptPanel key={source.url} file={source.file} video={sourceVideo} range={{ start: 0, duration: source.seconds }} locked={false} onWorking={setAsrBusy} onCopy={setScript} onUseTiming={useTimingOnly} preciseTiming={!!imported && imported.granularity !== "word" && videoEdit}
                 onUse={t => { setScript(scriptFromTranscript(t, FPS)); setImported(t); setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptionOffset(0); setPalette("pearl"); setContentPreset("custom"); setOffer(null); }} />
@@ -815,6 +886,10 @@ export default function MotionStudio() {
           </div>
           </details>
 
+          <details className="fold" data-testid="fold-watermark"><summary><b>Watermark video</b> <small>{isWatermarkActive(watermark) ? `${watermark.text} · ${watermark.position.replace("-", " ")}` : "Nonaktif"}</small></summary>
+            <WatermarkPanel value={watermark} onChange={setWatermark} disabled={rendering} note="Terlihat langsung di pratinjau." />
+          </details>
+
           <div className="step-title" data-testid="step-4"><b>4</b>Render</div>
           {blocker && <p className="field-error" role="alert" data-testid="blocker">{blocker}</p>}
           {timeline.ok && timeline.warnings.map(w => <p className="field-warning" key={w}>{w}</p>)}
@@ -835,17 +910,26 @@ export default function MotionStudio() {
 
         <section className="preview-column">
           <div className="panel-heading"><div><small>02 / PRATINJAU</small><h2>Preview video</h2></div><span className="preview-badge"><i /> {props ? `${(totalFrames(props.scenes) / FPS).toFixed(1)}s · 9:16` : "—"}</span></div>
-          <div className="player-wrap" style={{ background: `linear-gradient(145deg, ${colors.bg1}, ${colors.bg2})` }}>
+          <div className="player-wrap" style={{ position: "relative", background: `linear-gradient(145deg, ${colors.bg1}, ${colors.bg2})` }}>
             {props ? <Player ref={player} component={ScriptVideo} inputProps={props} durationInFrames={props ? totalFrames(props.scenes) : 1} fps={FPS} compositionWidth={WIDTH} compositionHeight={HEIGHT} controls style={{ width: "100%", aspectRatio: "9 / 16" }} acknowledgeRemotionLicense />
               : <div className="player-empty">{blocker}</div>}
+            {guide && props ? <SafeGuide /> : null}
           </div>
+          <label className="check-row" data-testid="safe-guide-toggle"><input type="checkbox" checked={guide} onChange={e => setGuide(e.target.checked)} /> Tampilkan panduan area aman (hanya di pratinjau, tidak ikut ke MP4)</label>
+          {guide ? <p className="preview-disclaimer" data-testid="safe-guide-legend">Merah: tertutup tampilan aplikasi (tab, deskripsi, tombol kanan). Putus-putus putih: area konten utama 1200 px. Biru: kotak 1080×1080 yang tersisa bila dipotong 1:1. Kuning: baris dasar subtitle.</p> : null}
           <p className="preview-disclaimer">Pratinjau memakai komposisi yang sama dengan hasil render, jadi teks, durasi scene, narasi, dan backsound identik dengan MP4.</p>
-          {timeline.ok && <AiDirector language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"} active={Object.keys(directorInfo).length > 0} note={directorNote} onPlan={applyDirector} onUndo={undoDirector}
+          {timeline.ok && <AiDirector language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"} active={Object.keys(directorInfo).length > 0} note={directorNote} onPlan={applyDirector} onUndo={undoDirector} onRedo={redoDirector} canRedo={directorHistory.future.length > 0} versions={directorHistory.past.length}
             input={{ scenes: timeline.scenes.map(sc => ({ text: sc.text, seconds: sc.durationInFrames / FPS })), videoEdit: !!(videoEdit && source), style, palette, affiliate: activeMode === "affiliate" && affiliateBrief ? { product: affiliateBrief.product } : undefined,
               current: timeline.scenes.map(sc => ({ template: overrides[sc.text]?.template, icon: overrides[sc.text]?.icon, cut: cutOverrides[sc.text] })) }} />}
-          {timeline.ok && !(videoEdit && source) && <PexelsPanel disabled={rendering} onApply={putStockPhoto}
-            scenes={timeline.scenes.map(sc => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery, hasImage: !!images[sc.text] }))} />}
+          {timeline.ok && <PexelsPanel disabled={rendering} onApply={putStockPhoto}
+            // Over a source video a picture only appears in a full-screen cutaway, so automatic filling covers just those scenes.
+            scenes={timeline.scenes.map((sc, i) => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery, hasImage: !!images[sc.text] || (!!(videoEdit && source) && sceneList[i]?.cut !== "graphic") }))} />}
           <div className="timeline-heading"><h3>Timeline scene</h3><span>{timeline.ok ? `${timeline.scenes.length} scene · maks. ${MAX_SECONDS} dtk` : ""}</span></div>
+          {timeline.ok && <details className="fold storyboard" data-testid="storyboard">
+            <summary>Storyboard {storyIssues.length ? `· ${storyErrors.length} masalah, ${storyIssues.length - storyErrors.length} saran` : "· siap render"}</summary>
+            <ol>{storyboard.scenes.map(sc => <li key={sc.id} data-testid="storyboard-scene"><b>{sc.order + 1}.</b> {FAMILY_LABELS[sc.family]} · {sc.layout} · {sc.timing.seconds} dtk · {sc.continuity === "continues" ? "lanjutan visual" : sc.continuity === "start" ? "pembuka" : "visual baru"}{sc.captionPolicy === "suppressed-duplicate" ? " · tanpa subtitle ganda" : ""}</li>)}</ol>
+            {storyIssues.map((i, n) => <small key={n} className={i.level === "error" ? "notice notice-error" : "narrative-reason"} role={i.level === "error" ? "alert" : "status"} data-testid="storyboard-issue">{i.level === "error" ? "Perlu diperbaiki: " : "Saran: "}{i.message}</small>)}
+          </details>}
           <div className="scene-list" data-testid="scenes">{timeline.ok && (() => { let t = 0; return timeline.scenes.map((s, i) => { const from = t; t += s.durationInFrames; return (
             <div className="scene-item" key={i} data-testid="scene-item">
               <button className="scene-row" onClick={() => player.current?.seekTo(from)}>
@@ -863,7 +947,7 @@ export default function MotionStudio() {
                 onClipHere={() => setClipStarts(prev => ({ ...prev, [s.text]: Math.min(sourceVideo.current?.currentTime ?? 0, source?.seconds ?? 0) }))}
                 onClipSeek={t => { if (sourceVideo.current) { sourceVideo.current.currentTime = t; } }}
                 onChange={o => { manualChoice(s.text); setOverrides(prev => { const next = { ...prev }; if (o.template || o.icon) next[s.text] = o; else delete next[s.text]; return next; }); }} />
-              {!(videoEdit && source) && <div className="scene-image" data-testid="scene-image">
+              {<div className="scene-image" data-testid="scene-image">
                 {/* eslint-disable-next-line @next/next/no-img-element -- a local blob: thumbnail, nothing for next/image to optimise */}
                 {images[s.text] ? <img src={images[s.text].url} alt="" className="scene-thumb" /> : null}
                 <label className="text-link">
@@ -874,9 +958,9 @@ export default function MotionStudio() {
                 {images[s.text] ? <button type="button" className="text-link" disabled={rendering} onClick={() => removeSceneImage(s.text)} data-testid="scene-image-remove">Hapus</button> : null}
                 {images[s.text]?.credit ? <small className="scene-credit" data-testid="scene-credit"><a href={images[s.text].credit!.href} target="_blank" rel="noreferrer noopener">{images[s.text].credit!.text}</a></small> : null}
               </div>}
-              {!(videoEdit && source) && pickerFor === s.text && <ScenePhotoPicker initialQuery={directorInfo[s.text]?.imageQuery ?? ""} onChoose={(file, photo) => putStockPhoto(s.text, file, photo)} onClose={() => setPickerFor(null)} />}
+              {pickerFor === s.text && <ScenePhotoPicker initialQuery={directorInfo[s.text]?.imageQuery ?? ""} onChoose={(file, photo) => putStockPhoto(s.text, file, photo)} onClose={() => setPickerFor(null)} />}
             </div>); }); })()}</div>
-          {!(videoEdit && source) && timeline.ok && <p className="preview-disclaimer" data-testid="image-note">{imageError ? <span className="scene-image-error" data-testid="image-error">{imageError} </span> : null}Gambar latar hanya dipakai di perangkat ini dan tidak ikut tersimpan atau tersinkron; pilih lagi setelah memuat ulang halaman. Pakai gambar milik Anda, foto Pexels, atau yang boleh dipakai ulang: gambar dari internet (mis. Pinterest) belum tentu bebas hak cipta.</p>}
+          {timeline.ok && <p className="preview-disclaimer" data-testid="image-note">{imageError ? <span className="scene-image-error" data-testid="image-error">{imageError} </span> : null}{videoEdit && source ? "Di video sumber, gambar tampil sebagai layar penuh (maks. 4 detik) pada scene itu, dan pembicara kembali setelahnya. " : null}Gambar latar hanya dipakai di perangkat ini dan tidak ikut tersimpan atau tersinkron; pilih lagi setelah memuat ulang halaman. Pakai gambar milik Anda, foto Pexels, atau yang boleh dipakai ulang: gambar dari internet (mis. Pinterest) belum tentu bebas hak cipta.</p>}
         </section>
       </div>
 

@@ -9,7 +9,8 @@ import { isOneOffPreview, keepStorage, modelIsCached } from "@/lib/asr/storage";
 import { ASR_RUN_KEY, defaultModelFor, isTouchDevice, lighterModel, parseRunMark } from "@/lib/asr/device";
 import { extractAudio, loadEngine, terminateEngine } from "@/lib/engine";
 import { loadCachedTranscript, saveCachedTranscript } from "@/lib/session-store";
-import { MODELS, releaseAsr, transcribe, TranscribeCancelled, type AsrHandle, type ModelId } from "@/lib/asr/client";
+import { MODELS, releaseAsr, transcribeResilient, TranscribeCancelled, type ModelId, type ResilientHandle } from "@/lib/asr/client";
+import { isMemoryError, memoryFallback } from "@/lib/asr/device";
 import {
   activeAt, asrEta, cleanupRequest, asrSlowHint, asrTimingSummary, editSegment, explainTranscribeError, HANDOFF_KEY, LANGUAGES, serializeHandoff, toSrt, transcriptText, validateTranscribeRange,
   type LanguageId, type Transcript,
@@ -58,7 +59,7 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
   /** Counts finished transcriptions (not stored ones), so clean-up can start by itself once per new transcript. */
   const [freshRun, setFreshRun] = useState(0);
   const [caption, setCaption] = useState<{ segment: number; word: number } | null>(null);
-  const handle = useRef<AsrHandle | null>(null);
+  const handle = useRef<ResilientHandle | null>(null);
   const cancelled = useRef(false);
   const working = phase !== "idle";
 
@@ -119,7 +120,10 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
     else { setError(""); setInfo("Waktu subtitle sekarang mengikuti ucapan hasil transkrip ini; teks naskah Anda tidak berubah."); }
   }
 
+  /** Whether the failed run was the one-tap "presisikan waktu" run, so Coba lagi repeats the same thing. */
+  const retryTiming = useRef(false);
   async function run(thenTiming = false) {
+    retryTiming.current = thenTiming;
     const limit = range ? validateTranscribeRange(range.duration) : "Pilih bagian video yang valid terlebih dahulu.";
     if (!range || limit) { setError(limit ?? ""); return; }
     cancelled.current = false;
@@ -140,15 +144,21 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
       if (cancelled.current) throw new TranscribeCancelled();
       try { localStorage.setItem(ASR_RUN_KEY, JSON.stringify({ model, at: Date.now() })); } catch { /* storage blocked */ }
       setPhase("download"); setDownload({ loaded: 0, total: 0 }); setChunk({ done: 0, total: 0, eta: "" });
-      const h = transcribe(audio, model, language, Math.min(range.duration, audio.length / 16000), {
+      const h = transcribeResilient(audio, model, language, Math.min(range.duration, audio.length / 16000), {
+        onFallback: (from, to) => {
+          // The device ran out of memory: the run continues with the lighter model, and the choice follows it.
+          setModel(to); setDownload({ loaded: 0, total: 0 }); setPhase("download");
+          setInfo(`Memori perangkat tidak cukup untuk model ${from.replace("Xenova/whisper-", "")}; mencoba otomatis dengan model ${to.replace("Xenova/whisper-", "")} yang lebih ringan.`);
+          try { localStorage.setItem(ASR_RUN_KEY, JSON.stringify({ model: to, at: Date.now() })); } catch { /* storage blocked */ }
+        },
         onDownload: (loaded, total) => setDownload({ loaded, total }),
         onRunning: () => { runStart.current = Date.now(); setPhase("running"); },
         onChunk: (done, total) => setChunk({ done, total, eta: asrEta(done, total, (Date.now() - runStart.current) / 1000) }),
       });
       handle.current = h;
-      const { transcript: value, timings } = await h.result;
+      const { transcript: value, timings, model: usedModel } = await h.result;
       setTranscript({ value, range }); setFreshRun(n => n + 1);
-      void saveCachedTranscript(file, range, model, language, value);
+      void saveCachedTranscript(file, range, usedModel, language, value);
       if (thenTiming) applyTiming(value);
       else setInfo([value.granularity === "word"
         ? `${value.segments.length} segmen siap. Waktu tiap kata dari audio asli.`
@@ -204,6 +214,10 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
       {phase !== "audio" && <button className="cancel-button" onClick={cancel} data-testid="asr-cancel">Batalkan transkripsi</button>}
     </div>}
     {error && <div className="notice notice-error" role="alert" data-testid="asr-error">{error}</div>}
+    {error && !working && !/Tidak ada ucapan/.test(error) && <div className="range-tools">
+      <button onClick={() => void run(retryTiming.current)} disabled={locked || !range} data-testid="asr-retry">Coba lagi</button>
+      {isMemoryError(detail) && memoryFallback(model) && <button onClick={() => { setModel(memoryFallback(model)!); setError(""); setDetail(""); }} disabled={locked} data-testid="asr-retry-lighter">Pakai model lebih ringan ({memoryFallback(model)!.replace("Xenova/whisper-", "")})</button>}
+    </div>}
     {detail && <details className="error-details" open><summary>Detail teknis</summary><code>{detail}</code></details>}
     {info && !error && <div className="notice" role="status" data-testid="asr-info">{info}</div>}
     {transcript && <>

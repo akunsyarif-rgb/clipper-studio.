@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chooseFamily, splitCause } from "./composition";
+import { chooseFamily, planLayouts, splitCause } from "./composition";
 import { planNarrative } from "./narrative";
 import { detectVisual } from "./visuals";
 
@@ -83,5 +83,26 @@ describe("manual icon override", () => {
     expect(resolveVisual("Pilih disiplin, bukan sekadar motivasi.", { template: "statement", icon: "money" })).toMatchObject({ icon: "money", iconPinned: true });
     expect(resolveVisual("Uang bukan segalanya.").iconPinned).toBeUndefined();
     expect(resolveVisual("Uang itu penting.", { icon: "none" }).iconPinned).toBeUndefined();
+  });
+});
+
+describe("five-scene sample: layouts follow scene function", () => {
+  const texts = ["Jangan tunggu semangat datang.", "Mulailah, meski langkahmu kecil.", "Disiplin membuatmu tetap bergerak.", "Satu langkah hari ini lebih baik dari rencana sempurna.", "Mulai sekarang."];
+  const plan = planNarrative(texts);
+  const items = texts.map((t, i) => ({ family: chooseFamily(detectVisual(t), plan[i]), role: plan[i].role, intensity: plan[i].intensity }));
+  it("gives scenes 1-3 three different pictures", () => {
+    const l = planLayouts(items);
+    // With intent routing, scene 2 ("meski ... kecil") is a contrast beat: kinetic type, not another editorial layout.
+    expect(l.slice(0, 3)).toEqual(["impact", "standard", "quiet-center"]);
+    expect(items.slice(0, 3).map(i => i.family)).toEqual(["editorial", "kinetic", "editorial"]);
+    expect(new Set(l.slice(0, 3)).size).toBe(3);
+  });
+  it("keeps comparison and CTA on their own families", () => {
+    expect(items.map(i => i.family).slice(3)).toEqual(["comparison", "data"]);
+    expect(planLayouts(items).slice(3)).toEqual(["standard", "standard"]);
+  });
+  it("alternates a long run of calm editorial scenes", () => {
+    const calm = { family: "editorial" as const, role: "continuation" as const, intensity: "quiet" as const };
+    expect(planLayouts([calm, calm, calm, calm])).toEqual(["quiet-center", "quiet-offset", "quiet-center", "quiet-offset"]);
   });
 });

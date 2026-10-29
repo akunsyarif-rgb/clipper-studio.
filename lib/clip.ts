@@ -64,12 +64,25 @@ export function formatBytes(n: number): string {
 
 export type FileCheck = { ok: true } | { ok: false; error: string };
 
+/** What a "source" picker accepts: a video, or just audio (a recording, a podcast, a voice note). */
+export const SOURCE_ACCEPT = "video/*,audio/*,.mp4,.mov,.m4v,.webm,.mp3,.m4a,.aac,.wav,.ogg,.oga,.opus,.flac";
+const AUDIO_EXTENSIONS = /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac|aif|aiff|caf|amr)$/i;
+
+/** True for an audio-only file. A video type or video extension always wins (.webm and .mp4 can be either; they count as video). */
+export function isAudioFile(file: { name: string; type: string }): boolean {
+  if (file.type.startsWith("video/")) return false;
+  if (file.type.startsWith("audio/")) return true;
+  return AUDIO_EXTENSIONS.test(file.name);
+}
+
 export function validateFile(file: { name: string; type: string; size: number }): FileCheck {
   // iOS sometimes reports an empty MIME type for camera-roll videos, so fall back to the extension.
   const looksLikeVideo = file.type.startsWith("video/") || /\.(mp4|m4v|mov|webm|mkv|avi|3gp)$/i.test(file.name);
-  if (!looksLikeVideo) return { ok: false, error: "Pilih berkas video (MP4, MOV, WebM, M4V)." };
-  if (file.size <= 0) return { ok: false, error: "Berkas video kosong." };
-  if (file.size > MAX_BYTES) return { ok: false, error: `Ukuran video ${formatBytes(file.size)} melebihi batas 1 GB.` };
+  const audio = isAudioFile(file);
+  if (!looksLikeVideo && !audio) return { ok: false, error: "Pilih berkas video (MP4, MOV, WebM, M4V) atau audio (MP3, M4A, WAV, OGG)." };
+  const what = audio ? "audio" : "video";
+  if (file.size <= 0) return { ok: false, error: `Berkas ${what} kosong.` };
+  if (file.size > MAX_BYTES) return { ok: false, error: `Ukuran ${what} ${formatBytes(file.size)} melebihi batas 1 GB.` };
   return { ok: true };
 }
 
@@ -107,13 +120,45 @@ export function videoFilter(aspect: Aspect, quality: Quality, fit: Fit): string 
 
 export const OUTPUT_NAME = "clipper-export.mp4";
 
-export function ffmpegArgs(input: string, range: { start: number; duration: number }, aspect: Aspect, quality: Quality, fit: Fit): string[] {
+/** A watermark image (second input, file name inside FFmpeg's file system) laid over the finished frame at x, y. */
+export type WatermarkOverlay = { file: string; x: number; y: number };
+
+/** Backdrop of an MP4 made from audio only (dark, like the studio's own backgrounds). */
+export const AUDIO_ONLY_BACKDROP = "0x10131c";
+
+/**
+ * Audio-only source: the picture is a plain dark frame of the output size (so the result is an ordinary 9:16 / 16:9 / 1:1 MP4
+ * that plays everywhere and can go on to the motion studio), with the audio of the chosen range and the watermark if any.
+ */
+function audioOnlyArgs(input: string, range: { start: number; duration: number }, aspect: Aspect, quality: Quality, watermark?: WatermarkOverlay | null): string[] {
+  const { width: w, height: h } = outputSize(aspect, quality);
+  const picture = watermark
+    ? ["-i", watermark.file, "-t", range.duration.toFixed(3), "-filter_complex", `[1:v][2:v]overlay=${watermark.x}:${watermark.y}:format=auto,format=yuv420p[out]`, "-map", "[out]", "-map", "0:a:0"]
+    : ["-t", range.duration.toFixed(3), "-map", "1:v:0", "-map", "0:a:0"];
   return [
     "-ss", range.start.toFixed(3),
     "-i", input,
-    "-t", range.duration.toFixed(3),
-    "-map", "0:v:0", "-map", "0:a:0?",
-    "-vf", videoFilter(aspect, quality, fit),
+    "-f", "lavfi", "-i", `color=c=${AUDIO_ONLY_BACKDROP}:s=${w}x${h}:r=30`,
+    ...picture,
+    "-r", "30",
+    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-b:a", "128k", "-ac", "2",
+    "-movflags", "+faststart",
+    "-y", OUTPUT_NAME,
+  ];
+}
+
+export function ffmpegArgs(input: string, range: { start: number; duration: number }, aspect: Aspect, quality: Quality, fit: Fit, watermark?: WatermarkOverlay | null, audioOnly = false): string[] {
+  if (audioOnly) return audioOnlyArgs(input, range, aspect, quality, watermark);
+  const picture = watermark
+    ? ["-i", watermark.file, "-t", range.duration.toFixed(3),
+      "-filter_complex", `[0:v:0]${videoFilter(aspect, quality, fit)}[base];[base][1:v]overlay=${watermark.x}:${watermark.y}:format=auto,format=yuv420p[out]`,
+      "-map", "[out]", "-map", "0:a:0?"]
+    : ["-t", range.duration.toFixed(3), "-map", "0:v:0", "-map", "0:a:0?", "-vf", videoFilter(aspect, quality, fit)];
+  return [
+    "-ss", range.start.toFixed(3),
+    "-i", input,
+    ...picture,
     "-r", "30",
     "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-pix_fmt", "yuv420p",
     "-c:a", "aac", "-b:a", "128k", "-ac", "2",

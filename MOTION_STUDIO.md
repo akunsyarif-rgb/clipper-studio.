@@ -548,3 +548,26 @@ Intent classes include question, contrast, cause/effect, process, evidence, insi
 The planner never rewrites the narration. It does not require a paid API, network call, new dependency, or server-side render. Existing audio timing, captions, per-scene visual overrides, Remotion preview, and browser MP4 render remain the source of truth. Low-confidence recommendations should be treated as suggestions; users can still adjust the visual template and icon manually. The scene review also flags long beats for possible manual splitting, weak heuristic signals for manual review, and detected numerical evidence for source verification. These are review prompts, not proof that a claim is false or a scene is incorrect. Percentage detection is tested explicitly to avoid missing common formats such as `73%`.
 
 Automated unit tests cover semantic classification and composition routing. Real-device Safari/iPad rendering still requires a manual smoke test; passing CI alone does not prove device memory and WebCodecs compatibility.
+
+## AI Director: layouts, storyboard, revisions
+
+- **Layout planner** (`lib/composition.ts` `planLayouts`): editorial scenes pick `impact` (hook / impact beats: oversized word-by-word type, no kicker), `quiet-center` or `quiet-offset` (calm beats; adjacent calm scenes alternate). Comparison and CTA keep their own families.
+- **Storyboard** (`lib/storyboard.ts`): `buildStoryboard` turns the scenes into an inspectable plan (family, layout, assets, caption policy, timing, continuity); `validateStoryboard` flags empty/duplicate narration, production notes, too-short scenes, missing pictures, text that cannot fit, repeated composition and audio/scene length mismatch. Errors block rendering; the panel is under the preview. After rendering, `validateExport` checks file size, 1080×1920 and duration where the browser can report them.
+- **Revisions** (`lib/revision.ts`): "scene 2 lebih dinamis", "ending lebih kuat", "scene 2-4 …" restrict the AI pass to those scenes (also enforced on the answer; style/palette are global-only). The script text is never sent for rewriting. Every revision is a version (20 kept) with undo and redo.
+- Known gaps: version history lives in memory (lost on reload, not in the saved session); no per-scene lock UI (the API supports a locked set); no pixel-level frame inspection or Safari run in CI.
+
+## Platform safe zone (1080×1920)
+
+`lib/layout.ts` is the single source: top inset 220 px (tabs, logo), bottom 380 px (username, description, audio bar), side 130 px both sides (the right action rail needs 120–150; the left would need only 40–60 but equal insets keep centred layouts centred). Main content stays in a centred band of at most 1200 px (`ACTIVE_HEIGHT`). Burned-in captions over a source video end 520 px above the bottom edge (`CAPTION_BOTTOM`, 500–600 px), and "lower" overlays sit above them. Information that must survive a 1:1 crop belongs in the centred 1080×1080 square (`SQUARE_CROP`). The preview has a "panduan area aman" toggle that draws all of these; it is never part of the MP4.
+
+## Watermark video
+
+`lib/watermark.ts` holds the settings (on/off, text up to 32 characters, corner, size 3–9 % of the width, transparency 10–100 %) and the one geometry function `watermarkBox`. The Remotion layer (`remotion/Watermark.tsx`, preview and browser-rendered MP4) and the clipper export (`lib/watermark-canvas.ts` draws the same text and box into a PNG that FFmpeg lays over the frame) both use it, so preview and file agree. On 9:16 it keeps the safe-area insets (below the top tabs, above the description zone, clear of the right button rail); text scenes and top overlays shrink away from it, and bottom corners sit below the subtitle line. Off or empty text means nothing is drawn or baked in. Settings are kept in `sessionStorage` for the editing session and shared by the clipper and the motion studio. A clip handed from the clipper to the motion studio is exported without a watermark, so it is never drawn twice.
+
+## Speech recognition on iPad Safari
+
+"no available backend found / RangeError: Out of memory" came from the WebAssembly runtime failing to allocate while starting: the larger asyncify ONNX build was chosen on Safari 26+, the session used default memory arenas, and the model was never freed after a failure. Now the worker always uses the plain CPU build with low-memory session options, drops a failed model, and `transcribeResilient` retries automatically with the next lighter model (small → base → tiny), keeping Indonesian and timestamps; the panel shows what happened and offers "Coba lagi" / "Pakai model lebih ringan".
+
+## Audio-only sources
+
+Every source picker (the clipper, the motion studio's source, the file chosen for a YouTube link) accepts audio as well as video (`SOURCE_ACCEPT`, `isAudioFile` in `lib/clip.ts`). In the clipper an audio range is exported as an ordinary MP4: a plain dark frame of the output size (`AUDIO_ONLY_BACKDROP`) with the chosen sound and, if set, the watermark, so it plays everywhere and can go on to the motion studio. In the motion studio an audio source is played with `<Audio>` over the studio background (`video.audioOnly`), with its transcript, subtitles and animations; there is no footage, so "clip" cutaways are skipped. Voice-over upload already accepted audio.

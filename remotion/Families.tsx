@@ -2,7 +2,7 @@
 // Every animation is a function of the frame (springs/interpolate only); no timers, no randomness.
 import React from "react";
 import { Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
-import { splitCause, type Family } from "../lib/composition";
+import { splitCause, type Family, type Layout } from "../lib/composition";
 import { estimateHeavy, fitText, MOTION, TYPE, type FitOptions, type Measure } from "../lib/layout";
 import type { NarrativeRole } from "../lib/narrative";
 import { spokenFrames, type Scene, type StyleId } from "../lib/script";
@@ -11,6 +11,7 @@ import { LineIcon } from "./SceneVisuals";
 
 export type Colors = { bg1: string; bg2: string; accent: string; text: string };
 
+/** Storyboard/review labels only: a scene's role is production metadata and is never drawn on the video. */
 export const ROLE_LABELS: Record<NarrativeRole, string> = {
   hook: "PEMBUKA", tension: "KONFLIK", explanation: "PENJELASAN", reveal: "INTI TEMUAN", application: "LANGKAH NYATA", resolution: "KESIMPULAN", continuation: "LANJUTAN",
 };
@@ -122,6 +123,7 @@ export function Headline(p: HeadlineProps) {
 
 function Kicker({ text, colors, align, delay = 0 }: { text: string; colors: Colors; align: "left" | "center"; delay?: number }) {
   const p = useAppear(delay);
+  if (!text) return null;
   return (
     <div style={{ fontFamily: TYPE.sans, fontWeight: 700, fontSize: TYPE.kicker, letterSpacing: TYPE.kickerSpacing, textTransform: "uppercase", color: colors.accent, textAlign: align, opacity: p, width: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{text}</div>
   );
@@ -155,16 +157,51 @@ export type FamilyProps = {
   style: StyleId;
   colors: Colors;
   box: { width: number; height: number };
+  layout?: Layout;
 };
 
 const KICKER_BLOCK = 30 + 40;
 
 /** 1. Editorial / cinematic: hook, reflection, conclusion. Centred, generous space, one rule. */
-function Editorial({ scene, visual, role, title, colors, box }: FamilyProps) {
+function Editorial(props: FamilyProps) {
+  if (props.layout === "impact") return <EditorialImpact {...props} />;
+  if (props.layout === "quiet-offset") return <EditorialOffset {...props} />;
+  return <EditorialCentered {...props} />;
+}
+
+/** Hook / impact beat: oversized type spoken word by word, one accent bar, no kicker or rule. */
+function EditorialImpact({ scene, visual, colors, box }: FamilyProps) {
+  const p = useAppear(0, MOTION.springFirm);
+  const bar = useAppear(8, MOTION.springFirm);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 56, transform: `scale(${1.05 - 0.05 * p})` }}>
+      <PinnedIcon visual={visual} colors={colors} />
+      <Headline text={stripMarks(scene.text)} width={box.width} height={box.height * (visual.iconPinned && visual.icon ? 0.6 : 0.8)} maxSize={168} minSize={64} lineHeight={1.02}
+        align="center" colors={colors} focus={focusSet(visual, 1)} reveal="words" scene={scene} />
+      <div style={{ width: 240, height: 12, background: colors.accent, transform: `scaleX(${bar})`, transformOrigin: "center" }} />
+    </div>
+  );
+}
+
+/** Calm beat, offset: left-aligned small type anchored low, concept marker above, vertical rule. */
+function EditorialOffset({ scene, visual, colors, box }: FamilyProps) {
+  const icon = visual.icon ? ICONS[visual.icon] : null;
+  const head = useAppear(0);
+  return (
+    <div data-layout="quiet-offset" style={{ height: box.height, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "flex-start", gap: 44, borderLeft: `3px solid ${colors.accent}66`, paddingLeft: 40, marginLeft: -43, boxSizing: "border-box" }}>
+      {icon ? <div data-visual={"icon-" + visual.icon} style={{ opacity: head }}><LineIcon node={icon.icon} size={84} color={colors.accent} delay={4} strokeWidth={1.8} /></div> : null}
+      <Headline text={stripMarks(scene.text)} width={box.width - 43} height={box.height * 0.5} maxSize={80} minSize={46} lineHeight={1.12} weight={800}
+        align="left" colors={colors} focus={focusSet(visual, 1)} reveal="lines" scene={scene} delay={6} />
+    </div>
+  );
+}
+
+/** Calm beat, centred: kicker, rule, restrained headline (also used for conclusions, quotes and questions). */
+function EditorialCentered({ scene, visual, role, title, colors, box }: FamilyProps) {
   const text = stripMarks(scene.text);
   const quote = visual.template === "quote";
   const resolution = role === "resolution";
-  const label = role === "hook" && title ? title : quote ? "KUTIPAN" : visual.template === "question" ? "PERTANYAAN" : ROLE_LABELS[role];
+  const label = role === "hook" && title ? title : "";
   // Negative space is part of the layout: the headline never takes more than ~60% of the box.
   const pinned = visual.iconPinned && visual.icon ? 136 : 0;
   const room = Math.min(box.height - KICKER_BLOCK - 80 - pinned, box.height * 0.62);
@@ -186,7 +223,6 @@ function Kinetic({ scene, visual, role, colors, box }: FamilyProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 40 }}>
       <PinnedIcon visual={visual} colors={colors} />
-      <Kicker text={ROLE_LABELS[role]} colors={colors} align="left" />
       <Headline text={stripMarks(scene.text)} width={box.width} height={box.height - KICKER_BLOCK - 40 - (visual.iconPinned && visual.icon ? 136 : 0)} maxSize={116} minSize={52} lineHeight={1.04}
         align="left" colors={colors} focus={focusSet(visual)} reveal="words" scene={scene} />
     </div>
@@ -200,7 +236,7 @@ function Explainer({ scene, visual, role, colors, box }: FamilyProps) {
   const icon = visual.icon ? ICONS[visual.icon] : null;
   const head = useAppear(0, MOTION.springFirm);
   const words = text.split(/\s+/).filter(Boolean);
-  const label = visual.template === "list" ? (visual.listLabel ? visual.listLabel.toUpperCase() : visual.listIndex == null ? "LANGKAH" : `LANGKAH ${visual.listIndex}`) : ROLE_LABELS[role];
+  const label = visual.template === "list" ? (visual.listLabel ? visual.listLabel.toUpperCase() : visual.listIndex == null ? "LANGKAH" : `LANGKAH ${visual.listIndex}`) : "";
   const HEADER = 128;
   const marker = visual.template === "list" && visual.listIndex != null
     ? <div data-visual="list" style={{ width: HEADER, height: HEADER, borderRadius: "50%", border: `4px solid ${colors.accent}`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: TYPE.display, fontSize: 64, color: colors.accent }}>{visual.listIndex}</div>
@@ -214,7 +250,7 @@ function Explainer({ scene, visual, role, colors, box }: FamilyProps) {
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 48, borderLeft: `3px solid ${colors.accent}55`, paddingLeft: 36, marginLeft: -39 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 28, opacity: head, transform: `translateX(${(1 - head) * -16}px)` }}>
         {marker}
-        <span style={{ fontFamily: TYPE.sans, fontWeight: 700, fontSize: TYPE.kicker, letterSpacing: TYPE.kickerSpacing, color: colors.accent }}>{label}</span>
+        {label ? <span style={{ fontFamily: TYPE.sans, fontWeight: 700, fontSize: TYPE.kicker, letterSpacing: TYPE.kickerSpacing, color: colors.accent }}>{label}</span> : null}
       </div>
       {cause ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -279,7 +315,6 @@ function DataAction({ scene, visual, role, colors, box }: FamilyProps) {
   const PILL = 112;
   return (
       <div data-visual="cta" style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 44 }}>
-        <Kicker text={ROLE_LABELS[role]} colors={colors} align="left" />
         <Headline text={text} width={box.width} height={box.height - KICKER_BLOCK - PILL - 88} maxSize={96} minSize={48} align="left" colors={colors} focus={focusSet(visual, 1)} reveal="lines" scene={scene} />
         <div style={{ height: PILL, display: "flex", alignItems: "center", gap: 18, padding: "0 46px", borderRadius: 999, background: colors.accent, color: colors.bg1, fontFamily: TYPE.display, fontSize: 42, letterSpacing: 2, opacity: p, transform: `translateY(${(1 - p) * MOTION.rise}px)`, maxWidth: box.width, boxSizing: "border-box", whiteSpace: "nowrap" }}>
           {visual.cta ?? "MULAI"}
@@ -305,7 +340,6 @@ function DataFigure({ scene, visual, role, colors, box }: FamilyProps) {
   const LABEL = 44;
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 36 }}>
-      <Kicker text={ROLE_LABELS[role]} colors={colors} align="left" />
       <div data-visual="number"><div style={{ fontFamily: TYPE.display, fontWeight: 900, fontSize: fig.fontSize, lineHeight: 1, letterSpacing: "-0.03em", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", color: colors.accent, opacity: p, transform: `translateY(${(1 - p) * MOTION.rise}px)` }}>
         {formatNumber(shown, decimals, prefix) + suffix}
       </div></div>
@@ -329,7 +363,7 @@ function Process({ scene, visual, colors, box }: FamilyProps) {
   const height = Math.max(150, Math.min(260, (box.height - 220) / stages.length));
   return (
     <div data-visual="process" style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 24, width: "100%" }}>
-      <Kicker text={cause ? "SEBAB → AKIBAT" : visual.listIndex ? `LANGKAH ${visual.listIndex}` : "ALUR GAGASAN"} colors={colors} align="left" />
+      <Kicker text={cause ? "SEBAB → AKIBAT" : visual.listIndex ? `LANGKAH ${visual.listIndex}` : ""} colors={colors} align="left" />
       {cause ? stages.map((stage, i) => (
         <React.Fragment key={i}>
           {i === 1 ? <div style={{ display: "flex", alignItems: "center", gap: 16, paddingLeft: 12, color: colors.accent, fontFamily: TYPE.sans, fontSize: 26, fontWeight: 800, letterSpacing: 3, opacity: p }}><DownArrow color={colors.accent} />{connector.toUpperCase()}</div> : null}
@@ -346,7 +380,7 @@ function Process({ scene, visual, colors, box }: FamilyProps) {
           </div>
           <div style={{ flex: 1 }}>
             <Headline text={text} width={box.width - 70} height={box.height - 100} maxSize={92} minSize={44} align="left" colors={colors} focus={focusSet(visual, 2)} reveal="lines" scene={scene} />
-            <div style={{ marginTop: 24, color: colors.accent, fontFamily: TYPE.sans, fontWeight: 800, fontSize: 24, letterSpacing: 4 }}>{visual.listLabel?.toUpperCase() ?? "URUTAN GAGASAN"}</div>
+            {visual.listLabel ? <div style={{ marginTop: 24, color: colors.accent, fontFamily: TYPE.sans, fontWeight: 800, fontSize: 24, letterSpacing: 4 }}>{visual.listLabel.toUpperCase()}</div> : null}
           </div>
         </div>
       )}
@@ -355,7 +389,7 @@ function Process({ scene, visual, colors, box }: FamilyProps) {
 }
 
 /** Metaphor/reflection grammar: one symbolic focal point, a quiet orbit and the actual narration. */
-function Metaphor({ scene, visual, role, colors, box }: FamilyProps) {
+function Metaphor({ scene, visual, colors, box }: FamilyProps) {
   const p = useAppear(0, MOTION.springCalm);
   const icon = visual.icon ? ICONS[visual.icon] : null;
   const text = stripMarks(scene.text);
@@ -365,21 +399,19 @@ function Metaphor({ scene, visual, role, colors, box }: FamilyProps) {
         <div style={{ position: "absolute", inset: 18, border: `1px solid ${colors.accent}33`, borderRadius: "50%" }} />
         {icon ? <LineIcon node={icon.icon} size={112} color={colors.accent} delay={4} strokeWidth={1.5} /> : <div style={{ fontFamily: TYPE.serif, fontSize: 150, color: colors.accent, lineHeight: 1 }}>“</div>}
       </div>
-      <Kicker text={role === "resolution" ? "RENUNGAN" : "GAGASAN INTI"} colors={colors} align="center" />
       <Headline text={text} width={box.width} height={box.height - 340} maxSize={88} minSize={44} align="center" colors={colors} focus={focusSet(visual, 1)} font={TYPE.serif} weight={700} letterSpacing={0} lineHeight={1.14} reveal="lines" scene={scene} delay={8} />
     </div>
   );
 }
 
 /** Story grammar: shows this beat's place in the full narrative without fabricating story details. */
-function Story({ scene, visual, role, index, count, colors, box }: FamilyProps) {
+function Story({ scene, visual, index, count, colors, box }: FamilyProps) {
   const p = useAppear(0, MOTION.springFirm);
   const text = stripMarks(scene.text);
-  const label = role === "hook" ? "AWAL CERITA" : role === "resolution" ? "PENUTUP" : role === "reveal" ? "TITIK BALIK" : "ALUR CERITA";
   return (
     <div data-visual="story" style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 40, width: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", color: colors.accent, fontFamily: TYPE.sans, fontWeight: 800, fontSize: 24, letterSpacing: 4 }}>
-        <span>{label}</span><span>{String(index + 1).padStart(2, "0")} / {String(count).padStart(2, "0")}</span>
+        <span /><span>{String(index + 1).padStart(2, "0")} / {String(count).padStart(2, "0")}</span>
       </div>
       <div style={{ height: 5, background: `${colors.text}25`, borderRadius: 4, overflow: "hidden" }}><div style={{ height: "100%", width: `${((index + 1) / Math.max(1, count)) * 100}%`, background: colors.accent, transform: `scaleX(${p})`, transformOrigin: "left" }} /></div>
       <div style={{ borderLeft: `4px solid ${colors.accent}`, paddingLeft: 34, opacity: p, transform: `translateX(${(1 - p) * 18}px)` }}>
