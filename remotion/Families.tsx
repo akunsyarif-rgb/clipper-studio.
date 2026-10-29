@@ -3,6 +3,8 @@
 import React from "react";
 import { Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { splitCause, type Family, type Layout } from "../lib/composition";
+import { chooseStoryVisual } from "../lib/story-visual";
+import { StoryVisual } from "./StoryVisuals";
 import { estimateHeavy, fitText, MOTION, TYPE, type FitOptions, type Measure } from "../lib/layout";
 import type { NarrativeRole } from "../lib/narrative";
 import { spokenFrames, type Scene, type StyleId } from "../lib/script";
@@ -158,6 +160,8 @@ export type FamilyProps = {
   colors: Colors;
   box: { width: number; height: number };
   layout?: Layout;
+  /** Accent objects from the Story Motion Lab above suitable scenes; off only when the creator turns them off. */
+  storyVisuals?: boolean;
 };
 
 const KICKER_BLOCK = 30 + 40;
@@ -421,7 +425,7 @@ function Story({ scene, visual, index, count, colors, box }: FamilyProps) {
   );
 }
 
-export function FamilyView(props: FamilyProps) {
+function FamilyBody(props: FamilyProps) {
   switch (props.family) {
     case "kinetic": return <Kinetic {...props} />;
     case "explainer": return <Explainer {...props} />;
@@ -432,4 +436,29 @@ export function FamilyView(props: FamilyProps) {
     case "story": return <Story {...props} />;
     default: return <Editorial {...props} />;
   }
+}
+
+const ACCENT_GAP = 32;
+
+/** The scene's composition, with the Story Motion Lab accent object above it when the scene's job calls for one. */
+export function FamilyView(props: FamilyProps) {
+  const { scene, visual, box, colors } = props;
+  const text = stripMarks(scene.text);
+  const kind = props.storyVisuals === false ? null : chooseStoryVisual({
+    family: props.family, layout: props.layout ?? "standard", role: props.role, template: visual.template,
+    occupied: !!scene.image || !!(visual.iconPinned && visual.icon),
+    causeEffect: visual.template !== "list" && splitCause(text) !== null,
+  });
+  // Too little height left for text after the object: skip the object, the text matters more.
+  const size = Math.min(320, Math.round(box.height * 0.3));
+  if (!kind || box.height - size - ACCENT_GAP < 560) return <FamilyBody {...props} />;
+  const centred = props.family === "editorial";
+  return (
+    <div data-accent={kind} style={{ display: "flex", flexDirection: "column", alignItems: centred ? "center" : "flex-start", gap: ACCENT_GAP }}>
+      <div style={{ height: size, display: "flex", alignItems: "center", justifyContent: "center", alignSelf: centred ? "center" : "flex-start" }}>
+        <StoryVisual kind={kind} size={size} tone={colors} />
+      </div>
+      <FamilyBody {...props} box={{ width: box.width, height: box.height - size - ACCENT_GAP }} />
+    </div>
+  );
 }

@@ -89,6 +89,8 @@ export type VideoProps = {
   brandMotion?: BrandMotion;
   /** Custom text watermark drawn over the whole video; absent, switched off or empty means none. */
   watermark?: Watermark;
+  /** Accent objects (floating point, rising steps, orbit, converging point) above suitable text scenes; on unless false. */
+  storyVisuals?: boolean;
 };
 
 const words = (s: string) => s.split(/\s+/).filter(Boolean);
