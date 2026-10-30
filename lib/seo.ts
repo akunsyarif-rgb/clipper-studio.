@@ -2,6 +2,7 @@
 // and this module checks it against each platform's rules before it is shown. Pure: the model call is lib/gemini.ts ask().
 // The AI knows no live trends: the creator's own "tren / musim" text is the only trend input, and the prompt says so.
 import { answerJson, ask, GeminiError, type CleanupOptions } from "./gemini";
+import { cleanAiCoverPrompt, cleanNegativePrompt, COVER_AI_ASK, COVER_NEG_ASK } from "./cover-prompt";
 
 export type SeoPlatform = "tiktok" | "instagram" | "youtube" | "x" | "linkedin";
 export const SEO_PLATFORMS: { id: SeoPlatform; label: string }[] = [
@@ -25,6 +26,8 @@ type FieldSpec = {
   words?: [number, number];
   /** Allowed number of list items or hashtags. */
   items?: [number, number];
+  /** Not part of the score or the rule checks (an extra the creator can do without). */
+  optional?: boolean;
 };
 
 type PlatformSpec = { label: string; brief: string[]; fields: FieldSpec[] };
@@ -83,6 +86,12 @@ const SPECS: Record<SeoPlatform, PlatformSpec> = {
     ],
   },
 };
+
+// Every platform also gets a cover-image prompt (and a negative prompt): the picture is made elsewhere, the prompt is always offered.
+for (const spec of Object.values(SPECS)) spec.fields.push(
+  { key: "coverPrompt", label: "Prompt foto sampul", kind: "text", ask: COVER_AI_ASK, optional: true, maxChars: 1400 },
+  { key: "coverNegative", label: "Negative prompt (sampul)", kind: "text", ask: COVER_NEG_ASK, optional: true, maxChars: 700 },
+);
 
 /** Tags that only add noise: never kept, on any platform. */
 const BANNED_TAGS = new Set(["fyp", "foryou", "foryoupage", "fy", "xyzbca", "fypシ", "fypage"]);
@@ -180,6 +189,13 @@ export function parseSeo(response: unknown, platform: SeoPlatform): SeoResult {
   let filled = 0;
   for (const f of spec.fields) {
     let value: string | string[];
+    if (f.optional) {
+      // The cover prompt: cleaned of buzzwords that make a picture look generated; no score, no rule checks. Absent = the plain prompt is used.
+      const t = cleanText(obj[f.key], 1600);
+      const v = f.key === "coverPrompt" ? cleanAiCoverPrompt(t).text : f.key === "coverNegative" ? (t ? cleanNegativePrompt(t) : "") : t;
+      if (v) cards.push({ key: f.key, label: f.label, kind: f.kind, value: v });
+      continue;
+    }
     if (f.kind === "text") {
       const t = cleanText(obj[f.key]);
       value = t;
