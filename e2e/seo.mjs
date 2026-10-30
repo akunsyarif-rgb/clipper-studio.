@@ -30,6 +30,7 @@ try {
   page.on("pageerror", e => pageErrors.push(e.message));
   await page.addInitScript(() => localStorage.setItem("clipper:gemini:v1", JSON.stringify({ apiKey: "k".repeat(30), model: "gemini-flash-latest", consent: true })));
   const prompts = [];
+  const seenCover = [];
   let mode = "good";
   await page.route("https://generativelanguage.googleapis.com/**", async route => {
     const body = JSON.parse(route.request().postData() ?? "{}");
@@ -39,7 +40,7 @@ try {
     const youtube = /YouTube Shorts/.test(prompt.split("PANDUAN")[0]);
     const pack = youtube
       ? { title: "J".repeat(55), description: lorem(120), thumbnailText: "BANGUN PAGI", pinComment: "Kamu bangun jam berapa?", seoReadinessScore: 97, quickFix: "Sebut kata kunci di detik 1." }
-      : { hookText: "Malas bangun pagi? Coba ini", voiceoverHook: "Kalau kamu susah bangun pagi, dengarkan ini.", caption: lorem(120), hashtags: ["#FYP", "#disiplin", "Bangun Pagi", "#produktif", "#jakarta", "#motivasi", "#ekstra"], thumbnailText: "BANGUN PAGI", searchTopics: ["cara bangun pagi", "disiplin pagi", "kebiasaan produktif"], seoReadinessScore: 88, quickFix: "Tambahkan pertanyaan di detik pertama." };
+      : { hookText: "Malas bangun pagi? Coba ini", voiceoverHook: "Kalau kamu susah bangun pagi, dengarkan ini.", caption: lorem(120), hashtags: ["#FYP", "#disiplin", "Bangun Pagi", "#produktif", "#jakarta", "#motivasi", "#ekstra"], thumbnailText: "BANGUN PAGI", searchTopics: ["cara bangun pagi", "disiplin pagi", "kebiasaan produktif"], coverPrompt: "Ultra-detailed 8k masterpiece photo of a tired person reaching for an alarm clock on a cluttered bedside table, cinematic lighting, glowing screen, soft window light", coverNegative: "blurry", seoReadinessScore: 88, quickFix: "Tambahkan pertanyaan di detik pertama." };
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(pack) }] } }] }) });
   });
 
@@ -396,6 +397,48 @@ try {
     assert(/Belum masuk/.test(await d3.p.getByTestId("history-sync").innerText()), "signed-out note");
     await d1.c.close(); await d2.c.close(); await d3.c.close();
     return `pulls ${calls.pull}, pushes ${calls.push}`;
+  });
+
+  await step("cover prompt: a plain prompt is always there from the content, the AI's version is cleaned of buzzwords, both copy, and it follows the platform", async () => {
+    const p = await (await browser.newContext({ permissions: ["clipboard-read", "clipboard-write"] })).newPage();
+    p.on("pageerror", e => pageErrors.push(e.message));
+    await p.goto(BASE); await p.getByTestId("fold-seo").waitFor({ timeout: 8000 }); await openFolds(p);
+    await p.getByTestId("title").fill("Gaji habis tanggal 5?");
+    await p.getByTestId("script").fill("Kamu pernah gaji habis tanggal 5? Aku juga. Coba pecah jadi tiga pos.\nPos satu untuk kebutuhan wajib.\nSimpan dan bagikan ya.");
+    await p.getByTestId("cover-section").waitFor({ timeout: 5000 });
+    // Without a key and before any AI call, the prompt is already there and fits the content.
+    const plain = await p.getByTestId("cover-prompt").innerText();
+    assert(/Subject: Gaji habis tanggal 5\?/.test(plain) && /One real-looking adult/.test(plain) && /Do not draw any text/.test(plain) && /9:16 \(1080x1920\)/.test(plain), "plain prompt from the content: " + plain.slice(0, 200));
+    assert(/plastic or waxy skin/.test(await p.getByTestId("cover-negative").innerText()), "negative prompt shown");
+    assert(!/ultra-detailed|8k|masterpiece|cinematic lighting/i.test(plain), "no buzzwords in the plain prompt");
+    await p.getByTestId("cover-copy").click();
+    assert((await p.evaluate(() => navigator.clipboard.readText())) === plain, "copy gives the prompt");
+    await p.getByTestId("seo-platform-linkedin").click();
+    assert(/4:5 \(1080x1350\)/.test(await p.getByTestId("cover-prompt").innerText()), "follows the platform's cover shape");
+    await p.getByTestId("seo-platform-tiktok").click();
+    await p.close();
+
+    // With the AI pack: its cover prompt is a card, cleaned, with the no-text rule and the standard negative terms added.
+    const a = await (await browser.newContext()).newPage();
+    await a.addInitScript(() => localStorage.setItem("clipper:gemini:v1", JSON.stringify({ apiKey: "k".repeat(30), model: "gemini-flash-latest", consent: true })));
+    await a.route("https://generativelanguage.googleapis.com/**", async route => {
+      const prompt = JSON.parse(route.request().postData() ?? "{}").contents?.[0]?.parts?.[0]?.text ?? "";
+      seenCover.push(prompt);
+      const pack = { hookText: "Gaji habis cepat?", voiceoverHook: "Kamu pernah gaji habis tanggal 5?", caption: lorem(120), hashtags: ["#gaji", "#hemat", "#keuangan"], thumbnailText: "GAJI HABIS?", searchTopics: ["hemat gaji", "atur gaji", "pos keuangan"], coverPrompt: "Ultra-detailed 8k masterpiece photo of a young man counting cash at a cluttered kitchen table, cinematic lighting, glowing phone, natural window light", coverNegative: "blurry", seoReadinessScore: 80, quickFix: "x" };
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(pack) }] } }] }) });
+    });
+    await a.goto(BASE); await a.getByTestId("fold-seo").waitFor({ timeout: 8000 }); await openFolds(a);
+    await a.getByTestId("script").fill("Kamu pernah gaji habis tanggal 5? Aku juga. Coba pecah jadi tiga pos.\nPos satu untuk kebutuhan wajib.\nSimpan dan bagikan ya.");
+    await a.getByTestId("seo-run").click();
+    await a.getByTestId("seo-card-coverPrompt").waitFor({ timeout: 10000 });
+    assert(/DILARANG memakai kata: ultra-detailed/.test(seenCover[0]) && /coverPrompt/.test(seenCover[0]), "the AI is asked for the cover prompt with the banned words");
+    const ai = await a.getByTestId("seo-text-coverPrompt").innerText();
+    assert(!/ultra-detailed|8k|masterpiece|cinematic lighting|glowing/i.test(ai) && /counting cash at a cluttered kitchen table/.test(ai) && /Do not draw any text/.test(ai), "AI prompt cleaned: " + ai);
+    assert(/^blurry, .*plastic or waxy skin/.test(await a.getByTestId("seo-text-coverNegative").innerText()), "negative prompt completed");
+    assert(/versi AI/i.test(await a.getByTestId("cover-section").innerText()), "points to the AI version");
+    assert(/92|88|80/.test(await a.getByTestId("seo-score").innerText()) && (await a.getByTestId("seo-check-failed").count()) === 0, "the cover prompt does not touch the score or the checks");
+    await a.getByTestId("seo-copy-coverPrompt").click();
+    await a.close();
   });
 
   await step("no uncaught page errors", async () => { assert(pageErrors.length === 0, pageErrors.join(" | ")); });

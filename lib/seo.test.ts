@@ -59,7 +59,7 @@ describe("parseSeo: TikTok", () => {
     expect(r.checks.every(c => c.ok)).toBe(true);
     expect(r.score).toBe(88);
     expect(r.quickFix).toBe("Sebut kata kunci di 3 detik pertama.");
-    expect(r.cards.map(c => c.key)).toEqual(SEO_FIELD_KEYS("tiktok"));
+    expect(r.cards.map(c => c.key)).toEqual(SEO_FIELD_KEYS("tiktok").filter(k => !k.startsWith("cover"))); // no cover prompt in this answer: no card, no penalty
   });
   it("removes #fyp and extra hashtags, normalises the rest, and reports what it did", () => {
     const r = parseSeo(gem({ ...good, hashtags: ["#FYP", "Disiplin Pagi", "#disiplinpagi", "#a1", "#b2", "#c3", "#d4", "#e5"] }), "tiktok");
@@ -125,5 +125,25 @@ describe("copy formats", () => {
     expect(t).toContain("Skor kesiapan SEO: 70/100");
     const j = JSON.parse(seoToJson(r));
     expect(j).toMatchObject({ platform: "x", hookTweet: "Disiplin bukan soal semangat.", keywords: ["#disiplin"], seoReadinessScore: 70, quickFix: "Tambah pertanyaan." });
+  });
+});
+
+describe("cover prompt in the pack", () => {
+  const base = { hookText: "Malas bangun pagi? Coba ini", voiceoverHook: "Kalau kamu susah bangun pagi, dengarkan ini.", caption: lorem(120), hashtags: ["#disiplin", "#produktif", "#bangunpagi"], thumbnailText: "BANGUN PAGI", searchTopics: ["cara bangun pagi", "disiplin pagi", "kebiasaan produktif"], seoReadinessScore: 80, quickFix: "x" };
+  it("is asked of every platform and is optional in the answer", () => {
+    for (const p of SEO_PLATFORMS) { expect(SEO_FIELD_KEYS(p.id)).toContain("coverPrompt"); expect(SEO_FIELD_KEYS(p.id)).toContain("coverNegative"); }
+    expect(seoPrompt({ topic: "t", transcript: "Naskah video yang cukup panjang untuk uji.", platform: "tiktok", audience: "", trends: "" })).toContain("DILARANG memakai kata: ultra-detailed");
+  });
+  it("is cleaned of buzzwords, always carries the no-text rule, and never changes the score or the checks", () => {
+    const withCover = parseSeo(gem({ ...base, coverPrompt: "Ultra-detailed 8k masterpiece photo of a man making coffee at a worn kitchen counter, cinematic lighting, glowing steam, natural window light", coverNegative: "blurry" }), "tiktok");
+    const without = parseSeo(gem(base), "tiktok");
+    expect(withCover.score).toBe(without.score);
+    expect(withCover.checks).toEqual(without.checks);
+    const cover = String(withCover.cards.find(c => c.key === "coverPrompt")!.value);
+    expect(cover).not.toMatch(/ultra-detailed|8k|masterpiece|cinematic lighting|glowing/i);
+    expect(cover).toContain("making coffee at a worn kitchen counter");
+    expect(cover).toMatch(/Do not draw any text/);
+    expect(String(withCover.cards.find(c => c.key === "coverNegative")!.value)).toMatch(/^blurry, .*plastic or waxy skin/);
+    expect(seoToText(withCover)).toContain("Prompt foto sampul");
   });
 });

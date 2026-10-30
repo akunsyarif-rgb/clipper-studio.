@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { GeminiError } from "@/lib/gemini";
 import { getAccess } from "@/lib/gemini-access";
 import { makeSeoPack, SEO_PLATFORMS, seoProblem, seoToJson, seoToText, type SeoPlatform, type SeoResult } from "@/lib/seo";
+import { buildCoverPrompt } from "@/lib/cover-prompt";
 import { useGeminiAccess } from "./useGeminiAccess";
 
 /** Copies text; falls back to a hidden textarea where the clipboard API is missing (older Safari, insecure pages). */
@@ -56,6 +57,8 @@ export default function SeoPanel({ transcript, topic, language, seed, stored, st
   useEffect(() => { if (!nicheTouched && !seeded.current) setNiche(topic); }, [topic, nicheTouched]);
 
   const result = results[platform];
+  // The plain cover prompt is built in code from the content, so it is there before (and without) any AI call.
+  const cover = useMemo(() => buildCoverPrompt({ topic: niche, title: topic, transcript, platform, audience }), [niche, topic, transcript, platform, audience]);
   const problem = seoProblem({ transcript, platform });
 
   async function run() {
@@ -89,6 +92,19 @@ export default function SeoPanel({ transcript, topic, language, seed, stored, st
       <label className="field-label">Niche / topik<input value={niche} maxLength={160} onChange={e => { setNiche(e.target.value); setNicheTouched(true); }} placeholder="Contoh: disiplin pagi, resep sehat, tips freelance" data-testid="seo-topic" /></label>
       <label className="field-label">Target audiens dan lokasi<input value={audience} maxLength={200} onChange={e => setAudience(e.target.value)} placeholder="Contoh: pekerja muda 22-30 tahun, Jakarta" data-testid="seo-audience" /></label>
       <label className="field-label">Konteks / tren / musim <span className="field-hint">opsional, tulis sendiri</span><input value={trends} maxLength={300} onChange={e => setTrends(e.target.value)} placeholder="Contoh: Ramadan, tahun ajaran baru, diskon 11.11" data-testid="seo-trends" /></label>
+      <div className="seo-card" data-testid="cover-section">
+        <div className="seo-card-head"><b>Prompt foto sampul</b>
+          <small>{cover.aspect.ratio} · {cover.aspect.size} · {cover.aspect.use}</small>
+        </div>
+        <small className="field-hint">Selalu tersedia, disusun dari isi video ini. Buat gambarnya di alat lain; teks judul ditambahkan di editor video, bukan di gambar. {result?.cards.some(c => c.key === "coverPrompt") ? "Versi AI (yang lebih menyesuaikan isi) ada di kartu hasil di bawah." : "Jalankan paket SEO untuk mendapat versi AI yang lebih menyesuaikan isi."}</small>
+        <p className="seo-text" style={{ whiteSpace: "pre-wrap" }} data-testid="cover-prompt">{cover.prompt}</p>
+        <div className="range-tools">
+          <button type="button" onClick={() => void copy("cover", cover.prompt)} data-testid="cover-copy">{copied === "cover" ? "Tersalin ✓" : copied === "gagal:cover" ? "Gagal menyalin" : "Salin prompt"}</button>
+          <button type="button" onClick={() => void copy("cover-neg", cover.negative)} data-testid="cover-copy-negative">{copied === "cover-neg" ? "Tersalin ✓" : copied === "gagal:cover-neg" ? "Gagal menyalin" : "Salin negative prompt"}</button>
+        </div>
+        <small className="field-hint" data-testid="cover-negative">Negative prompt: {cover.negative}</small>
+        <small className="field-hint">Aturannya mengurangi tampilan &quot;gambar AI&quot; (kulit plastik, cahaya neon, simbol mengambang), tapi tidak menjamin. Periksa tangan, wajah, dan teks pada hasilnya, dan pilih yang paling wajar.</small>
+      </div>
       {access === null
         ? <small data-testid="seo-needs-key"><b>Belum ada kunci AI.</b> Masuk ke akun lalu simpan kunci di panel AI (atau masukkan di panel transkrip di perangkat ini).</small>
         : <div className="range-tools"><button onClick={() => void run()} disabled={busy || !!problem} data-testid="seo-run">{busy ? "AI menulis…" : result ? `Buat ulang untuk ${SEO_PLATFORMS.find(p => p.id === platform)?.label}` : `Buat paket untuk ${SEO_PLATFORMS.find(p => p.id === platform)?.label}`}</button></div>}
