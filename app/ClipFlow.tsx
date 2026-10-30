@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { formatTime } from "@/lib/clip";
 import { limitsForVideo, suggestMoments } from "@/lib/clip-assist";
-import { planChunks, transcribeLong } from "@/lib/ai-transcribe";
+import { planChunks, transcribeLong, type TimedLine } from "@/lib/ai-transcribe";
 import { releaseAsr } from "@/lib/asr/client";
 import { extractMp3Chunks } from "@/lib/engine";
 import { GeminiError } from "@/lib/gemini";
@@ -38,10 +38,12 @@ export default function ClipFlow({ file, duration, video, busy, room, onAdd, onM
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const full = useRef<Transcript | null>(null);
+  // Parts of this video already transcribed: a retry after an error continues from them instead of starting over.
+  const doneParts = useRef(new Map<string, TimedLine[]>());
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
   // A different video starts over.
-  useEffect(() => { setItems(null); setError(""); setNote(""); full.current = null; }, [file]);
+  useEffect(() => { setItems(null); setError(""); setNote(""); full.current = null; doneParts.current = new Map(); }, [file]);
 
   const working = phase !== "idle";
   const parts = planChunks(duration).length;
@@ -59,7 +61,7 @@ export default function ClipFlow({ file, duration, video, busy, room, onAdd, onM
       if (t) setNote("Memakai transkrip video ini yang sudah tersimpan (tanpa mendengarkan ulang).");
       else {
         setPhase("listening");
-        t = await transcribeLong(duration, (chunks, onChunk) => extractMp3Chunks(file, chunks, onChunk), o, { signal: ctl.signal, onProgress: (done, total) => setProgress({ done, total }) });
+        t = await transcribeLong(duration, (chunks, onChunk) => extractMp3Chunks(file, chunks, onChunk), o, { signal: ctl.signal, done: doneParts.current, onProgress: (done, total) => setProgress({ done, total }) });
         void saveCachedTranscript(file, range, cacheModel, language, t);
       }
       full.current = t;
@@ -70,7 +72,7 @@ export default function ClipFlow({ file, duration, video, busy, room, onAdd, onM
         ...(m.reachedBack ? { note: `Awal dimundurkan ${m.reachedBack} kalimat karena kalimat pilihan AI hanya melanjutkan kalimat sebelumnya. Bila kurang pas, geser lagi di "Sesuaikan waktu".` } : {}) })));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setError(/no audio/i.test(msg) ? "Video ini tidak punya suara, jadi tidak ada yang bisa dianalisis." : e instanceof GeminiError ? e.message : `Analisis gagal: ${msg}`);
+      setError(/no audio/i.test(msg) ? "Video ini tidak punya suara, jadi tidak ada yang bisa dianalisis." : e instanceof GeminiError ? `${e.message}${doneParts.current.size ? ` Bagian yang sudah selesai (${doneParts.current.size}) tersimpan: tekan "Analisis video & sarankan klip" lagi untuk melanjutkan dari situ.` : ""}` : `Analisis gagal: ${msg}`);
     } finally { setPhase("idle"); }
   }
 

@@ -14,8 +14,9 @@ const dir = mkdtempSync(join(tmpdir(), "clipflow-e2e-"));
 const video = join(dir, "video-panjang.mp4");
 const shortVideo = join(dir, "video-pendek.mp4");
 const photo = join(dir, "foto.png");
+const longVideo = join(dir, "video-250s.mp4");
 execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=0x228844:s=270x480", "-frames:v", "1", photo]);
-for (const [path, seconds] of [[video, 100], [shortVideo, 30]]) execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", `testsrc=size=320x240:rate=30:duration=${seconds}`, "-f", "lavfi", "-i", `sine=frequency=300:duration=${seconds}`, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", path]);
+for (const [path, seconds] of [[video, 100], [shortVideo, 30], [longVideo, 250]]) execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", `testsrc=size=320x240:rate=30:duration=${seconds}`, "-f", "lavfi", "-i", `sine=frequency=300:duration=${seconds}`, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", path]);
 
 const server = spawn("npx", ["next", "start", "-p", String(PORT)], { stdio: ["ignore", "pipe", "pipe"], detached: true });
 const results = [];
@@ -35,7 +36,7 @@ const LINES = [
   { start: 55, end: 80, text: "Tips kedua sisihkan tabungan di awal bulan." },
 ];
 async function until(check, message) { for (let i = 0; i < 80; i++) { if (await check().catch(() => false)) return; await new Promise(r => setTimeout(r, 100)); } throw new Error(message); }
-const seen = { audio: [], moments: 0, status: 0, captions: 0, ytMomentLines: 0 };
+const seen = { audio: [], moments: 0, status: 0, captions: 0, ytMomentLines: 0, failAudioAt: 0, audioRequests: 0 };
 /** Captions of a 100 s video, a line every 5 s. */
 const CAPTIONS = Array.from({ length: 20 }, (_, i) => ({ start: i * 5, end: i * 5 + 4, text: `Kalimat ke ${i} tentang topik penting.` }));
 const pastedText = CAPTIONS.map(l => `${Math.floor(l.start / 60)}:${String(l.start % 60).padStart(2, "0")}\n${l.text}`).join("\n");
@@ -67,6 +68,10 @@ try {
       const text = parts.find(p => p.type === "text").text;
       const answer = obj => send(200, { choices: [{ message: { content: JSON.stringify(obj) } }] });
       const audio = parts.find(p => p.type === "input_audio");
+      if (audio && seen.failAudioAt) {
+        // Fails the n-th audio request of the run (the creator's service has a problem), once.
+        if (++seen.audioRequests === seen.failAudioAt) { seen.failAudioAt = 0; return send(403, { error: { message: "ditolak" } }); }
+      }
       if (audio) {
         const raw = Buffer.from(audio.input_audio.data, "base64");
         seen.audio.push({ format: audio.input_audio.format, bytes: raw.length, head: raw.subarray(0, 3).toString("latin1") });
@@ -178,6 +183,27 @@ try {
     assert((await page.getByTestId("timing-lost").count()) === 0, "caption timing still follows the transcript after snapping");
     await page.reload();
     assert((await page.getByTestId("handoff-note").count()) === 0, "the hand-off is used once");
+  });
+
+  await step("a long video is listened to in parts of at most two minutes; a part that fails does not throw the finished parts away", async () => {
+    const p = await ctx.newPage();
+    p.on("pageerror", e => pageErrors.push(e.message));
+    await p.goto(BASE);
+    await p.getByTestId("file-input").setInputFiles(longVideo);
+    await p.getByText("Video siap").waitFor({ timeout: 15000 }).catch(() => undefined);
+    await p.getByTestId("flow-consent").waitFor({ timeout: 15000 });
+    await p.getByTestId("flow-consent").check();
+    assert(/±2 bagian audio/.test(await p.getByTestId("clip-flow").innerText()), "250 s = 2 parts: " + (await p.getByTestId("clip-flow").innerText()).slice(0, 300));
+    seen.audio.length = 0; seen.audioRequests = 0; seen.failAudioAt = 2;
+    await p.getByTestId("flow-analyze").click();
+    await p.getByTestId("flow-error").waitFor({ timeout: 120000 });
+    const msg = await p.getByTestId("flow-error").innerText();
+    assert(/^Bagian 2 dari 2:/.test(msg) && /tersimpan/.test(msg) && /melanjutkan/.test(msg), "names the part and says the finished one is kept: " + msg);
+    const before = seen.audio.length;
+    await p.getByTestId("flow-analyze").click();
+    await p.getByTestId("flow-item").first().waitFor({ timeout: 120000 });
+    assert(seen.audio.length - before === 1, "only the failed part is sent again: " + (seen.audio.length - before));
+    await p.close();
   });
 
   await step("from a YouTube link: captions are refused, the pasted transcript works, AI suggests, and the wrong file is refused", async () => {

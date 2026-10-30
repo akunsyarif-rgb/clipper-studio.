@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CHUNK_SECONDS, parseTimedLines, planChunks, toBase64, toSeconds, transcribeChunk, transcribeLong, transcribePrompt } from "./ai-transcribe";
+import { CHUNK_SECONDS, CHUNK_TIMEOUT_MS, parseTimedLines, planChunks, toBase64, toSeconds, transcribeChunk, transcribeLong, transcribePrompt } from "./ai-transcribe";
 
 const gem = (obj: unknown) => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] } }] });
 const ok = (j: unknown) => new Response(JSON.stringify(j), { status: 200 });
@@ -9,8 +9,9 @@ const base = { apiKey: "", model: "m", language: "id", retryDelaysMs: [] as numb
 describe("planning the parts", () => {
   it("cuts a long video into equal parts and a short one into one", () => {
     expect(planChunks(100)).toEqual([{ index: 0, start: 0, duration: 100 }]);
-    expect(planChunks(19 * 60 + 18)).toHaveLength(5);
-    expect(planChunks(600).map(c => [c.start, c.duration])).toEqual([[0, 240], [240, 240], [480, 120]]);
+    expect(planChunks(19 * 60 + 18)).toHaveLength(10);
+    expect(planChunks(20 * 60 + 48)).toHaveLength(11); // the 20-minute video of the bug report: 11 parts of at most 2 minutes
+    expect(planChunks(600).map(c => [c.start, c.duration])).toEqual([[0, 120], [120, 120], [240, 120], [360, 120], [480, 120]]);
   });
   it("folds a tiny last piece into the part before it, and covers the video exactly", () => {
     const p = planChunks(CHUNK_SECONDS * 2 + 10);
@@ -72,7 +73,7 @@ describe("a whole video", () => {
   const mp3 = (n: number) => new Uint8Array([n, n, n]);
   /** Cuts fake parts; each part's "audio" is its index byte. */
   const cutter = (log: string[] = []) => async (chunks: { index: number }[], onChunk: (i: number, d: Uint8Array) => Promise<void>) => {
-    for (const c of chunks) { log.push(`cut${c.index}`); await onChunk(c.index, mp3(c.index)); }
+    for (let n = 0; n < chunks.length; n++) { log.push(`cut${chunks[n].index}`); await onChunk(n, mp3(chunks[n].index)); }
   };
   const answerFor = (data: string) => {
     const idx = atob(data).charCodeAt(0);
@@ -85,8 +86,8 @@ describe("a whole video", () => {
 
   it("puts each part's lines on the video's timeline, in order, with word times", async () => {
     const t = await transcribeLong(600, cutter(), { ...base, transport });
-    expect(t.segments.map(s => s.text)).toEqual(["bagian 0 a", "bagian 0 b", "bagian 1 a", "bagian 1 b", "bagian 2 a", "bagian 2 b"]);
-    expect(t.segments.map(s => s.start)).toEqual([1, 5, 241, 245, 481, 485]);
+    expect(t.segments.map(s => s.text).slice(0, 6)).toEqual(["bagian 0 a", "bagian 0 b", "bagian 1 a", "bagian 1 b", "bagian 2 a", "bagian 2 b"]);
+    expect(t.segments.map(s => s.start)).toEqual([1, 5, 121, 125, 241, 245, 361, 365, 481, 485]);
     expect(t.duration).toBe(600);
     expect(t.language).toBe("indonesian");
     expect(t.segments[0].words.length).toBe(3);
@@ -105,7 +106,44 @@ describe("a whole video", () => {
   it("fails as a whole and names the part when one cannot be done", async () => {
     let n = 0;
     const flaky = async (p: object) => (++n === 2 ? bad(403, { status: "PERMISSION_DENIED", message: "x" }) : transport(p));
-    await expect(transcribeLong(900, cutter(), { ...base, transport: flaky })).rejects.toMatchObject({ kind: "key", message: expect.stringMatching(/^Bagian 2 dari 4: /) });
+    await expect(transcribeLong(900, cutter(), { ...base, transport: flaky })).rejects.toMatchObject({ kind: "key", message: expect.stringMatching(/^Bagian 2 dari 8: /) });
+  });
+  it("gives each part time to answer (a bit more than the server's own limit), not the 60 s of a small question", async () => {
+    const seen: number[] = [];
+    const watching = async (p: object, o: { timeoutMs: number }) => { seen.push(o.timeoutMs); return transport(p); };
+    await transcribeLong(100, cutter(), { ...base, transport: watching });
+    expect(seen).toEqual([CHUNK_TIMEOUT_MS]);
+    expect(CHUNK_TIMEOUT_MS).toBeGreaterThan(110_000);
+  });
+  it("tries a part that was too slow once more, and says which part when it is slow twice", async () => {
+    let n = 0;
+    const slowOnce = async (p: object, o: { signal: AbortSignal }) => { if (++n === 1) { const e = new Error("abort"); await new Promise((_, rej) => o.signal.addEventListener("abort", () => rej(e))); } return transport(p); };
+    const t = await transcribeLong(100, cutter(), { ...base, transport: slowOnce, timeoutMs: 20 });
+    expect(t.segments).toHaveLength(2);
+    expect(n).toBe(2);
+    const never = async (_p: object, o: { signal: AbortSignal }) => new Promise<Response | null>((_, rej) => o.signal.addEventListener("abort", () => rej(new Error("abort"))));
+    await expect(transcribeLong(100, cutter(), { ...base, transport: never, timeoutMs: 20 })).rejects.toMatchObject({ kind: "timeout", message: expect.stringMatching(/^Bagian 1 dari 1: Gemini terlalu lama/) });
+  });
+  it("continues from the parts already done after a failure instead of starting over", async () => {
+    const done = new Map<string, { start: number; end: number; text: string }[]>();
+    let n = 0;
+    const log: string[] = [];
+    const failsThird = async (p: object) => (++n === 3 ? bad(403, { status: "PERMISSION_DENIED", message: "x" }) : transport(p));
+    await expect(transcribeLong(480, cutter(log), { ...base, transport: failsThird }, { done })).rejects.toBeDefined();
+    const kept = done.size;
+    expect(kept).toBeGreaterThanOrEqual(2);
+    log.length = 0;
+    const sent: number[] = [];
+    const counting = async (p: object) => { sent.push(1); return transport(p); };
+    const t = await transcribeLong(480, cutter(log), { ...base, transport: counting }, { done });
+    expect(sent.length).toBe(4 - kept);
+    expect(log.length).toBe(4 - kept);
+    expect(t.segments.length).toBe(8);
+    expect(t.segments.map(s => s.start)).toEqual([1, 5, 121, 125, 241, 245, 361, 365]);
+    // Everything done already: nothing is cut or sent.
+    log.length = 0; sent.length = 0;
+    await transcribeLong(480, cutter(log), { ...base, transport: counting }, { done });
+    expect(log).toEqual([]); expect(sent).toEqual([]);
   });
   it("stops when cancelled", async () => {
     const ctl = new AbortController();
