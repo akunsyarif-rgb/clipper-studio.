@@ -9,12 +9,22 @@ import {
   type Filter, type FormatId, type HubAsset, type PlatformId,
 } from "@/lib/content-hub";
 import CloudAccount from "./CloudAccount";
-import HistoryPanel from "./HistoryPanel";
+import HistoryPanel, { EntryDetail } from "./HistoryPanel";
+import { loadHistory, onHistoryChange } from "@/lib/history-store";
+import type { HistoryEntry } from "@/lib/history";
+import { SEO_PLATFORMS } from "@/lib/seo";
 import "./content-hub.css";
 
 const api = createHubApi();
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 const VIEW_KEY = "clipper:hub:view";
+
+/** The production notes of a video: the entry it was saved from, or (older uploads) the one with the same title. */
+function noteFor(a: HubAsset, notes: HistoryEntry[]): HistoryEntry | null {
+  const t = a.title.trim().toLowerCase();
+  return (a.historyId ? notes.find(n => n.id === a.historyId) : null) ?? notes.find(n => n.title.trim().toLowerCase() === t) ?? null;
+}
+const seoLabels = (n: HistoryEntry | null) => (n ? SEO_PLATFORMS.filter(p => n.seo[p.id]).map(p => p.label) : []);
 
 async function loadAll(): Promise<HubAsset[]> {
   const out: HubAsset[] = [];
@@ -40,6 +50,7 @@ export default function HubLibrary() {
   const [confirm, setConfirm] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const [notes, setNotes] = useState<HistoryEntry[]>([]);
   const [tab, setTab] = useState<"video" | "catatan">("video");
 
   useEffect(() => { const sync = () => { setUser(cloud.user()); setReady(true); }; sync(); return cloud.subscribe(sync); }, []);
@@ -53,6 +64,14 @@ export default function HubLibrary() {
     try { setAssets(await loadAll()); } catch (e) { setAssets(prev => prev ?? []); setError(explainHubError(e)); }
   }, []);
   useEffect(() => { if (user) { setAssets(null); void reload(); } else setAssets(null); }, [user, reload]);
+
+  useEffect(() => {
+    let alive = true;
+    const load = () => { void loadHistory().then(l => { if (alive) setNotes(l); }).catch(() => {}); };
+    load();
+    const off = onHistoryChange(load);
+    return () => { alive = false; off(); };
+  }, [user]);
 
   const counts = useMemo(() => countByPlatform(assets ?? []), [assets]);
   const shown = useMemo(() => filterAssets(assets ?? [], filter), [assets, filter]);
@@ -137,14 +156,17 @@ export default function HubLibrary() {
             return <article key={a.id} className={"hub-item" + (gone ? " gone" : "")} data-testid="hub-item">
               <button className="hub-thumb" onClick={() => setOpen(a.id)} aria-label={`Buka ${a.title}`}>
                 {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed R2 URL, nothing for next/image to optimise */}
-                {a.thumbUrl ? <img src={a.thumbUrl} alt="" loading="lazy" /> : <span className="ph">{gone ? "File dihapus" : live ? "Tanpa pratinjau" : ""}</span>}
+                {a.thumbUrl ? <img src={a.thumbUrl} alt="" loading="lazy" />
+                  : a.previewUrl ? <video src={a.previewUrl + "#t=0.1"} muted playsInline preload="metadata" aria-hidden="true" tabIndex={-1} />
+                  : <span className="ph">{gone ? "File dihapus" : live ? "Tanpa pratinjau" : ""}</span>}
                 {a.durationSeconds !== null && <span className="hub-dur">{formatDuration(a.durationSeconds)}</span>}
                 {a.status === "uploading" && <span className="hub-badge">Belum selesai</span>}
                 {a.status === "failed" && <span className="hub-badge bad">Gagal</span>}
                 {a.status === "deleting" && <span className="hub-badge bad">Menghapus</span>}
               </button>
               <div className="hub-title">{a.title}</div>
-              <div className="hub-meta">{platformLabel(a.platform)} · {formatLabel(a.contentFormat)}<br />{formatBytes(a.fileSize)} · {fmtDate(a.createdAt)}{gone && a.fileDeletedAt ? ` · dihapus ${fmtDate(a.fileDeletedAt)}` : ""}</div>
+              <div className="hub-meta">{platformLabel(a.platform)} · {formatLabel(a.contentFormat)}<br />{formatBytes(a.fileSize)} · {fmtDate(a.createdAt)}{gone && a.fileDeletedAt ? ` · dihapus ${fmtDate(a.fileDeletedAt)}` : ""}
+                {(() => { const l = seoLabels(noteFor(a, notes)); return l.length ? <><br /><span className="hub-notes-badge" data-testid="hub-seo-badge">SEO: {l.join(", ")}</span></> : null; })()}</div>
               {confirm === a.id
                 ? <div className="hub-confirm" data-testid="hub-confirm"><p>Hapus file dari cloud? Judul dan kategori tetap tersimpan, tetapi videonya tidak bisa dipulihkan.</p>
                   <div className="hub-actions"><button className="hub-btn small danger" disabled={busy === a.id} onClick={() => void remove(a)} data-testid="hub-confirm-delete">{busy === a.id ? "Menghapus…" : "Hapus file"}</button><button className="hub-btn small" onClick={() => setConfirm(null)}>Batal</button></div></div>
@@ -159,12 +181,12 @@ export default function HubLibrary() {
       </>}
     </>}
 
-    {current && <Detail key={current.id} asset={current} onClose={() => setOpen(null)} onUpdate={c => update(current, c)} onDownload={() => void download(current)} />}
+    {current && <Detail key={current.id} asset={current} note={noteFor(current, notes)} onClose={() => setOpen(null)} onUpdate={c => update(current, c)} onDownload={() => void download(current)} />}
   </main>;
 }
 
 /** One video: playback (when the file exists), editable title / platform / format. */
-function Detail({ asset, onClose, onUpdate, onDownload }: { asset: HubAsset; onClose: () => void; onUpdate: (c: { title?: string; platform?: PlatformId; contentFormat?: FormatId }) => Promise<void>; onDownload: () => void }) {
+function Detail({ asset, note, onClose, onUpdate, onDownload }: { asset: HubAsset; note: HistoryEntry | null; onClose: () => void; onUpdate: (c: { title?: string; platform?: PlatformId; contentFormat?: FormatId }) => Promise<void>; onDownload: () => void }) {
   const [src, setSrc] = useState("");
   const [err, setErr] = useState("");
   const [title, setTitle] = useState(asset.title);
@@ -190,6 +212,10 @@ function Detail({ asset, onClose, onUpdate, onDownload }: { asset: HubAsset; onC
       </div>
       <p className="hub-meta" style={{ marginTop: 10 }}>{asset.fileName}<br />{formatBytes(asset.fileSize)}{asset.durationSeconds !== null ? ` · ${formatDuration(asset.durationSeconds)}` : ""}{asset.width && asset.height ? ` · ${asset.width}×${asset.height}` : ""} · {fmtDate(asset.createdAt)}</p>
       {asset.status === "ready" && <div className="hub-row"><button className="hub-btn solid" onClick={onDownload}>Unduh</button></div>}
+      <div className="hub-notes" data-testid="hub-notes">
+        <h3>Paket SEO, prompt &amp; naskah</h3>
+        {note ? <EntryDetail e={note} /> : <p className="hub-note">Belum ada catatan untuk video ini. Paket SEO dibuat di Studio Motion atau Clipper (bagian Paket SEO &amp; distribusi); jika ada, otomatis muncul di sini.</p>}
+      </div>
     </div>
   </div>;
 }

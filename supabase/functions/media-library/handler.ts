@@ -11,7 +11,7 @@ export type Status = "uploading" | "ready" | "failed" | "deleting" | "deleted";
 type Row = {
   id: string; user_id: string; title: string; file_name: string; mime_type: string; file_size: number; duration_seconds: number | null;
   width: number | null; height: number | null; source: string; object_key: string; status: Status; multipart_upload_id: string | null;
-  created_at: string; updated_at: string; file_deleted_at: string | null; platform: string; content_format: string; thumb_key: string | null;
+  created_at: string; updated_at: string; file_deleted_at: string | null; platform: string; content_format: string; thumb_key: string | null; history_id: string | null;
 };
 
 const MIB = 1024 * 1024;
@@ -34,6 +34,7 @@ export const FORMATS = ["shorts", "reels", "long_form", "story", "video"] as con
 const THUMB_MAX_BYTES = 512 * 1024;
 const THUMB_TTL = 60 * 60;
 const EXT: Record<string, string> = { "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov" };
+const HISTORY_ID = /^[A-Za-z0-9:._-]{1,80}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const CORS: Record<string, string> = {
@@ -66,7 +67,7 @@ const int = (v: unknown, min: number, max: number): number | null => { const n =
 const publicAsset = (r: Row) => ({
   id: r.id, title: r.title, fileName: r.file_name, mimeType: r.mime_type, fileSize: r.file_size, durationSeconds: r.duration_seconds,
   width: r.width, height: r.height, source: r.source, status: r.status, createdAt: r.created_at, updatedAt: r.updated_at, fileDeletedAt: r.file_deleted_at,
-  platform: r.platform, contentFormat: r.content_format, hasThumb: !!r.thumb_key,
+  platform: r.platform, contentFormat: r.content_format, hasThumb: !!r.thumb_key, historyId: r.history_id,
 });
 const pick = <T extends string>(v: unknown, allowed: readonly T[]): T | null => (typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : null);
 const cleanTitle = (v: unknown) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
@@ -139,6 +140,8 @@ async function route(req: Request, env: Env, fetchImpl: typeof fetch, now: () =>
       const platform = msg.platform === undefined ? "uncategorized" : pick(msg.platform, PLATFORMS);
       const contentFormat = msg.contentFormat === undefined ? "video" : pick(msg.contentFormat, FORMATS);
       if (!platform || !contentFormat) throw fail(400, "BAD_CATEGORY", "Kategori tidak dikenal.");
+      const historyId = msg.historyId === undefined || msg.historyId === null ? null : (typeof msg.historyId === "string" && HISTORY_ID.test(msg.historyId) ? msg.historyId : undefined);
+      if (historyId === undefined) throw fail(400, "BAD_HISTORY", "Tautan catatan tidak valid.");
       const id = crypto.randomUUID();
       const prefix = `u/${uid}/${id}/${crypto.randomUUID().replace(/-/g, "")}`, objectKey = `${prefix}.${EXT[mimeType]}`;
       const row = await one(await db("media_assets", {
@@ -147,7 +150,7 @@ async function route(req: Request, env: Env, fetchImpl: typeof fetch, now: () =>
           id, user_id: uid, title: cleanTitle(msg.title) || fileName.replace(/\.[^.]+$/, ""),
           file_name: fileName, mime_type: mimeType, file_size: fileSize, duration_seconds: num(msg.durationSeconds, 0, 86_400 * 7),
           width: int(msg.width, 1, 16_384), height: int(msg.height, 1, 16_384), source, object_key: objectKey, status: "uploading", platform, content_format: contentFormat,
-          thumb_key: msg.thumbnail === true ? `${prefix}-thumb.jpg` : null,
+          thumb_key: msg.thumbnail === true ? `${prefix}-thumb.jpg` : null, history_id: historyId,
         }),
       }));
       if (!row) throw new Error("db");
@@ -256,6 +259,8 @@ async function route(req: Request, env: Env, fetchImpl: typeof fetch, now: () =>
       const assets = await Promise.all(rows.map(async r => ({
         ...publicAsset(r),
         thumbUrl: r.status === "ready" && r.thumb_key ? await store.getUrl(r.thumb_key, "thumbnail.jpg", "image/jpeg", THUMB_TTL, true) : null,
+        // No thumbnail (the browser could not draw one): the app shows the video's own first frame from this short-lived URL.
+        previewUrl: r.status === "ready" && !r.thumb_key ? await store.getUrl(r.object_key, r.file_name, r.mime_type, THUMB_TTL, true) : null,
       })));
       return reply(200, { assets });
     }

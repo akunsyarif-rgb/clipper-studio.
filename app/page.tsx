@@ -55,7 +55,7 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [phase, setPhase] = useState<"idle" | "loading" | "encoding">("idle");
   const [engineReady, setEngineReady] = useState(false);
-  const [result, setResult] = useState<{ url: string; name: string; size: number; label: string; seconds?: number; w?: number; h?: number } | null>(null);
+  const [result, setResult] = useState<{ url: string; name: string; size: number; label: string; seconds?: number; w?: number; h?: number; historyId?: string } | null>(null);
   const [lastJob, setLastJob] = useState<Job | null>(null);
   const [errorDetail, setErrorDetail] = useState("");
   const [yt, setYt] = useState<YouTubeRef | null>(null);
@@ -199,7 +199,7 @@ export default function Home() {
       if (job.after) { await job.after(blob); return; }
       const { width, height } = outputSize(aspect, quality);
       const name = exportFileName(file.name, aspect, quality, job.start), label = `${width}×${height} · ${formatTime(job.duration)}`;
-      setResult({ url: URL.createObjectURL(blob), name, size: blob.size, label, seconds: job.duration, w: width, h: height });
+      setResult({ url: URL.createObjectURL(blob), name, size: blob.size, label, seconds: job.duration, w: width, h: height, historyId: clipId(file.name, job.start, job.duration) });
       historyBase.current = { id: clipId(file.name, job.start, job.duration), kind: "clip", title: file.name.replace(/\.[^.]+$/, "").slice(0, 80), script: "" };
       void updateHistory(l => logRender(l, { ...historyBase.current!, now: Date.now() }, { name, size: blob.size, label }));
       say("MP4 berhasil dibuat di perangkat ini. Simpan hasilnya sebelum menutup tab.");
@@ -291,7 +291,7 @@ export default function Home() {
       <button className="primary-button" disabled={!file||!duration||busy||asrBusy} onClick={exportCurrent} data-testid="export"><span>{busy?"Sedang memproses…":`Ekspor klip MP4 (${aspect}, ${quality}p)`}</span><svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
       {!busy && !asrBusy && lastJob && !result && <button className="secondary-button" onClick={() => runExport(lastJob)} data-testid="retry">↻ Ulangi ekspor terakhir</button>}
       {result&&<div className="download-card" data-testid="result"><span className="download-check">✓</span><div><strong>Video selesai dibuat</strong><span>{result.label} · {formatBytes(result.size)}</span></div><a className="download-button" href={result.url} download={result.name} data-testid="download" onClick={() => { const b = historyBase.current; if (b) void updateHistory(l => logDownload(l, { ...b, now: Date.now() }, { name: result.name, size: result.size, label: result.label })); }}>Simpan MP4 ↓</a></div>}
-      {result&&<SaveToHub key={result.url} getBlob={() => fetch(result.url).then(r => r.blob())} fileName={result.name} title={result.name.replace(/\.[^.]+$/, "")} source="clipper" seconds={result.seconds} width={result.w} height={result.h} />}
+      {result&&<SaveToHub key={result.url} getBlob={() => fetch(result.url).then(r => r.blob())} fileName={result.name} title={result.name.replace(/\.[^.]+$/, "")} source="clipper" seconds={result.seconds} width={result.w} height={result.h} historyId={result.historyId} />}
       {result&&<div className="result-tools"><video src={result.url} controls playsInline preload="metadata" className="result-video"/><button className="text-button" onClick={share}>Bagikan / simpan ke Photos</button></div>}
       {message&&<div className={"notice " + (isError ? "notice-error" : "")} role={isError ? "alert" : "status"} data-testid="message">{message}</div>}{errorDetail&&<details className="error-details"><summary>Detail teknis</summary><code>{errorDetail}</code></details>}
       <p className="fine-print">Batas: sumber 60 menit / 1 GB, satu klip maks. 5 menit. Kinerja bergantung pada perangkat, codec, dan memori browser. Di iPhone/iPad, 720p jauh lebih cepat daripada 1080p.</p>

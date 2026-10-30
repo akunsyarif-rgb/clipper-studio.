@@ -368,3 +368,30 @@ describe("media-library: categories and thumbnails", () => {
     expect(u.searchParams.get("response-content-type")).toBe("video/mp4");
   });
 });
+
+describe("media-library: notes link and preview fallback", () => {
+  it("stores a valid history id, rejects a bad one", async () => {
+    const w = world();
+    expect((await w.call({ ...small, historyId: "m-abc123" })).body.asset.historyId).toBe("m-abc123");
+    expect((await w.call(small)).body.asset.historyId).toBeNull();
+    expect((await w.call({ ...small, historyId: "../x y" })).body.error.status).toBe("BAD_HISTORY");
+    expect((await w.call({ ...small, historyId: 5 })).status).toBe(400);
+  });
+  it("lists a signed preview URL only for ready videos without a thumbnail", async () => {
+    const w = world();
+    const a = await w.call(small);
+    w.put(a.body.putUrl, 5 * MIB);
+    await w.call({ action: "complete-single", assetId: a.body.asset.id });
+    const t = await w.call({ ...small, thumbnail: true });
+    w.put(t.body.putUrl, 5 * MIB); w.put(t.body.thumbPutUrl, 9000, "image/jpeg");
+    await w.call({ action: "complete-single", assetId: t.body.asset.id });
+    await w.call(small); // still uploading
+    const list = (await w.call({ action: "list" })).body.assets;
+    const byId = Object.fromEntries(list.map((x: { id: string }) => [x.id, x]));
+    expect(byId[a.body.asset.id].previewUrl).toContain("X-Amz-Signature=");
+    expect(new URL(byId[a.body.asset.id].previewUrl).searchParams.has("response-content-disposition")).toBe(false);
+    expect(byId[a.body.asset.id].thumbUrl).toBeNull();
+    expect(byId[t.body.asset.id].previewUrl).toBeNull();
+    expect(list.filter((x: { status: string; previewUrl: string | null }) => x.status === "uploading").every((x: { previewUrl: string | null }) => x.previewUrl === null)).toBe(true);
+  });
+});

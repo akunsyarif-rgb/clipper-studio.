@@ -24,6 +24,10 @@ export type HubAsset = {
   width: number | null; height: number | null; source: "clipper" | "motion"; status: AssetStatus;
   createdAt: string; updatedAt: string; fileDeletedAt: string | null;
   platform: PlatformId; contentFormat: FormatId; hasThumb: boolean; thumbUrl?: string | null;
+  /** Short-lived URL of the video itself, only when there is no thumbnail (the app then shows its first frame). */
+  previewUrl?: string | null;
+  /** The production-notes entry (script, SEO packs, cover prompt) this video belongs to. */
+  historyId?: string | null;
 };
 
 export type HubErrorKind = "signed-out" | "network" | "cancelled" | "storage" | "server" | "rejected";
@@ -86,7 +90,7 @@ export const xhrPut: PutFn = (url, blob, headers, onProgress, signal) => new Pro
 
 export type UploadInput = {
   blob: Blob; fileName: string; title: string; platform: PlatformId; contentFormat: FormatId; source: "clipper" | "motion";
-  durationSeconds?: number; width?: number; height?: number; thumbnail?: Blob | null;
+  durationSeconds?: number; width?: number; height?: number; thumbnail?: Blob | null; historyId?: string;
 };
 export type UploadOptions = {
   api?: HubApi; put?: PutFn; signal?: AbortSignal; onProgress?: (p: { sent: number; total: number }) => void;
@@ -109,7 +113,7 @@ export async function uploadToHub(input: UploadInput, o: UploadOptions = {}): Pr
       ? { assetId: o.resume }
       : {
         fileName: input.fileName, mimeType: mime, fileSize: total, title: input.title, platform: input.platform, contentFormat: input.contentFormat,
-        source: input.source, durationSeconds: input.durationSeconds, width: input.width, height: input.height, thumbnail: !!input.thumbnail,
+        source: input.source, historyId: input.historyId, durationSeconds: input.durationSeconds, width: input.width, height: input.height, thumbnail: !!input.thumbnail,
       }, { signal: o.signal });
     assetId = init.asset.id as string;
     progress(0);
@@ -188,14 +192,27 @@ export const formatDuration = (s: number | null) => {
   return h ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`;
 };
 
-/** A small JPEG of the video's first moments, drawn in the browser (nothing leaves the device). Null when the browser cannot decode it. */
+/**
+ * A small JPEG of the video's first moments, drawn in the browser (nothing leaves the device). Null when the browser cannot decode
+ * it. Safari only loads a video's data once it plays (preload is ignored), so the element is attached, muted and played briefly.
+ */
 export async function makeThumbnail(blob: Blob, maxSide = 360): Promise<Blob | null> {
   if (typeof document === "undefined") return null;
   const url = URL.createObjectURL(blob);
+  const v = document.createElement("video");
   try {
-    const v = document.createElement("video");
-    v.muted = true; v.playsInline = true; v.preload = "auto"; v.src = url;
-    await new Promise<void>((res, rej) => { v.onloadeddata = () => res(); v.onerror = () => rej(new Error("decode")); setTimeout(() => rej(new Error("timeout")), 8000); });
+    v.muted = true; v.defaultMuted = true; v.playsInline = true; v.preload = "auto";
+    v.setAttribute("muted", ""); v.setAttribute("playsinline", ""); v.setAttribute("webkit-playsinline", "");
+    v.style.cssText = "position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none";
+    document.body.appendChild(v);
+    v.src = url;
+    const loaded = new Promise<void>((res, rej) => {
+      v.onloadeddata = () => res(); v.oncanplay = () => res(); v.onerror = () => rej(new Error("decode"));
+      setTimeout(() => rej(new Error("timeout")), 10_000);
+    });
+    void v.play().catch(() => {});
+    await loaded;
+    v.pause();
     const at = Math.min(0.5, (v.duration || 1) / 2);
     await new Promise<void>(res => { v.onseeked = () => res(); v.currentTime = at; setTimeout(res, 3000); });
     if (!v.videoWidth) return null;
@@ -203,5 +220,5 @@ export async function makeThumbnail(blob: Blob, maxSide = 360): Promise<Blob | n
     const c = document.createElement("canvas"); c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k);
     c.getContext("2d")?.drawImage(v, 0, 0, c.width, c.height);
     return await new Promise<Blob | null>(res => c.toBlob(b => res(b && b.size <= 400 * 1024 ? b : null), "image/jpeg", 0.8));
-  } catch { return null; } finally { URL.revokeObjectURL(url); }
+  } catch { return null; } finally { v.remove(); URL.revokeObjectURL(url); }
 }

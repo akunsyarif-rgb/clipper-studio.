@@ -201,6 +201,7 @@ try {
     await page.getByTestId("hub-done").waitFor({ timeout: 15000 });
     const inits = b.f.calls.filter(c => c.action === "init-upload");
     assert(inits.length === 2 && inits[0].title === "Klip percobaan" && inits[0].platform === "tiktok" && inits[0].contentFormat === "shorts" && inits[0].source === "clipper", "first init carries the choices: " + JSON.stringify(inits[0]));
+    assert(/^c-/.test(inits[0].historyId), "the clip is linked to its production notes: " + inits[0].historyId);
     assert(inits[0].mimeType === "video/mp4" && inits[0].fileSize > 1000, "size and type are real");
     assert(inits[1].assetId && Object.keys(inits[1]).length === 2, "retry resumes the same asset: " + JSON.stringify(inits[1]));
     const videoPuts = b.f.puts.filter(p => p.kind === "video");
@@ -254,6 +255,7 @@ try {
     await page.getByTestId("hub-upload").click();
     await page.getByTestId("hub-done").waitFor({ timeout: 30000 });
     const init = b.f.calls.find(c => c.action === "init-upload");
+    assert(/^m-/.test(init.historyId), "the Motion video is linked to its notes: " + init.historyId);
     assert(init.source === "motion" && init.width === 1080 && init.height === 1920 && init.durationSeconds > 0, "motion metadata: " + JSON.stringify(init));
   });
 
@@ -337,6 +339,40 @@ try {
     await page.getByText("File dihapus").first().waitFor();
     assert(b.f.assets.find(a => a.id === "a4").status === "deleted" && (await page.getByTestId("hub-item").count()) === 1, "the record is still listed");
     assert(await page.getByTestId("hub-download").count() === 0, "no download for a deleted file");
+  });
+
+  await step("hub: a video shows its SEO pack, cover prompt and script from the production notes; no-thumbnail videos show their first frame", async () => {
+    await page.goto(BASE + "/hub");
+    await page.getByTestId("hub-grid").waitFor({ timeout: 10000 });
+    // The production notes live in IndexedDB on the device (text only). Seed one entry for "Resep nasi goreng", linked by id.
+    await page.evaluate(async () => {
+      const db = await new Promise((res, rej) => { const r = indexedDB.open("clipper-studio", 1); r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains("kv")) r.result.createObjectStore("kv"); }; r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+      const entry = { id: "m-resep", kind: "motion", title: "Resep nasi goreng", script: "Nasi goreng enak dalam lima menit.\nCaranya mudah.", createdAt: 1, updatedAt: 2, videos: [],
+        seo: { tiktok: { at: 2, result: { platform: "tiktok", score: 82, modelScore: 82, quickFix: "", checks: [], cards: [{ key: "caption", label: "Caption", kind: "text", value: "Nasi goreng 5 menit, anti gagal" }, { key: "hashtags", label: "Hashtag", kind: "hashtags", value: ["#nasigoreng", "#resep"] }] } } } };
+      await new Promise((res, rej) => { const tx = db.transaction("kv", "readwrite"); tx.objectStore("kv").put([entry], "history"); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); });
+    });
+    b.f.assets.find(a => a.id === "a2").historyId = "m-resep"; // by id; a4 has the same title as nothing, a1 has no notes
+    await page.goto(BASE + "/hub");
+    await page.getByTestId("hub-grid").waitFor({ timeout: 10000 });
+    await page.getByTestId("hub-search").fill("Resep");
+    await page.getByTestId("hub-seo-badge").waitFor({ timeout: 10000 });
+    assert((await page.getByTestId("hub-seo-badge").innerText()).includes("TikTok"), "card says which SEO packs exist");
+    await page.locator(".hub-thumb").click();
+    await page.getByTestId("hub-notes").waitFor();
+    const text = await page.getByTestId("hub-notes").innerText();
+    assert(text.includes("Nasi goreng 5 menit, anti gagal") && text.includes("#nasigoreng") && text.includes("Naskah") && text.includes("Prompt foto sampul"), "SEO, script and cover prompt are in the video's detail: " + text.slice(0, 200));
+    await page.keyboard.press("Escape");
+    await page.getByTestId("hub-search").fill("Catatan tanpa");
+    assert((await page.getByTestId("hub-seo-badge").count()) === 0, "no badge without notes");
+    await page.locator(".hub-thumb").click();
+    assert((await page.getByTestId("hub-notes").innerText()).includes("Belum ada catatan"), "empty notes explained");
+    await page.keyboard.press("Escape");
+    await page.getByTestId("hub-search").fill("");
+    b.f.assets.find(a => a.id === "a5").previewUrl = "https://fake-r2.test/play/a5"; // ready, no thumbnail: first frame from the video
+    await page.goto(BASE + "/hub");
+    await page.getByTestId("hub-grid").waitFor({ timeout: 10000 });
+    await page.getByTestId("hub-search").fill("Catatan tanpa");
+    assert((await page.locator(".hub-thumb video").count()) === 1 && (await page.locator(".hub-thumb video").getAttribute("src")).endsWith("#t=0.1"), "preview video element for a video without thumbnail");
   });
 
   await step("hub: detail dialog plays the video and edits the title", async () => {

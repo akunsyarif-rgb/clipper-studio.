@@ -26,7 +26,6 @@ export default function HistoryPanel() {
   const [list, setList] = useState<HistoryEntry[] | null>(null);
   const [filter, setFilter] = useState<Filter>({ text: "", status: "all" });
   const [open, setOpen] = useState<string | null>(null);
-  const [copied, setCopied] = useState("");
   const [confirmClear, setConfirmClear] = useState(false);
 
   const [sync, setSync] = useState<ReturnType<typeof syncState>>({ phase: "off" });
@@ -44,11 +43,6 @@ export default function HistoryPanel() {
   const shown = useMemo(() => filterEntries(list ?? [], filter), [list, filter]);
   const savedCount = (list ?? []).filter(e => e.videos.some(v => v.saved)).length;
 
-  async function copy(id: string, text: string) {
-    const ok = await copyText(text);
-    setCopied(ok ? id : "gagal:" + id);
-    setTimeout(() => setCopied(c => (c === id || c === "gagal:" + id ? "" : c)), 1800);
-  }
   async function remove(id: string) { setList((list ?? []).filter(e => e.id !== id)); await deleteHistory([id]); }
   async function clearAll() { const ids = (list ?? []).map(e => e.id); setList([]); setConfirmClear(false); await deleteHistory(ids); }
   function openInStudio(e: HistoryEntry) {
@@ -105,39 +99,53 @@ export default function HistoryPanel() {
                   {e.kind === "motion" && e.script && <button type="button" className="text-link" onClick={() => openInStudio(e)} data-testid="history-open-studio">Buka di studio</button>}
                   <button type="button" className="text-link" onClick={() => void remove(e.id)} data-testid="history-delete">Hapus</button>
                 </div>
-                {isOpen && <div data-testid="history-detail">
-                  {e.trend && <p className="seo-text"><b>Dari tren:</b> {e.trend.trend || "-"} · niche {e.trend.niche || "-"}{e.trend.audience ? ` · ${e.trend.audience}` : ""}</p>}
-                  {e.videos.length > 0 && <ul className="seo-list">{e.videos.map((v, i) => <li key={i}>{v.saved ? "✓ diunduh" : "dirender"} · {v.name} · {v.label} · {mb(v.size)} · {fmtDate(v.at)}</li>)}</ul>}
-                  {e.script && <details><summary>Naskah</summary><p className="seo-text" style={{ whiteSpace: "pre-wrap" }}>{e.script}</p></details>}
-                  {e.kind === "motion" && e.script && (() => {
-                    const cp = buildCoverPrompt({ topic: e.trend?.niche ?? "", title: e.title, transcript: e.script, platform: packs[0]?.id ?? "tiktok" });
-                    const id = `${e.id}:cover`;
-                    return <details data-testid="history-cover"><summary>Prompt foto sampul (dasar)</summary>
-                      <p className="seo-text" style={{ whiteSpace: "pre-wrap" }}>{cp.prompt}</p>
-                      <button type="button" className="text-link" onClick={() => void copy(id, cp.prompt)} data-testid="history-cover-copy">{copied === id ? "Tersalin ✓" : "Salin prompt"}</button>{" "}
-                      <button type="button" className="text-link" onClick={() => void copy(id + "n", cp.negative)}>{copied === id + "n" ? "Tersalin ✓" : "Salin negative prompt"}</button>
-                    </details>;
-                  })()}
-                  {packs.map(p => {
-                    const s = e.seo[p.id]!;
-                    return (
-                      <details key={p.id} open data-testid={"history-seo-" + p.id}>
-                        <summary><b>{p.label}</b> · skor {s.result.score}/100 · {fmtDate(s.at)}</summary>
-                        {s.result.cards.map(c => {
-                          const text = Array.isArray(c.value) ? c.value.join(c.kind === "hashtags" ? " " : "\n") : c.value;
-                          const id = `${e.id}:${p.id}:${c.key}`;
-                          return <div key={c.key} className="seo-card-head"><span><small>{c.label}</small><br /><span className="seo-text" style={{ whiteSpace: "pre-wrap" }}>{text || "—"}</span></span>
-                            <button type="button" className="text-link" onClick={() => void copy(id, text)} disabled={!text} data-testid={"history-copy-" + p.id + "-" + c.key}>{copied === id ? "Tersalin ✓" : copied === "gagal:" + id ? "Gagal" : "Salin"}</button></div>;
-                        })}
-                        <button type="button" className="text-link" onClick={() => void copy(`${e.id}:${p.id}:all`, seoToText(s.result))} data-testid={"history-copy-all-" + p.id}>{copied === `${e.id}:${p.id}:all` ? "Tersalin ✓" : "Salin semua teks"}</button>
-                      </details>
-                    );
-                  })}
-                </div>}
+                {isOpen && <EntryDetail e={e} />}
               </article>
             );
           })}
         </>}
     </section>
+  );
+}
+
+/** One production entry in full: trend, rendered files, script, cover prompt, and every SEO pack with copy buttons. Used by the notes tab and by a video's detail in the Hub. */
+export function EntryDetail({ e }: { e: HistoryEntry }) {
+  const [copied, setCopied] = useState("");
+  const packs = SEO_PLATFORMS.filter(p => e.seo[p.id]);
+  async function copy(id: string, text: string) {
+    const ok = await copyText(text);
+    setCopied(ok ? id : "gagal:" + id);
+    setTimeout(() => setCopied(c => (c === id || c === "gagal:" + id ? "" : c)), 1800);
+  }
+  return (
+    <div data-testid="history-detail">
+      {e.trend && <p className="seo-text"><b>Dari tren:</b> {e.trend.trend || "-"} · niche {e.trend.niche || "-"}{e.trend.audience ? ` · ${e.trend.audience}` : ""}</p>}
+      {e.videos.length > 0 && <ul className="seo-list">{e.videos.map((v, i) => <li key={i}>{v.saved ? "✓ diunduh" : "dirender"} · {v.name} · {v.label} · {mb(v.size)} · {fmtDate(v.at)}</li>)}</ul>}
+      {e.script && <details><summary>Naskah</summary><p className="seo-text" style={{ whiteSpace: "pre-wrap" }}>{e.script}</p></details>}
+      {e.kind === "motion" && e.script && (() => {
+        const cp = buildCoverPrompt({ topic: e.trend?.niche ?? "", title: e.title, transcript: e.script, platform: packs[0]?.id ?? "tiktok" });
+        const id = `${e.id}:cover`;
+        return <details data-testid="history-cover"><summary>Prompt foto sampul (dasar)</summary>
+          <p className="seo-text" style={{ whiteSpace: "pre-wrap" }}>{cp.prompt}</p>
+          <button type="button" className="text-link" onClick={() => void copy(id, cp.prompt)} data-testid="history-cover-copy">{copied === id ? "Tersalin ✓" : "Salin prompt"}</button>{" "}
+          <button type="button" className="text-link" onClick={() => void copy(id + "n", cp.negative)}>{copied === id + "n" ? "Tersalin ✓" : "Salin negative prompt"}</button>
+        </details>;
+      })()}
+      {packs.map(p => {
+        const s = e.seo[p.id]!;
+        return (
+          <details key={p.id} open data-testid={"history-seo-" + p.id}>
+            <summary><b>{p.label}</b> · skor {s.result.score}/100 · {fmtDate(s.at)}</summary>
+            {s.result.cards.map(c => {
+              const text = Array.isArray(c.value) ? c.value.join(c.kind === "hashtags" ? " " : "\n") : c.value;
+              const id = `${e.id}:${p.id}:${c.key}`;
+              return <div key={c.key} className="seo-card-head"><span><small>{c.label}</small><br /><span className="seo-text" style={{ whiteSpace: "pre-wrap" }}>{text || "—"}</span></span>
+                <button type="button" className="text-link" onClick={() => void copy(id, text)} disabled={!text} data-testid={"history-copy-" + p.id + "-" + c.key}>{copied === id ? "Tersalin ✓" : copied === "gagal:" + id ? "Gagal" : "Salin"}</button></div>;
+            })}
+            <button type="button" className="text-link" onClick={() => void copy(`${e.id}:${p.id}:all`, seoToText(s.result))} data-testid={"history-copy-all-" + p.id}>{copied === `${e.id}:${p.id}:all` ? "Tersalin ✓" : "Salin semua teks"}</button>
+          </details>
+        );
+      })}
+    </div>
   );
 }

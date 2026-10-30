@@ -13,7 +13,7 @@ type Phase = "idle" | "form" | "sending" | "error" | "done";
  * The "where does this video go" choice under a finished export. Saving on the device stays the default (the download button
  * above); nothing is sent anywhere until the creator opens this, picks a category and ticks the consent box.
  */
-export default function SaveToHub({ getBlob, fileName, title, source, seconds, width, height, tone = "light" }: {
+export default function SaveToHub({ getBlob, fileName, title, source, seconds, width, height, historyId, tone = "light" }: {
   getBlob: () => Promise<Blob>;
   fileName: string;
   title: string;
@@ -21,6 +21,8 @@ export default function SaveToHub({ getBlob, fileName, title, source, seconds, w
   seconds?: number;
   width?: number;
   height?: number;
+  /** The production-notes entry of this video (script, SEO packs), so the Hub can show them with it. */
+  historyId?: string;
   tone?: "light" | "dark";
 }) {
   const [phase, setPhase] = useState<Phase>("idle");
@@ -47,7 +49,7 @@ export default function SaveToHub({ getBlob, fileName, title, source, seconds, w
       setTotal(blob.size);
       const thumbnail = resume.current ? null : await makeThumbnail(blob);
       await uploadToHub(
-        { blob, fileName, title: name.trim() || title, platform, contentFormat: format, source, durationSeconds: seconds, width, height, thumbnail },
+        { blob, fileName, title: name.trim() || title, platform, contentFormat: format, source, durationSeconds: seconds, width, height, thumbnail, historyId },
         { signal: ctl.signal, resume: resume.current, onProgress: p => { setSent(p.sent); setTotal(p.total); } },
       );
       resume.current = undefined;
