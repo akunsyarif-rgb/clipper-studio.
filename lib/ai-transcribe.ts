@@ -5,8 +5,14 @@
 import { answerJson, ask, GeminiError, type CleanupOptions } from "./gemini";
 import { spreadWords, type Segment, type Transcript } from "./transcript";
 
-/** Each request carries this much audio (about 1 MB as 32 kbps MP3), small enough for any service's request limit. */
-export const CHUNK_SECONDS = 240;
+/**
+ * Each request carries this much audio (about 0.5 MB as 32 kbps MP3). Two minutes, not four: the answer (every line with its
+ * times) is written out one token at a time, so a part twice as long takes twice as long to come back, and a slow model on a
+ * four-minute part ran past the time limit of a request even for short videos.
+ */
+export const CHUNK_SECONDS = 120;
+/** How long one part may take: just above the 110 s the server's own call to the AI service is allowed. */
+export const CHUNK_TIMEOUT_MS = 130_000;
 /** A last piece shorter than this is folded into the one before it. */
 const MIN_LAST_CHUNK = 20;
 /** Requests in flight at once. */
@@ -102,7 +108,13 @@ export const toBase64 = (bytes: Uint8Array): string => {
   return btoa(bin);
 };
 
-export type LongOptions = { onProgress?: (done: number, total: number) => void; signal?: AbortSignal };
+export type LongOptions = {
+  onProgress?: (done: number, total: number) => void;
+  signal?: AbortSignal;
+  /** Parts already done (kept by the caller for this video): they are not cut or sent again, so a retry continues where it stopped. */
+  done?: Map<string, TimedLine[]>;
+};
+const keyOf = (c: Chunk) => `${c.start}:${c.duration}`;
 
 /**
  * Transcribes a whole video. `cut` produces the audio parts one after another (the video engine does one thing at a time);
@@ -119,15 +131,28 @@ export async function transcribeLong(
   const results: TimedLine[][] = Array.from({ length: chunks.length }, () => []);
   const inflight = new Set<Promise<void>>();
   let done = 0, failure: Error | null = null;
-  opts.onProgress?.(0, chunks.length);
+  // Parts finished by an earlier try are used as they are; only the rest are cut and sent.
+  const todo: Chunk[] = [];
+  for (const c of chunks) {
+    const kept = opts.done?.get(keyOf(c));
+    if (kept) { results[c.index] = kept.map(l => ({ ...l, start: l.start + c.start, end: l.end + c.start })); done++; } else todo.push(c);
+  }
+  opts.onProgress?.(done, chunks.length);
+  const request = { ...o, signal: opts.signal ?? o.signal, timeoutMs: o.timeoutMs ?? CHUNK_TIMEOUT_MS };
 
-  await cut(chunks, async (index, mp3) => {
+  if (todo.length) await cut(todo, async (n, mp3) => {
     if (failure) throw failure;
     if (opts.signal?.aborted) throw new GeminiError("timeout", "Dibatalkan.");
-    const chunk = chunks[index];
-    const job = transcribeChunk({ mimeType: "audio/mpeg", data: toBase64(mp3) }, chunk.duration, { ...o, signal: opts.signal ?? o.signal })
-      .then(lines => { results[index] = lines.map(l => ({ ...l, start: l.start + chunk.start, end: l.end + chunk.start })); opts.onProgress?.(++done, chunks.length); })
-      .catch(e => { failure ??= e instanceof GeminiError ? new GeminiError(e.kind, `Bagian ${index + 1} dari ${chunks.length}: ${e.message}`) : (e as Error); })
+    const chunk = todo[n];
+    const audio = { mimeType: "audio/mpeg", data: toBase64(mp3) };
+    // One part that is too slow gets one more try (a slow moment of the service is common); other errors are not retried here.
+    const attempt = () => transcribeChunk(audio, chunk.duration, request).catch(e => {
+      if (e instanceof GeminiError && e.kind === "timeout" && !opts.signal?.aborted && !o.signal?.aborted && e.message !== "Dibatalkan.") return transcribeChunk(audio, chunk.duration, request);
+      throw e;
+    });
+    const job = attempt()
+      .then(lines => { opts.done?.set(keyOf(chunk), lines); results[chunk.index] = lines.map(l => ({ ...l, start: l.start + chunk.start, end: l.end + chunk.start })); opts.onProgress?.(++done, chunks.length); })
+      .catch(e => { failure ??= e instanceof GeminiError ? new GeminiError(e.kind, `Bagian ${chunk.index + 1} dari ${chunks.length}: ${e.message}`) : (e as Error); })
       .finally(() => { inflight.delete(job); });
     inflight.add(job);
     if (inflight.size >= PARALLEL) await Promise.race(inflight);
