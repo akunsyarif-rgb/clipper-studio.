@@ -6,12 +6,14 @@
 export type VoiceEmotion = "warm" | "curious" | "serious" | "suspense" | "joyful" | "reflective" | "neutral";
 export type VoiceDelivery = "conversational" | "storytelling" | "explanatory" | "emphatic" | "gentle";
 export type VoicePace = "slow" | "normal" | "fast";
+export type VoiceIntonation = "rising" | "falling" | "suspense" | "steady";
 export type VoiceConfidence = "low" | "medium" | "high";
 
 export type VoiceDirection = {
   emotion: VoiceEmotion;
   delivery: VoiceDelivery;
   pace: VoicePace;
+  intonation: VoiceIntonation;
   pauseAfter: 0 | 0.25 | 0.5 | 0.8;
   emphasis: string[];
   confidence: VoiceConfidence;
@@ -53,10 +55,11 @@ export function analyzeVoiceSegment(raw: string): VoiceDirection {
     : reflective ? "gentle" : "conversational";
   const pace: VoicePace = reflective || (serious && words.length > 12) ? "slow"
     : words.length <= 6 && /!/.test(sourceText) ? "fast" : "normal";
+  const intonation: VoiceIntonation = question ? "rising" : reveal ? "suspense" : /[.!]\s*$/.test(sourceText) ? "falling" : "steady";
   const pauseAfter: VoiceDirection["pauseAfter"] = reveal ? 0.8
     : /[?;!]\s*$/.test(sourceText) ? 0.5
     : /[.]\s*$/.test(sourceText) ? 0.25 : 0;
-  return { emotion, delivery, pace, pauseAfter, emphasis: emphasisWords(sourceText), confidence, reason, sourceText };
+  return { emotion, delivery, pace, intonation, pauseAfter, emphasis: emphasisWords(sourceText), confidence, reason, sourceText };
 }
 
 export function analyzeVoiceScript(segments: string[]): VoiceDirection[] {
@@ -77,3 +80,5 @@ export const VOICE_DELIVERY_LABELS: Record<VoiceDelivery, string> = {
   emphatic: "Tegas / penekanan", gentle: "Lembut",
 };
 export const VOICE_PACE_LABELS: Record<VoicePace, string> = { slow: "Pelan", normal: "Normal", fast: "Cepat" };
+
+export const VOICE_INTONATION_LABELS: Record<VoiceIntonation, string> = { rising: "Naik (pertanyaan)", falling: "Turun (pernyataan)", suspense: "Tertahan (pengungkapan)", steady: "Datar / stabil" };
