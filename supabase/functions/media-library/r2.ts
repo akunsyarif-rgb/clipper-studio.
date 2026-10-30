@@ -68,7 +68,8 @@ export function r2(c: R2Config, fetchImpl: typeof fetch = fetch, now: () => Date
     putUrl: (key: string, contentType: string, ttl: number) => presign(c, "PUT", objectUrl(c, key), ttl, { signedHeaders: { "content-type": contentType }, now: now() }),
     partUrl: (key: string, uploadId: string, partNumber: number, ttl: number) =>
       presign(c, "PUT", objectUrl(c, key, `?partNumber=${partNumber}&uploadId=${encodeURIComponent(uploadId)}`), ttl, { now: now() }),
-    getUrl: (key: string, fileName: string, contentType: string, ttl: number) =>
-      presign(c, "GET", objectUrl(c, key, `?response-content-disposition=${encodeURIComponent(`attachment; filename="${fileName.replace(/["\\\r\n]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(fileName)}`)}&response-content-type=${encodeURIComponent(contentType)}`), ttl, { now: now() }),
+    /** `inline` leaves out the attachment header so a <video> / <img> can show the file instead of saving it. */
+    getUrl: (key: string, fileName: string, contentType: string, ttl: number, inline = false) =>
+      presign(c, "GET", objectUrl(c, key, `?${inline ? "" : `response-content-disposition=${encodeURIComponent(`attachment; filename="${fileName.replace(/["\\\r\n]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(fileName)}`)}&`}response-content-type=${encodeURIComponent(contentType)}`), ttl, { now: now() }),
   };
 }

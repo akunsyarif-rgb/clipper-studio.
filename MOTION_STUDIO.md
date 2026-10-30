@@ -29,7 +29,7 @@ Clear messages are shown for: an empty or too-long script, too many scenes, audi
 
 ## Architecture and cost
 
-- **Rendering runs in the visitor's browser.** Vercel only serves the static page. No Vercel Function, Remotion Lambda, storage or database is used, so there is no per-render cost. The script and audio are never uploaded.
+- **Rendering runs in the visitor's browser.** Vercel only serves the static page. No Vercel Function, Remotion Lambda, storage or database is used, so there is no per-render cost. The script and audio are never uploaded. The finished MP4 is uploaded to the private Content Hub bucket only if the creator picks *Simpan ke Content Hub* and agrees; that goes browser -> Cloudflare R2 by presigned URL, not through Vercel.
 - Why not render on Vercel: server-side Remotion needs Chromium + FFmpeg and minutes of CPU per video. That exceeds the practical memory, duration and bundle-size limits of Vercel Functions and would need Remotion Lambda (AWS, paid) or a dedicated worker.
 - Trade-offs: speed depends on the device (headless Chromium in CI renders 6 s in about 9 s). It needs WebCodecs H.264 support: current Chrome/Edge; Safari 17+ should work but has not been tested on a real device. For older browsers, use the CLI path below.
 
@@ -335,7 +335,7 @@ Langkah 1 dari bantuan Gemini. Whisper tetap mendengar suara dan memberi waktu k
 
 ## Sinkron antar perangkat (Supabase)
 
-Backend hanya menyimpan **data teks kecil**: sesi kerja (naskah, gaya, pilihan adegan, transkrip yang dipakai) dan transkrip hasil Whisper. **Video, audio, dan hasil render tidak pernah diunggah.**
+Backend hanya menyimpan **data teks kecil**: sesi kerja (naskah, gaya, pilihan adegan, transkrip yang dipakai) dan transkrip hasil Whisper. **Sinkron tidak pernah membawa video, audio, atau hasil render.** Hasil render hanya dikirim ke Content Hub (bucket R2 privat, lewat Edge Function `media-library`) jika pengguna memilih *Simpan ke Content Hub* dan menyetujuinya; tanpa itu semuanya tetap di perangkat.
 
 - **Proyek:** `clipper-studio` (Supabase, Singapura, paket Free). Tabel `app_sessions` (satu baris `current` per pengguna) dan `app_transcripts` (kunci sama dengan cache transkrip di perangkat). RLS: tiap baris hanya bisa dibaca/ditulis pemiliknya (`auth.uid() = user_id`). Batas ukuran 2 MB per baris.
 - **Login:** email + kata sandi. Tombol "Masuk untuk sinkron antar perangkat" di halaman utama dan Motion Studio. Tanpa login, app tidak mengirim satu permintaan pun ke layanan ini.

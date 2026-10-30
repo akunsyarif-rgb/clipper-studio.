@@ -11,7 +11,7 @@ export type Status = "uploading" | "ready" | "failed" | "deleting" | "deleted";
 type Row = {
   id: string; user_id: string; title: string; file_name: string; mime_type: string; file_size: number; duration_seconds: number | null;
   width: number | null; height: number | null; source: string; object_key: string; status: Status; multipart_upload_id: string | null;
-  created_at: string; updated_at: string; file_deleted_at: string | null;
+  created_at: string; updated_at: string; file_deleted_at: string | null; platform: string; content_format: string; thumb_key: string | null;
 };
 
 const MIB = 1024 * 1024;
@@ -28,9 +28,13 @@ export const LIMITS = {
   downloadUrlTtl: 5 * 60,
   mimeTypes: ["video/mp4", "video/webm", "video/quicktime"] as readonly string[],
 };
+/** The values shared with the app (lib/content-hub.ts) and the database check constraints. */
+export const PLATFORMS = ["tiktok", "youtube", "instagram", "facebook", "threads", "x", "other", "uncategorized"] as const;
+export const FORMATS = ["shorts", "reels", "long_form", "story", "video"] as const;
+const THUMB_MAX_BYTES = 512 * 1024;
+const THUMB_TTL = 60 * 60;
 const EXT: Record<string, string> = { "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const PUBLIC_COLUMNS = "id,title,file_name,mime_type,file_size,duration_seconds,width,height,source,status,created_at,updated_at,file_deleted_at";
 
 const CORS: Record<string, string> = {
   "access-control-allow-origin": "*",
@@ -62,7 +66,10 @@ const int = (v: unknown, min: number, max: number): number | null => { const n =
 const publicAsset = (r: Row) => ({
   id: r.id, title: r.title, fileName: r.file_name, mimeType: r.mime_type, fileSize: r.file_size, durationSeconds: r.duration_seconds,
   width: r.width, height: r.height, source: r.source, status: r.status, createdAt: r.created_at, updatedAt: r.updated_at, fileDeletedAt: r.file_deleted_at,
+  platform: r.platform, contentFormat: r.content_format, hasThumb: !!r.thumb_key,
 });
+const pick = <T extends string>(v: unknown, allowed: readonly T[]): T | null => (typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : null);
+const cleanTitle = (v: unknown) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
 
 export async function handle(req: Request, env: Env, fetchImpl: typeof fetch = fetch, now: () => Date = () => new Date()): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
@@ -129,14 +136,18 @@ async function route(req: Request, env: Env, fetchImpl: typeof fetch, now: () =>
       if (!LIMITS.mimeTypes.includes(mimeType)) throw fail(415, "BAD_TYPE", "Hanya video MP4, WebM, atau MOV yang bisa disimpan.");
       if (fileSize === null) throw fail(400, "BAD_SIZE", "Ukuran file tidak valid.");
       const source = msg.source === "motion" ? "motion" : "clipper";
+      const platform = msg.platform === undefined ? "uncategorized" : pick(msg.platform, PLATFORMS);
+      const contentFormat = msg.contentFormat === undefined ? "video" : pick(msg.contentFormat, FORMATS);
+      if (!platform || !contentFormat) throw fail(400, "BAD_CATEGORY", "Kategori tidak dikenal.");
       const id = crypto.randomUUID();
-      const objectKey = `u/${uid}/${id}/${crypto.randomUUID().replace(/-/g, "")}.${EXT[mimeType]}`;
+      const prefix = `u/${uid}/${id}/${crypto.randomUUID().replace(/-/g, "")}`, objectKey = `${prefix}.${EXT[mimeType]}`;
       const row = await one(await db("media_assets", {
         method: "POST", headers: { prefer: "return=representation" },
         body: JSON.stringify({
-          id, user_id: uid, title: String(msg.title ?? "").replace(/\s+/g, " ").trim().slice(0, 120) || fileName.replace(/\.[^.]+$/, ""),
+          id, user_id: uid, title: cleanTitle(msg.title) || fileName.replace(/\.[^.]+$/, ""),
           file_name: fileName, mime_type: mimeType, file_size: fileSize, duration_seconds: num(msg.durationSeconds, 0, 86_400 * 7),
-          width: int(msg.width, 1, 16_384), height: int(msg.height, 1, 16_384), source, object_key: objectKey, status: "uploading",
+          width: int(msg.width, 1, 16_384), height: int(msg.height, 1, 16_384), source, object_key: objectKey, status: "uploading", platform, content_format: contentFormat,
+          thumb_key: msg.thumbnail === true ? `${prefix}-thumb.jpg` : null,
         }),
       }));
       if (!row) throw new Error("db");
@@ -230,6 +241,7 @@ async function route(req: Request, env: Env, fetchImpl: typeof fetch, now: () =>
       mustBe(row, "uploading", "failed");
       if (row.multipart_upload_id) await quietly(store.abortMultipart(row.object_key, row.multipart_upload_id));
       await quietly(store.remove(row.object_key)); // a single PUT may have landed, or a completed assembly
+      if (row.thumb_key) await quietly(store.remove(row.thumb_key));
       const failed = await move(row, ["uploading", "failed"], { status: "failed", multipart_upload_id: null });
       if (!failed) throw fail(409, "BAD_STATUS", "Video sedang diproses permintaan lain.");
       return reply(200, { asset: publicAsset(failed) });
@@ -238,16 +250,20 @@ async function route(req: Request, env: Env, fetchImpl: typeof fetch, now: () =>
     case "list": {
       const limit = int(msg.limit, 1, 100) ?? 50;
       const before = typeof msg.before === "string" && !Number.isNaN(Date.parse(msg.before)) ? `&created_at=lt.${encodeURIComponent(new Date(msg.before).toISOString())}` : "";
-      const res = await db(`media_assets?user_id=eq.${uid}${before}&select=${PUBLIC_COLUMNS}&order=created_at.desc&limit=${limit}`);
+      const res = await db(`media_assets?user_id=eq.${uid}${before}&select=*&order=created_at.desc&limit=${limit}`);
       if (!res.ok) throw new Error("db");
       const rows = (await res.json()) as Row[];
-      return reply(200, { assets: rows.map(publicAsset) });
+      const assets = await Promise.all(rows.map(async r => ({
+        ...publicAsset(r),
+        thumbUrl: r.status === "ready" && r.thumb_key ? await store.getUrl(r.thumb_key, "thumbnail.jpg", "image/jpeg", THUMB_TTL, true) : null,
+      })));
+      return reply(200, { assets });
     }
 
     case "get-download-url": {
       const row = await mine(msg.assetId);
       mustBe(row, "ready");
-      return reply(200, { url: await store.getUrl(row.object_key, row.file_name, row.mime_type, LIMITS.downloadUrlTtl), fileName: row.file_name, expiresIn: LIMITS.downloadUrlTtl });
+      return reply(200, { url: await store.getUrl(row.object_key, row.file_name, row.mime_type, LIMITS.downloadUrlTtl, msg.inline === true), fileName: row.file_name, expiresIn: LIMITS.downloadUrlTtl });
     }
 
     case "delete-file": {
@@ -257,9 +273,21 @@ async function route(req: Request, env: Env, fetchImpl: typeof fetch, now: () =>
       if (!marked) throw fail(409, "BAD_STATUS", "Video sedang diproses permintaan lain.");
       if (marked.multipart_upload_id) await quietly(store.abortMultipart(marked.object_key, marked.multipart_upload_id));
       await store.remove(marked.object_key);
+      if (marked.thumb_key) await store.remove(marked.thumb_key);
       if (await store.head(marked.object_key)) throw new R2Error(502, "remove"); // still there: stays "deleting" so it can be retried
-      const done = await move(marked, ["deleting"], { status: "deleted", file_deleted_at: now().toISOString(), multipart_upload_id: null });
+      const done = await move(marked, ["deleting"], { status: "deleted", file_deleted_at: now().toISOString(), multipart_upload_id: null, thumb_key: null });
       return reply(200, { asset: publicAsset(done ?? await mine(row.id)) });
+    }
+
+    case "update-meta": { // title and category only; allowed in every status, so a deleted file's record can still be filed
+      const row = await mine(msg.assetId);
+      const set: Record<string, unknown> = {};
+      if (msg.title !== undefined) { const t = cleanTitle(msg.title); if (!t) throw fail(400, "BAD_TITLE", "Judul tidak boleh kosong."); set.title = t; }
+      if (msg.platform !== undefined) { const v = pick(msg.platform, PLATFORMS); if (!v) throw fail(400, "BAD_CATEGORY", "Kategori tidak dikenal."); set.platform = v; }
+      if (msg.contentFormat !== undefined) { const v = pick(msg.contentFormat, FORMATS); if (!v) throw fail(400, "BAD_CATEGORY", "Format tidak dikenal."); set.content_format = v; }
+      if (!Object.keys(set).length) throw fail(400, "NOTHING_TO_CHANGE", "Tidak ada yang diubah.");
+      const updated = await move(row, ["uploading", "ready", "failed", "deleting", "deleted"], set);
+      return reply(200, { asset: publicAsset(updated ?? row) });
     }
 
     default:
@@ -269,10 +297,11 @@ async function route(req: Request, env: Env, fetchImpl: typeof fetch, now: () =>
 
 /** What the browser needs to start sending: one signed PUT, or the multipart plan. */
 async function startReply(store: ReturnType<typeof r2>, row: Row) {
+  const thumb = row.thumb_key ? { thumbPutUrl: await store.putUrl(row.thumb_key, "image/jpeg", LIMITS.uploadUrlTtl) } : {};
   if (row.file_size <= LIMITS.singleMax) {
-    return { asset: publicAsset(row), mode: "single" as const, putUrl: await store.putUrl(row.object_key, row.mime_type, LIMITS.uploadUrlTtl), contentType: row.mime_type, expiresIn: LIMITS.uploadUrlTtl };
+    return { asset: publicAsset(row), mode: "single" as const, putUrl: await store.putUrl(row.object_key, row.mime_type, LIMITS.uploadUrlTtl), contentType: row.mime_type, expiresIn: LIMITS.uploadUrlTtl, ...thumb };
   }
-  return { asset: publicAsset(row), mode: "multipart" as const, ...planParts(row.file_size) };
+  return { asset: publicAsset(row), mode: "multipart" as const, ...planParts(row.file_size), ...thumb };
 }
 
 /** "ready" only once the stored object exists with exactly the declared size (and type). Otherwise the upload is marked failed and the object removed. */
@@ -284,7 +313,13 @@ async function verifyAndReady(store: ReturnType<typeof r2>, row: Row, move: (r: 
     await move(row, ["uploading"], { status: "failed", multipart_upload_id: null });
     throw fail(409, "SIZE_MISMATCH", "Ukuran file di penyimpanan tidak cocok. Unggah ulang.");
   }
-  const ready = await move(row, ["uploading"], { status: "ready", multipart_upload_id: null });
+  // The thumbnail is optional: a missing or oversized one is dropped, never a reason to fail the video.
+  let thumbKey = row.thumb_key;
+  if (thumbKey) {
+    const t = await store.head(thumbKey).catch(() => null);
+    if (!t || !(t.size > 0 && t.size <= THUMB_MAX_BYTES)) { if (t) await store.remove(thumbKey).catch(() => {}); thumbKey = null; }
+  }
+  const ready = await move(row, ["uploading"], { status: "ready", multipart_upload_id: null, thumb_key: thumbKey });
   if (!ready) throw fail(409, "BAD_STATUS", "Video sedang diproses permintaan lain.");
   return ready;
 }

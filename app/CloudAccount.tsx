@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { cloud, CloudError } from "@/lib/cloud";
 
-/** Optional sign-in so the work session and transcripts follow the creator to other devices. Video never leaves the device. */
+/** Optional sign-in so the work session and transcripts follow the creator to other devices. Video is only sent to Content Hub when the creator chooses and agrees, never by sync. */
 export default function CloudAccount({ onUser }: { onUser?: (email: string | null) => void }) {
   const [email, setEmail] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -31,7 +31,7 @@ export default function CloudAccount({ onUser }: { onUser?: (email: string | nul
   }
 
   if (email) return <div className="cloud-box" data-testid="cloud-signed-in">
-    <small>☁ Tersinkron sebagai <b>{email}</b> (hanya naskah, pengaturan, dan transkrip; video tetap di perangkat)</small>
+    <small>☁ Tersinkron sebagai <b>{email}</b> (sinkron hanya naskah, pengaturan, dan transkrip; video baru dikirim ke Content Hub bila Anda memilih)</small>
     <button className="text-button" onClick={() => cloud.signOut()} data-testid="cloud-signout">Keluar</button>
   </div>;
 
@@ -39,7 +39,7 @@ export default function CloudAccount({ onUser }: { onUser?: (email: string | nul
     {!open
       ? <button className="text-button" onClick={() => setOpen(true)} data-testid="cloud-open">☁ Masuk untuk sinkron antar perangkat</button>
       : <form onSubmit={e => void submit(e, "in")} className="cloud-form">
-        <small>Hanya naskah, pengaturan, dan transkrip yang disimpan di akun. Video tidak pernah diunggah.</small>
+        <small>Hanya naskah, pengaturan, dan transkrip yang disimpan di akun. Video tidak ikut tersinkron. Video baru dikirim ke Content Hub (cloud privat) hanya jika Anda memilih Simpan ke Content Hub dan menyetujuinya.</small>
         <input type="email" autoComplete="email" placeholder="Email" value={mail} onChange={e => setMail(e.target.value)} required data-testid="cloud-email" />
         <input type="password" autoComplete="current-password" placeholder="Kata sandi" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} data-testid="cloud-password" />
         <div className="range-tools">

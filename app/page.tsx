@@ -9,6 +9,7 @@ import {
 } from "@/lib/clip";
 import TranscriptPanel from "./TranscriptPanel";
 import CloudAccount from "./CloudAccount";
+import SaveToHub from "./SaveToHub";
 import ClipFlow, { type NewClip } from "./ClipFlow";
 import WatermarkPanel from "./WatermarkPanel";
 import { canvasMeasure, renderWatermarkPng } from "@/lib/watermark-canvas";
@@ -54,7 +55,7 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [phase, setPhase] = useState<"idle" | "loading" | "encoding">("idle");
   const [engineReady, setEngineReady] = useState(false);
-  const [result, setResult] = useState<{ url: string; name: string; size: number; label: string } | null>(null);
+  const [result, setResult] = useState<{ url: string; name: string; size: number; label: string; seconds?: number; w?: number; h?: number } | null>(null);
   const [lastJob, setLastJob] = useState<Job | null>(null);
   const [errorDetail, setErrorDetail] = useState("");
   const [yt, setYt] = useState<YouTubeRef | null>(null);
@@ -198,7 +199,7 @@ export default function Home() {
       if (job.after) { await job.after(blob); return; }
       const { width, height } = outputSize(aspect, quality);
       const name = exportFileName(file.name, aspect, quality, job.start), label = `${width}×${height} · ${formatTime(job.duration)}`;
-      setResult({ url: URL.createObjectURL(blob), name, size: blob.size, label });
+      setResult({ url: URL.createObjectURL(blob), name, size: blob.size, label, seconds: job.duration, w: width, h: height });
       historyBase.current = { id: clipId(file.name, job.start, job.duration), kind: "clip", title: file.name.replace(/\.[^.]+$/, "").slice(0, 80), script: "" };
       void updateHistory(l => logRender(l, { ...historyBase.current!, now: Date.now() }, { name, size: blob.size, label }));
       say("MP4 berhasil dibuat di perangkat ini. Simpan hasilnya sebelum menutup tab.");
@@ -246,7 +247,7 @@ export default function Home() {
   const startSeconds = parseTime(start);
 
   return <main className="shell">
-    <header className="topbar"><Link className="brand" href="/"><span className="logo">c</span><span>clipper<span className="light">studio</span></span></Link><span className="pill"><i /> LOCAL-FIRST MVP</span><Link className="text-link" href="/riwayat" data-testid="link-history">Riwayat</Link></header>
+    <header className="topbar"><Link className="brand" href="/"><span className="logo">c</span><span>clipper<span className="light">studio</span></span></Link><span className="pill"><i /> LOCAL-FIRST MVP</span><span><Link className="text-link" href="/hub" data-testid="link-hub">Content Hub</Link> · <Link className="text-link" href="/riwayat" data-testid="link-history">Riwayat</Link></span></header>
     <CloudAccount />
     <section className="hero"><div className="eyebrow"><span className="eyebrow-line" /> VIDEO WORKSPACE</div><h1>Video panjang.<br/><em>Potongan yang tepat.</em></h1><p>Potong video menjadi klip 9:16, 16:9, atau 1:1. Pilih video, atur rentang waktu, lalu ekspor MP4 langsung dari perangkat.</p><div className="hero-tags"><span><b>01</b> Lokal dahulu</span><span><b>02</b> Tanpa login</span><span><b>03</b> Maks. 1 GB</span></div></section>
     <section className="workspace">
@@ -255,7 +256,7 @@ export default function Home() {
         <input ref={picker} type="file" accept={SOURCE_ACCEPT} onChange={onPick} data-testid="file-input"/>
         {file && src ? <><video ref={player} src={src} controls playsInline preload="metadata" onLoadedMetadata={onMetadata} onError={onVideoError}/><div className="file-details"><span className="file-mark">▶</span><div className="file-name"><strong>{file.name}</strong><span>{formatBytes(file.size)} · {duration ? formatTime(duration) : "Membaca durasi…"}</span></div><button className="text-button" disabled={busy||asrBusy} onClick={e => { e.stopPropagation(); resetFile(); say("Pilih video baru untuk memulai."); }}>Ganti</button></div></> : <div className="empty-drop"><div className="upload-icon"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg></div><strong>Ketuk untuk memilih video atau audio</strong><span>Ambil dari Files atau Photos di iPhone/iPad</span><div className="format-chips"><span>MP4</span><span>MOV</span><span>≤ 1 GB</span></div><small>Format/codec harus didukung browser.</small></div>}
       </div>
-      <div className="privacy-note"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span><strong>Video tetap di perangkat.</strong> Pemotongan dilakukan di browser dengan FFmpeg WebAssembly. Tidak ada unggahan ke server.</span></div>
+      <div className="privacy-note"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span><strong>Video tetap di perangkat secara default.</strong> Pemotongan dilakukan di browser dengan FFmpeg WebAssembly; sumber tidak diunggah. Hasil ekspor baru dikirim ke Content Hub (penyimpanan cloud privat) jika Anda memilih Simpan ke Content Hub dan menyetujuinya.</span></div>
       <details className="yt-panel" open={!file} data-testid="yt-panel">
         <summary>Mulai dari link YouTube: AI mencari klip terbaik</summary>
         <YoutubeFlow room={MAX_CLIPS - clips.length} onPreview={u => setYt(parseYouTube(u))} onApprove={approveYoutube} />
@@ -290,12 +291,13 @@ export default function Home() {
       <button className="primary-button" disabled={!file||!duration||busy||asrBusy} onClick={exportCurrent} data-testid="export"><span>{busy?"Sedang memproses…":`Ekspor klip MP4 (${aspect}, ${quality}p)`}</span><svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
       {!busy && !asrBusy && lastJob && !result && <button className="secondary-button" onClick={() => runExport(lastJob)} data-testid="retry">↻ Ulangi ekspor terakhir</button>}
       {result&&<div className="download-card" data-testid="result"><span className="download-check">✓</span><div><strong>Video selesai dibuat</strong><span>{result.label} · {formatBytes(result.size)}</span></div><a className="download-button" href={result.url} download={result.name} data-testid="download" onClick={() => { const b = historyBase.current; if (b) void updateHistory(l => logDownload(l, { ...b, now: Date.now() }, { name: result.name, size: result.size, label: result.label })); }}>Simpan MP4 ↓</a></div>}
+      {result&&<SaveToHub key={result.url} getBlob={() => fetch(result.url).then(r => r.blob())} fileName={result.name} title={result.name.replace(/\.[^.]+$/, "")} source="clipper" seconds={result.seconds} width={result.w} height={result.h} />}
       {result&&<div className="result-tools"><video src={result.url} controls playsInline preload="metadata" className="result-video"/><button className="text-button" onClick={share}>Bagikan / simpan ke Photos</button></div>}
       {message&&<div className={"notice " + (isError ? "notice-error" : "")} role={isError ? "alert" : "status"} data-testid="message">{message}</div>}{errorDetail&&<details className="error-details"><summary>Detail teknis</summary><code>{errorDetail}</code></details>}
       <p className="fine-print">Batas: sumber 60 menit / 1 GB, satu klip maks. 5 menit. Kinerja bergantung pada perangkat, codec, dan memori browser. Di iPhone/iPad, 720p jauh lebih cepat daripada 1080p.</p>
     </section>
     <Link className="motion-link" href="/motion" data-testid="motion-link"><span className="bottom-icon">✳</span><span><strong>Motion Graphics Lab</strong><small>Buat video 9:16 dari naskah dan narasi, render MP4 di browser.</small></span><b>Buka →</b></Link>
-    <section className="bottom-note"><div className="bottom-icon">✦</div><div><strong>Lebih sederhana untuk workflow kreator.</strong><p>Tanpa akun. Tanpa unggah video ke server untuk pemotongan. Pilih momen, koreksi, dan simpan hasilnya.</p></div></section>
+    <section className="bottom-note"><div className="bottom-icon">✦</div><div><strong>Lebih sederhana untuk workflow kreator.</strong><p>Pemotongan berjalan di perangkat dan tidak memerlukan akun. Hasilnya disimpan di perangkat; video baru dikirim ke Content Hub (penyimpanan cloud privat) bila Anda memilih dan menyetujuinya.</p></div></section>
     <footer><Link className="footer-brand" href="/">CLIPPER STUDIO</Link><span>Local-first · Mobile-first</span></footer>
   </main>;
 }

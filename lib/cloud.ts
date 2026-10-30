@@ -1,5 +1,5 @@
 // Optional sync of small text data (the work session and transcripts) between the creator's devices, through
-// Supabase. Media never leaves the device. Signed out, nothing is sent: every call quietly does nothing.
+// Supabase. Sync never carries media (a video goes to Content Hub only when the creator chooses it, see lib/content-hub.ts). Signed out, nothing is sent: every call quietly does nothing.
 // Plain fetch against the Supabase REST endpoints (no SDK), so there is no extra dependency.
 import type { SessionData } from "./session";
 import { isSession } from "./session";

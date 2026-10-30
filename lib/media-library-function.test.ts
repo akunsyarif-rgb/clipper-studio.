@@ -305,3 +305,66 @@ describe("media-library: provider failures", () => {
     expect(JSON.stringify(all)).not.toMatch(/object_key|multipart/);
   });
 });
+
+describe("media-library: categories and thumbnails", () => {
+  it("defaults to uncategorized/video, accepts valid categories, rejects unknown ones", async () => {
+    const w = world();
+    expect((await w.call(small)).body.asset).toMatchObject({ platform: "uncategorized", contentFormat: "video", hasThumb: false });
+    const t = await w.call({ ...small, platform: "tiktok", contentFormat: "shorts" });
+    expect(t.body.asset).toMatchObject({ platform: "tiktok", contentFormat: "shorts" });
+    expect((await w.call({ ...small, platform: "myspace" })).body.error.status).toBe("BAD_CATEGORY");
+    expect((await w.call({ ...small, contentFormat: "podcast" })).body.error.status).toBe("BAD_CATEGORY");
+  });
+  it("moves a video between categories and renames it, in any status, only for its owner", async () => {
+    const w = world();
+    const id = (await w.call(small)).body.asset.id;
+    const r = await w.call({ action: "update-meta", assetId: id, platform: "youtube", contentFormat: "long_form", title: "  Judul   baru " });
+    expect(r.body.asset).toMatchObject({ platform: "youtube", contentFormat: "long_form", title: "Judul baru" });
+    expect(w.rows[0].platform).toBe("youtube");
+    expect((await w.call({ action: "update-meta", assetId: id, platform: "x" }, "t2")).status).toBe(404);
+    expect(w.rows[0].platform).toBe("youtube");
+    for (const bad of [{ platform: "nope" }, { contentFormat: "nope" }, { title: "   " }, {}]) expect((await w.call({ action: "update-meta", assetId: id, ...bad })).status).toBe(400);
+    w.put((await w.call({ action: "init-upload", assetId: id })).body.putUrl, 5 * MIB);
+    await w.call({ action: "complete-single", assetId: id });
+    await w.call({ action: "delete-file", assetId: id });
+    expect((await w.call({ action: "update-meta", assetId: id, platform: "threads" })).body.asset).toMatchObject({ status: "deleted", platform: "threads" }); // metadata outlives the file
+  });
+  it("signs a thumbnail upload, keeps it only if it exists and is small, lists a signed URL, and removes it with the file", async () => {
+    const w = world();
+    const init = await w.call({ ...small, thumbnail: true });
+    expect(init.body.thumbPutUrl).toContain("X-Amz-Signature=");
+    const id = init.body.asset.id;
+    const thumbKey = w.rows[0].thumb_key as string;
+    expect(thumbKey).toMatch(new RegExp(`^u/${U1}/${id}/[0-9a-f]{32}-thumb\\.jpg$`));
+    w.put(init.body.putUrl, 5 * MIB);
+    w.put(init.body.thumbPutUrl, 20_000, "image/jpeg");
+    expect((await w.call({ action: "complete-single", assetId: id })).body.asset).toMatchObject({ status: "ready", hasThumb: true });
+    const listed = (await w.call({ action: "list" })).body.assets[0];
+    expect(listed.thumbUrl).toContain("X-Amz-Signature=");
+    expect(JSON.stringify(listed)).not.toMatch(/thumb_key|object_key|-thumb\.jpg\b.*u\//);
+    await w.call({ action: "delete-file", assetId: id });
+    expect(w.objects.has(thumbKey)).toBe(false);
+    expect(w.rows[0].thumb_key).toBeNull();
+    expect((await w.call({ action: "list" })).body.assets[0].thumbUrl).toBeNull();
+  });
+  it("drops a missing or oversized thumbnail without failing the video", async () => {
+    const w = world();
+    const a = await w.call({ ...small, thumbnail: true });
+    w.put(a.body.putUrl, 5 * MIB);
+    expect((await w.call({ action: "complete-single", assetId: a.body.asset.id })).body.asset).toMatchObject({ status: "ready", hasThumb: false });
+    const b = await w.call({ ...small, thumbnail: true });
+    w.put(b.body.putUrl, 5 * MIB);
+    w.put(b.body.thumbPutUrl, 600 * 1024, "image/jpeg");
+    expect((await w.call({ action: "complete-single", assetId: b.body.asset.id })).body.asset).toMatchObject({ status: "ready", hasThumb: false });
+    expect(w.objects.size).toBe(2); // only the two videos
+  });
+  it("inline download URLs carry no attachment header", async () => {
+    const w = world();
+    const init = await w.call(small);
+    w.put(init.body.putUrl, 5 * MIB);
+    await w.call({ action: "complete-single", assetId: init.body.asset.id });
+    const u = new URL((await w.call({ action: "get-download-url", assetId: init.body.asset.id, inline: true })).body.url);
+    expect(u.searchParams.has("response-content-disposition")).toBe(false);
+    expect(u.searchParams.get("response-content-type")).toBe("video/mp4");
+  });
+});
