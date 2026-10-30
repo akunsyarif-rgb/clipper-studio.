@@ -19,10 +19,9 @@ const api = createHubApi();
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 const VIEW_KEY = "clipper:hub:view";
 
-/** The production notes of a video: the entry it was saved from, or (older uploads) the one with the same title. */
+/** The production notes of a video: only the entry it was saved from (matched by id, never by title: two videos can share a title). */
 function noteFor(a: HubAsset, notes: HistoryEntry[]): HistoryEntry | null {
-  const t = a.title.trim().toLowerCase();
-  return (a.historyId ? notes.find(n => n.id === a.historyId) : null) ?? notes.find(n => n.title.trim().toLowerCase() === t) ?? null;
+  return a.historyId ? notes.find(n => n.id === a.historyId) ?? null : null;
 }
 const seoLabels = (n: HistoryEntry | null) => (n ? SEO_PLATFORMS.filter(p => n.seo[p.id]).map(p => p.label) : []);
 

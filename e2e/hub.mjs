@@ -351,13 +351,15 @@ try {
         seo: { tiktok: { at: 2, result: { platform: "tiktok", score: 82, modelScore: 82, quickFix: "", checks: [], cards: [{ key: "caption", label: "Caption", kind: "text", value: "Nasi goreng 5 menit, anti gagal" }, { key: "hashtags", label: "Hashtag", kind: "hashtags", value: ["#nasigoreng", "#resep"] }] } } } };
       await new Promise((res, rej) => { const tx = db.transaction("kv", "readwrite"); tx.objectStore("kv").put([entry], "history"); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); });
     });
-    b.f.assets.find(a => a.id === "a2").historyId = "m-resep"; // by id; a4 has the same title as nothing, a1 has no notes
+    b.f.assets.find(a => a.id === "a2").historyId = "m-resep"; // linked by id
+    b.f.assets.push({ ...b.f.assets.find(a => a.id === "a2"), id: "a2b", historyId: null, createdAt: day(1) }); // same title, no link: must NOT show the notes
     await page.goto(BASE + "/hub");
     await page.getByTestId("hub-grid").waitFor({ timeout: 10000 });
     await page.getByTestId("hub-search").fill("Resep");
     await page.getByTestId("hub-seo-badge").waitFor({ timeout: 10000 });
+    assert((await page.getByTestId("hub-seo-badge").count()) === 1 && (await page.getByTestId("hub-item").count()) === 2, "only the linked video shows the SEO badge, not the same-title one");
     assert((await page.getByTestId("hub-seo-badge").innerText()).includes("TikTok"), "card says which SEO packs exist");
-    await page.locator(".hub-thumb").click();
+    await page.locator(".hub-item", { has: page.getByTestId("hub-seo-badge") }).locator(".hub-thumb").click();
     await page.getByTestId("hub-notes").waitFor();
     const text = await page.getByTestId("hub-notes").innerText();
     assert(text.includes("Nasi goreng 5 menit, anti gagal") && text.includes("#nasigoreng") && text.includes("Naskah") && text.includes("Prompt foto sampul"), "SEO, script and cover prompt are in the video's detail: " + text.slice(0, 200));
@@ -377,7 +379,7 @@ try {
 
   await step("hub: detail dialog plays the video and edits the title", async () => {
     await page.getByTestId("hub-search").fill("Resep");
-    await page.locator(".hub-thumb").click();
+    await page.locator(".hub-thumb").first().click();
     await page.getByTestId("hub-detail").waitFor();
     await page.locator(".hub-sheet video").waitFor({ timeout: 10000 });
     assert(b.f.calls.some(c => c.action === "get-download-url" && c.assetId === "a2" && c.inline === true), "inline URL for playback");
