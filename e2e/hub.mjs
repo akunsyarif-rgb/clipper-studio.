@@ -418,6 +418,30 @@ try {
     assert(await page.getByTestId("link-hub").count() === 1 && await page.getByTestId("link-history").count() === 0, "single header link");
   });
 
+  await step("hub: storage use against the free 10 GB, and clearing uploads that never finished (confirm first, records kept)", async () => {
+    const GB = 1024 ** 3;
+    const base = b.f.assets.find(a => a.id === "a1");
+    const original = base.fileSize;
+    base.fileSize = 9 * GB;
+    b.f.assets.push({ ...base, id: "s1", title: "Gagal unggah", status: "failed", fileSize: 3 * GB, hasThumb: false, thumbUrl: null, createdAt: day(2) });
+    b.f.assets.push({ ...base, id: "s2", title: "Tersangkut", status: "uploading", fileSize: 1000, hasThumb: false, thumbUrl: null, createdAt: day(2) });
+    await page.goto(BASE + "/hub");
+    await page.getByTestId("hub-usage").waitFor({ timeout: 10000 });
+    const usage = await page.getByTestId("hub-usage").innerText();
+    assert(/9\.\d MB? ?dari 10 GB|dari 10 GB gratis/.test(usage) && /Hampir penuh/.test(usage), "usage line warns near the limit: " + usage);
+    assert(Number(/(\d+) unggahan/.exec(await page.getByTestId("hub-clean").innerText())?.[1]) >= 2, "stale uploads (at least the two seeded ones) offered for cleanup");
+    await page.getByTestId("hub-clean").click();
+    await page.getByRole("button", { name: "Batal" }).first().click();
+    assert(!b.f.calls.some(c => c.action === "delete-file" && (c.assetId === "s1" || c.assetId === "s2")), "nothing deleted before confirming");
+    await page.getByTestId("hub-clean").click();
+    await page.getByTestId("hub-clean-yes").click();
+    await until(async () => b.f.assets.find(a => a.id === "s1").status === "deleted" && b.f.assets.find(a => a.id === "s2").status === "deleted", "both cleared");
+    await page.getByTestId("hub-stale").waitFor({ state: "detached", timeout: 5000 });
+    assert(b.f.assets.some(a => a.id === "s1") && b.f.assets.some(a => a.id === "s2"), "records kept");
+    base.fileSize = original;
+    b.f.assets = b.f.assets.filter(a => a.id !== "s1" && a.id !== "s2");
+  });
+
   await step("hub: load error offers a retry; empty library explains what to do", async () => {
     b.f.listFails = 1;
     await page.goto(BASE + "/hub");

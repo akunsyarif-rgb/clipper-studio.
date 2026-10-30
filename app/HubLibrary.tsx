@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { cloud } from "@/lib/cloud";
 import { formatBytes } from "@/lib/clip";
 import {
-  countByPlatform, createHubApi, explainHubError, filterAssets, formatDuration, formatLabel, FORMATS, platformLabel, PLATFORMS,
+  countByPlatform, createHubApi, FREE_STORAGE_BYTES, staleUploads, storageUsed, usageLevel, explainHubError, filterAssets, formatDuration, formatLabel, FORMATS, platformLabel, PLATFORMS,
   type Filter, type FormatId, type HubAsset, type PlatformId,
 } from "@/lib/content-hub";
 import CloudAccount from "./CloudAccount";
@@ -49,6 +49,7 @@ export default function HubLibrary() {
   const [confirm, setConfirm] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const [confirmClean, setConfirmClean] = useState(false);
   const [notes, setNotes] = useState<HistoryEntry[]>([]);
   const [tab, setTab] = useState<"video" | "catatan">("video");
 
@@ -71,6 +72,17 @@ export default function HubLibrary() {
     const off = onHistoryChange(load);
     return () => { alive = false; off(); };
   }, [user]);
+
+  const used = useMemo(() => storageUsed(assets ?? []), [assets]);
+  const stale = useMemo(() => staleUploads(assets ?? []), [assets]);
+  async function cleanStale() {
+    setBusy("clean"); setNotice(""); setConfirmClean(false);
+    for (const a of stale) {
+      try { const { asset } = await api("delete-file", { assetId: a.id }); patch(a.id, { status: asset.status, fileDeletedAt: asset.fileDeletedAt, hasThumb: false, thumbUrl: null }); }
+      catch (e) { setNotice(explainHubError(e)); break; }
+    }
+    setBusy(null);
+  }
 
   const counts = useMemo(() => countByPlatform(assets ?? []), [assets]);
   const shown = useMemo(() => filterAssets(assets ?? [], filter), [assets, filter]);
@@ -119,6 +131,16 @@ export default function HubLibrary() {
     {tab === "video" && ready && !user && <div className="hub-empty"><strong>Masuk untuk membuka Content Hub</strong>Video lokal Anda tidak terpengaruh. Content Hub hanya memakai akun yang sama dengan sinkron naskah.</div>}
 
     {tab === "video" && user && <>
+      {assets && assets.length > 0 && <div className={"hub-usage " + usageLevel(used)} data-testid="hub-usage">
+        <div className="hub-progress" role="progressbar" aria-label="Penyimpanan terpakai" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.round(used / FREE_STORAGE_BYTES * 100))}><i style={{ width: Math.min(100, used / FREE_STORAGE_BYTES * 100) + "%" }} /></div>
+        <p>{formatBytes(used)} dari 10 GB gratis di R2{usageLevel(used) === "warn" ? ". Hampir penuh: hapus file yang tidak dipakai agar tidak ada tagihan." : usageLevel(used) === "over" ? ". Sudah melewati kuota gratis; R2 mulai menagih. Hapus file yang tidak dipakai." : "."}</p>
+      </div>}
+      {stale.length > 0 && <div className="hub-stale" data-testid="hub-stale">
+        {confirmClean
+          ? <><p>Hapus {stale.length} unggahan yang gagal atau tersangkut? Catatannya tetap ada, tetapi sisa file di cloud dibersihkan.</p>
+            <div className="hub-actions"><button className="hub-btn small danger" onClick={() => void cleanStale()} data-testid="hub-clean-yes">Bersihkan {stale.length}</button><button className="hub-btn small" onClick={() => setConfirmClean(false)}>Batal</button></div></>
+          : <button className="hub-btn small" disabled={busy === "clean"} onClick={() => setConfirmClean(true)} data-testid="hub-clean">{busy === "clean" ? "Membersihkan…" : `Bersihkan ${stale.length} unggahan yang tidak selesai`}</button>}
+      </div>}
       <div className="hub-tools">
         <input className="hub-input" type="search" placeholder="Cari judul atau nama file" value={filter.query} onChange={e => setFilter({ ...filter, query: e.target.value })} aria-label="Cari" data-testid="hub-search" />
         <select className="hub-input" value={filter.sort} onChange={e => setFilter({ ...filter, sort: e.target.value as Filter["sort"] })} aria-label="Urutkan" data-testid="hub-sort">

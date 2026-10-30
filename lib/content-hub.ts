@@ -186,6 +186,18 @@ export function countByPlatform(list: HubAsset[]): Record<PlatformId | "all", nu
   return out;
 }
 
+/** R2's free allowance for storage. The app never blocks on it; it only shows how close the library is. */
+export const FREE_STORAGE_BYTES = 10 * 1024 ** 3;
+const STALE_UPLOAD_MS = 60 * 60 * 1000;
+
+/** Bytes the library holds in R2 right now (finished files, plus uploads that may already hold parts). */
+export const storageUsed = (list: HubAsset[]) => list.filter(a => a.status === "ready" || a.status === "uploading").reduce((s, a) => s + a.fileSize, 0);
+export function usageLevel(used: number, limit = FREE_STORAGE_BYTES): "ok" | "warn" | "over" { return used >= limit ? "over" : used >= limit * 0.8 ? "warn" : "ok"; }
+
+/** Uploads that will never finish by themselves: failed ones, and ones left "uploading" for over an hour (tab closed, connection lost). */
+export const staleUploads = (list: HubAsset[], now = Date.now()) =>
+  list.filter(a => a.status === "failed" || (a.status === "uploading" && now - Date.parse(a.createdAt) > STALE_UPLOAD_MS));
+
 export const formatDuration = (s: number | null) => {
   if (s === null || !Number.isFinite(s)) return "";
   const t = Math.round(s), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
