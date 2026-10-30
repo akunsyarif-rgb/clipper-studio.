@@ -1,6 +1,6 @@
 # Clipper Studio
 
-**Clipper Studio** adalah web app Next.js untuk memotong video dan membuat video vertikal berbasis naskah. Dirancang mobile-first untuk Safari di iPhone/iPad, dengan pemrosesan utama di browser agar file video dan audio tidak perlu diunggah ke server aplikasi.
+**Clipper Studio** adalah web app Next.js untuk memotong video dan membuat video vertikal berbasis naskah. Dirancang mobile-first untuk Safari di iPhone/iPad, dengan pemrosesan utama di browser agar file video dan audio tidak perlu diunggah ke server aplikasi. Penyimpanan default adalah di perangkat. Video baru dikirim ke Content Hub (penyimpanan cloud privat Cloudflare R2) hanya jika pengguna memilih "Simpan ke Content Hub" dan menyetujuinya.
 
 ## Fitur
 
@@ -48,7 +48,7 @@ Motion Studio juga memiliki bantuan AI opsional untuk pengarahan visual dan pera
 
 ## Arsitektur dan privasi
 
-- **Clipper:** file video sumber diproses di browser dan tidak diunggah ke server aplikasi. FFmpeg core disajikan dari origin aplikasi, bukan CDN pihak ketiga. File sumber dipasang read-only ke worker bila didukung, dengan fallback ke memori.
+- **Clipper:** file video sumber diproses di browser dan tidak diunggah ke server aplikasi. Hasil ekspor hanya diunggah ke Content Hub atas pilihan dan persetujuan eksplisit pengguna (lihat bagian Content Hub). FFmpeg core disajikan dari origin aplikasi, bukan CDN pihak ketiga. File sumber dipasang read-only ke worker bila didukung, dengan fallback ke memori.
 - **Motion Studio:** render video, TTS otomatis, dan backsound otomatis berjalan di perangkat/browser. Rekaman atau audio yang dipilih pengguna digunakan untuk membuat output lokal.
 - **Fitur AI opsional:** beberapa alur dapat mengirim teks naskah/transkrip ke penyedia AI setelah konfigurasi dan persetujuan. Audio/video sumber tidak otomatis dikirim hanya karena fitur tersebut tersedia; baca penjelasan fitur yang digunakan.
 - **Layanan eksternal:** aplikasi memuat Google Fonts; preview YouTube menggunakan embed dari `youtube-nocookie.com`. Remotion Web Renderer dapat mengirim event penggunaan ke `remotion.pro` (origin situs dan status sukses, bukan konten video).
@@ -89,3 +89,31 @@ Perintah dan output CLI dapat berubah mengikuti konfigurasi proyek; periksa `pac
 ## Lisensi
 
 Periksa ketentuan lisensi Remotion yang berlaku untuk ukuran organisasi dan penggunaan Anda: https://www.remotion.dev/license.
+
+## Content Hub
+
+Perpustakaan video pribadi di dalam Clipper Studio (`/hub`). **Default tetap lokal**: ekspor dan unduh bekerja tanpa akun. Di bawah hasil ekspor (Clipper dan Motion) ada pilihan *Simpan ke Content Hub*; video baru dikirim ke cloud setelah pengguna masuk, memilih kategori, dan mencentang persetujuan.
+
+- **Alur:** browser meminta URL bertanda tangan ke Edge Function `media-library` (JWT wajib), lalu mengirim video **langsung ke bucket R2 privat** (satu `PUT` sampai 64 MB, di atasnya multipart 16 MB per bagian, 3 paralel, tiap bagian bisa diulang). Video tidak melewati Edge Function atau Vercel. Supabase hanya memegang login, metadata (`public.media_assets`), dan otorisasi. Kunci objek dibuat di server dan tidak pernah dikirim ke browser.
+- **Kategori:** TikTok, YouTube, Instagram, Facebook, Threads, X, Lainnya, Belum dikategorikan; format Shorts, Reels, Long-form, Story, Video biasa. Nilainya sama di database (check constraint), Edge Function, dan `lib/content-hub.ts`.
+- **Hapus:** manual oleh pengguna dan meminta konfirmasi. File dan thumbnail dihapus dari R2; barisnya tetap (status `deleted`, `file_deleted_at`).
+- **Tanpa batas ukuran buatan aplikasi**; batasnya hanya batas R2 (5 TiB per objek, 10.000 bagian).
+- **Secrets** (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_ENDPOINT`, `R2_REGION`) hanya ada di Supabase Function Secrets.
+
+### CORS bucket R2 (sekali, manual di Cloudflare)
+
+Upload dari browser langsung ke R2 butuh CORS. Dashboard Cloudflare, R2, bucket `clipper-content-hub`, Settings, CORS Policy:
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://<domain-produksi>", "https://<domain-preview>.vercel.app", "http://localhost:3000"],
+    "AllowedMethods": ["PUT", "GET", "HEAD"],
+    "AllowedHeaders": ["content-type", "range"],
+    "ExposeHeaders": ["ETag", "Content-Length", "Content-Range"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+Tanpa ini unggahan gagal dengan pesan "Penyimpanan cloud menolak atau tidak menjawab". Gratis.

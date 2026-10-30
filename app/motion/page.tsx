@@ -55,6 +55,7 @@ import ScenePhotoPicker from "../ScenePhotoPicker";
 import { creditText, type PexelsPhoto } from "@/lib/pexels";
 import { planToOverrides, type DirectorPlan } from "@/lib/director";
 import CloudAccount from "../CloudAccount";
+import SaveToHub from "../SaveToHub";
 import { cloud } from "@/lib/cloud";
 import type { SceneScore } from "@/lib/gemini";
 import { isAudioFile, probeVideo, SOURCE_ACCEPT, validateFile } from "@/lib/clip";
@@ -813,7 +814,7 @@ export default function MotionStudio() {
     <main className="motion-shell">
       <header className="motion-header">
         <Link className="motion-brand" href="/"><span className="motion-logo">✳</span> clipper<span>studio</span></Link>
-        <span><Link className="back-link" href="/riwayat" data-testid="link-history">Riwayat</Link> · <Link className="back-link" href="/">← Clipper Studio</Link></span>
+        <span><Link className="back-link" href="/hub" data-testid="link-hub">Content Hub</Link> · <Link className="back-link" href="/">← Clipper Studio</Link></span>
       </header>
 
       <section className="motion-intro compact">
@@ -1073,6 +1074,7 @@ export default function MotionStudio() {
           {renderError && <p className="field-error" role="alert" data-testid="render-error">{renderError}</p>}
           {errorDetail && <details className="error-details" open><summary>Detail teknis (kirimkan saat melapor)</summary><code data-testid="error-detail">{errorDetail}</code><button className="text-link" onClick={() => navigator.clipboard?.writeText(errorDetail).then(() => setStatus("Detail teknis disalin."), () => setStatus("Salin manual teks di atas."))}>Salin detail teknis</button></details>}
           {result && <div className="render-result" data-testid="result"><b>✓ MP4 siap</b><small>{WIDTH}×{HEIGHT} · {videoSeconds.toFixed(1)} dtk · {(result.size / 1024 ** 2).toFixed(1)} MB</small><a className="motion-primary" href={result.url} download={result.name} data-testid="download" onClick={() => { void updateHistory(l => logDownload(l, base(), { name: result.name, size: result.size, label: `${WIDTH}×${HEIGHT} · ${videoSeconds.toFixed(0)} dtk` })); }}>Simpan MP4 ↓</a>{srtUrl && <a className="text-link" href={srtUrl} download={result.name.replace(/\.mp4$/i, "") + ".srt"} data-testid="download-srt">Unduh subtitle (.srt)</a>}</div>}
+          {result && <SaveToHub key={result.url} tone="dark" getBlob={() => fetch(result.url).then(r => r.blob())} fileName={result.name} title={title.trim() || result.name.replace(/\.[^.]+$/, "")} source="motion" seconds={videoSeconds} width={WIDTH} height={HEIGHT} historyId={base().id} />}
           {status && <p className="motion-status" role="status" data-testid="status">{status}</p>}
           {timeline.ok && <SeoPanel seed={seoSeed} stored={entrySeo} storedId={historyId} onResult={onSeoResult} transcript={timeline.scenes.map(sc => stripMarks(sc.text)).join(" ")} topic={title.trim()} language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"} />}
         </section>
@@ -1139,7 +1141,7 @@ export default function MotionStudio() {
         </section>
       </div>
 
-      <section className="remotion-note"><span className="remotion-icon">R</span><div><b>Render di browser, tanpa biaya server</b><p>MP4 dibuat di perangkat Anda dengan Remotion Web Renderer (WebCodecs). Naskah, rekaman, dan musik tidak diunggah. Backsound otomatis disintesis di perangkat dengan Tone.js.</p></div><span className="status-chip">NO PAID RENDER</span></section>
+      <section className="remotion-note"><span className="remotion-icon">R</span><div><b>Render di browser, tanpa biaya server</b><p>MP4 dibuat di perangkat Anda dengan Remotion Web Renderer (WebCodecs). Naskah, rekaman, dan musik tidak diunggah. Hasil MP4 baru dikirim ke Content Hub (penyimpanan cloud privat) jika Anda memilih dan menyetujuinya. Backsound otomatis disintesis di perangkat dengan Tone.js.</p></div><span className="status-chip">NO PAID RENDER</span></section>
       <footer className="motion-footer"><span>CLIPPER STUDIO / MOTION LAB</span><span>Built with Remotion</span></footer>
     </main>
   );

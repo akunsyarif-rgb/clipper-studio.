@@ -1,7 +1,7 @@
 # Supabase
 
 The backend of Clipper Studio (project `clipper-studio`): sign-in and text-only sync of work sessions and transcripts, plus
-two Edge Functions. Media never goes here. Full description: `MOTION_STUDIO.md` ("Sinkron antar perangkat", "Kunci Gemini di server").
+two Edge Functions. Sync never carries media; videos go to the Content Hub bucket only when the creator chooses (see `media-library`). Full description: `MOTION_STUDIO.md` ("Sinkron antar perangkat", "Kunci Gemini di server").
 
 ## Migrations (`migrations/`)
 
@@ -15,6 +15,8 @@ can be rebuilt by running them in order (SQL editor, or `supabase db push`).
 | `20261027125556_user_secrets_for_gemini.sql` | `user_secrets`: the owner's AI key, closed to every client (RLS on, no policies, no privileges) |
 | `20261027135153_user_secrets_provider.sql` | `provider` (`google` or `openai`) and `base_url` for OpenAI-format routers |
 | `20261029010000_app_history.sql` | `app_history`: the production history (text) per video, row-level security per owner, tombstone rows for deletions |
+| `20261030000000_media_assets.sql` | `media_assets`: Content Hub metadata (the video itself is in private R2), row-level security read-only for the owner, storage columns hidden from clients, every write through the `media-library` function |
+| `20261030010000_media_assets_categories.sql` | `platform`, `content_format` (check-constrained, defaults `uncategorized` / `video`) and the server-side `thumb_key` |
 | `20261029000000_user_youtube_api.sql` | `user_youtube_api`: the owner's YouTube Data API key for the trend radar, closed to every client like `user_pexels` |
 | `20261028020000_user_pexels.sql` | `user_pexels`: the owner's Pexels key, closed to every client like `user_secrets` (a table of its own, so forgetting the AI key does not delete it) |
 
@@ -25,7 +27,7 @@ can be rebuilt by running them in order (SQL editor, or `supabase db push`).
 
 ## Edge Functions (`functions/`)
 
-`gemini` (AI proxy; key read from `user_secrets`), `youtube` (captions), `pexels` (stock-photo search and download; key read from `user_pexels`) `trends` (trend radar: Wikipedia surges and Hacker News without a key, YouTube views with the key from `user_youtube_api`; no AI) and `product` (product research done by code: searches the web through DuckDuckGo's HTML page, reads a public product page's structured data, specification tables and text, and hands over a chosen picture; needs no key and no table). All require a signed-in user (`verify_jwt`).
+`gemini` (AI proxy; key read from `user_secrets`), `youtube` (captions), `pexels` (stock-photo search and download; key read from `user_pexels`) `trends` (trend radar: Wikipedia surges and Hacker News without a key, YouTube views with the key from `user_youtube_api`; no AI) and `media-library` (Content Hub: presigned single and multipart uploads to R2, list, download, category, delete; no dependencies, SigV4 on WebCrypto; secrets `R2_*`), `product` (product research done by code: searches the web through DuckDuckGo's HTML page, reads a public product page's structured data, specification tables and text, and hands over a chosen picture; needs no key and no table). All require a signed-in user (`verify_jwt`).
 The logic is in `handler.ts` (pure, unit-tested from `lib/*-function.test.ts`); `index.ts` only starts it in Deno. Deploy with
 `supabase functions deploy <name>` or from the dashboard.
 

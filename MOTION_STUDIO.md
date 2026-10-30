@@ -29,7 +29,7 @@ Clear messages are shown for: an empty or too-long script, too many scenes, audi
 
 ## Architecture and cost
 
-- **Rendering runs in the visitor's browser.** Vercel only serves the static page. No Vercel Function, Remotion Lambda, storage or database is used, so there is no per-render cost. The script and audio are never uploaded.
+- **Rendering runs in the visitor's browser.** Vercel only serves the static page. No Vercel Function, Remotion Lambda, storage or database is used, so there is no per-render cost. The script and audio are never uploaded. The finished MP4 is uploaded to the private Content Hub bucket only if the creator picks *Simpan ke Content Hub* and agrees; that goes browser -> Cloudflare R2 by presigned URL, not through Vercel.
 - Why not render on Vercel: server-side Remotion needs Chromium + FFmpeg and minutes of CPU per video. That exceeds the practical memory, duration and bundle-size limits of Vercel Functions and would need Remotion Lambda (AWS, paid) or a dedicated worker.
 - Trade-offs: speed depends on the device (headless Chromium in CI renders 6 s in about 9 s). It needs WebCodecs H.264 support: current Chrome/Edge; Safari 17+ should work but has not been tested on a real device. For older browsers, use the CLI path below.
 
@@ -335,7 +335,7 @@ Langkah 1 dari bantuan Gemini. Whisper tetap mendengar suara dan memberi waktu k
 
 ## Sinkron antar perangkat (Supabase)
 
-Backend hanya menyimpan **data teks kecil**: sesi kerja (naskah, gaya, pilihan adegan, transkrip yang dipakai) dan transkrip hasil Whisper. **Video, audio, dan hasil render tidak pernah diunggah.**
+Backend hanya menyimpan **data teks kecil**: sesi kerja (naskah, gaya, pilihan adegan, transkrip yang dipakai) dan transkrip hasil Whisper. **Sinkron tidak pernah membawa video, audio, atau hasil render.** Hasil render hanya dikirim ke Content Hub (bucket R2 privat, lewat Edge Function `media-library`) jika pengguna memilih *Simpan ke Content Hub* dan menyetujuinya; tanpa itu semuanya tetap di perangkat.
 
 - **Proyek:** `clipper-studio` (Supabase, Singapura, paket Free). Tabel `app_sessions` (satu baris `current` per pengguna) dan `app_transcripts` (kunci sama dengan cache transkrip di perangkat). RLS: tiap baris hanya bisa dibaca/ditulis pemiliknya (`auth.uid() = user_id`). Batas ukuran 2 MB per baris.
 - **Login:** email + kata sandi. Tombol "Masuk untuk sinkron antar perangkat" di halaman utama dan Motion Studio. Tanpa login, app tidak mengirim satu permintaan pun ke layanan ini.
@@ -594,7 +594,7 @@ Inside "0 · Mulai dari tren", "Radar tren" scans public signals with no AI: Wik
 
 ## Production history (Riwayat)
 
-Page `/riwayat` (link "Riwayat" in the headers of the Clipper and the Motion studio) keeps, per video, everything that goes with it so making many videos and downloading them loses nothing: the script, the trend inputs it started from, the SEO & distribution pack per platform (with score and copy buttons), and a log of renders and downloads (file name, size, length, "diunduh" once the creator taps Simpan). Clipper exports are logged too (as "klip", without a script). `lib/history.ts` holds the pure logic (entries are keyed by the script's words, so spacing and `*marks*` do not matter; the same file rendered twice is one line; at most 150 entries, 20 files each) and `lib/history-store.ts` keeps the list in the device's IndexedDB, text only, one update at a time.
+Tab "Catatan produksi" of Content Hub (`/hub?tab=catatan`; the link "Content Hub" in the headers of the Clipper and the Motion studio; the old `/riwayat` address redirects there) keeps, per video, everything that goes with it so making many videos and downloading them loses nothing: the script, the trend inputs it started from, the SEO & distribution pack per platform (with score and copy buttons), and a log of renders and downloads (file name, size, length, "diunduh" once the creator taps Simpan). Clipper exports are logged too (as "klip", without a script). `lib/history.ts` holds the pure logic (entries are keyed by the script's words, so spacing and `*marks*` do not matter; the same file rendered twice is one line; at most 150 entries, 20 files each) and `lib/history-store.ts` keeps the list in the device's IndexedDB, text only, one update at a time.
 
 In the studio, the SEO panel is tied to the video being worked on: a pack is saved when it is made, another script (after a short pause) shows that video's own packs and never the previous video's, and going back to the first script brings its packs back. The history page searches title, script and SEO text, filters (downloaded / rendered but not downloaded / without SEO pack), exports CSV (one row per platform pack) and JSON, reopens a script in the studio ("Buka di studio"), deletes one entry or all.
 
