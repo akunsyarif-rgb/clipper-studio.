@@ -395,3 +395,17 @@ describe("media-library: notes link and preview fallback", () => {
     expect(list.filter((x: { status: string; previewUrl: string | null }) => x.status === "uploading").every((x: { previewUrl: string | null }) => x.previewUrl === null)).toBe(true);
   });
 });
+
+describe("media-library: linking notes by hand", () => {
+  it("links, re-links and unlinks a video to a notes entry; rejects junk; owner only", async () => {
+    const w = world();
+    const id = (await w.call(small)).body.asset.id;
+    expect((await w.call({ action: "update-meta", assetId: id, historyId: "m-xyz" })).body.asset.historyId).toBe("m-xyz");
+    expect(w.rows[0].history_id).toBe("m-xyz");
+    expect((await w.call({ action: "update-meta", assetId: id, historyId: null })).body.asset.historyId).toBeNull();
+    expect((await w.call({ action: "update-meta", assetId: id, historyId: "../x y" })).status).toBe(400);
+    expect((await w.call({ action: "update-meta", assetId: id, historyId: 7 })).status).toBe(400);
+    expect((await w.call({ action: "update-meta", assetId: id, historyId: "m-evil" }, "t2")).status).toBe(404);
+    expect(w.rows[0].history_id).toBeNull();
+  });
+});

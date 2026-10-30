@@ -284,12 +284,16 @@ async function route(req: Request, env: Env, fetchImpl: typeof fetch, now: () =>
       return reply(200, { asset: publicAsset(done ?? await mine(row.id)) });
     }
 
-    case "update-meta": { // title and category only; allowed in every status, so a deleted file's record can still be filed
+    case "update-meta": { // title, category and the notes link only; allowed in every status, so a deleted file's record can still be filed
       const row = await mine(msg.assetId);
       const set: Record<string, unknown> = {};
       if (msg.title !== undefined) { const t = cleanTitle(msg.title); if (!t) throw fail(400, "BAD_TITLE", "Judul tidak boleh kosong."); set.title = t; }
       if (msg.platform !== undefined) { const v = pick(msg.platform, PLATFORMS); if (!v) throw fail(400, "BAD_CATEGORY", "Kategori tidak dikenal."); set.platform = v; }
       if (msg.contentFormat !== undefined) { const v = pick(msg.contentFormat, FORMATS); if (!v) throw fail(400, "BAD_CATEGORY", "Format tidak dikenal."); set.content_format = v; }
+      if (msg.historyId !== undefined) { // link to (or, with null, unlink from) a production-notes entry
+        if (msg.historyId !== null && !(typeof msg.historyId === "string" && HISTORY_ID.test(msg.historyId))) throw fail(400, "BAD_HISTORY", "Tautan catatan tidak valid.");
+        set.history_id = msg.historyId;
+      }
       if (!Object.keys(set).length) throw fail(400, "NOTHING_TO_CHANGE", "Tidak ada yang diubah.");
       const updated = await move(row, ["uploading", "ready", "failed", "deleting", "deleted"], set);
       return reply(200, { asset: publicAsset(updated ?? row) });

@@ -79,7 +79,7 @@ function fakeBackend() {
           if (total !== a.fileSize) return json(409, { error: { status: "PARTS_MISMATCH", message: "ukuran", missing: [], wrongSize: [1] } });
           a.status = "ready"; return json(200, { asset: a }); }
         case "abort-upload": { const a = find(body.assetId); a.status = "failed"; return json(200, { asset: a }); }
-        case "update-meta": { const a = find(body.assetId); for (const k of ["title", "platform", "contentFormat"]) if (body[k] !== undefined) a[k] = body[k]; return json(200, { asset: a }); }
+        case "update-meta": { const a = find(body.assetId); for (const k of ["title", "platform", "contentFormat", "historyId"]) if (body[k] !== undefined) a[k] = body[k]; return json(200, { asset: a }); }
         case "get-download-url": return json(200, { url: `https://fake-r2.test/${body.inline ? "play" : "dl"}/${body.assetId}`, fileName: "x.mp4", expiresIn: 300 });
         case "delete-file": { const a = find(body.assetId); a.status = "deleted"; a.fileDeletedAt = new Date().toISOString(); a.hasThumb = false; a.thumbUrl = null; return json(200, { asset: a }); }
         default: return json(400, { error: { status: "BAD_ACTION", message: "?" } });
@@ -368,6 +368,20 @@ try {
     assert((await page.getByTestId("hub-seo-badge").count()) === 0, "no badge without notes");
     await page.locator(".hub-thumb").click();
     assert((await page.getByTestId("hub-notes").innerText()).includes("Belum ada catatan"), "empty notes explained");
+    await page.keyboard.press("Escape");
+    await page.getByTestId("hub-search").fill("");
+    // Link by hand: the same-title video (a2b) has no notes; pick the existing entry for it, then unlink.
+    await page.getByTestId("hub-search").fill("Resep");
+    await page.locator(".hub-item", { hasNot: page.getByTestId("hub-seo-badge") }).locator(".hub-thumb").click();
+    await page.getByTestId("hub-link-note").waitFor();
+    assert((await page.getByTestId("hub-link-note").locator("option").allInnerTexts()).join("|").includes("Resep nasi goreng"), "the entry is offered");
+    await page.getByTestId("hub-link-note").selectOption("m-resep");
+    await until(async () => b.f.assets.find(a => a.id === "a2b").historyId === "m-resep", "link saved on the server");
+    await page.getByTestId("hub-unlink").waitFor();
+    assert((await page.getByTestId("hub-notes").innerText()).includes("Nasi goreng 5 menit"), "the notes appear after linking");
+    await page.getByTestId("hub-unlink").click();
+    await until(async () => b.f.assets.find(a => a.id === "a2b").historyId === null, "unlinked on the server");
+    await page.getByTestId("hub-link-note").waitFor();
     await page.keyboard.press("Escape");
     await page.getByTestId("hub-search").fill("");
     b.f.assets.find(a => a.id === "a5").previewUrl = "https://fake-r2.test/play/a5"; // ready, no thumbnail: first frame from the video

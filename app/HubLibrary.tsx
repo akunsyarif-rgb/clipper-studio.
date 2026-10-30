@@ -78,8 +78,8 @@ export default function HubLibrary() {
 
   const patch = (id: string, p: Partial<HubAsset>) => setAssets(list => list?.map(a => (a.id === id ? { ...a, ...p } : a)) ?? list);
 
-  async function update(a: HubAsset, change: { title?: string; platform?: PlatformId; contentFormat?: FormatId }) {
-    const before = { title: a.title, platform: a.platform, contentFormat: a.contentFormat };
+  async function update(a: HubAsset, change: { title?: string; platform?: PlatformId; contentFormat?: FormatId; historyId?: string | null }) {
+    const before = { title: a.title, platform: a.platform, contentFormat: a.contentFormat, historyId: a.historyId ?? null };
     patch(a.id, change); setNotice("");
     try { await api("update-meta", { assetId: a.id, ...change }); }
     catch (e) { patch(a.id, before); setNotice(explainHubError(e)); }
@@ -180,12 +180,12 @@ export default function HubLibrary() {
       </>}
     </>}
 
-    {current && <Detail key={current.id} asset={current} note={noteFor(current, notes)} onClose={() => setOpen(null)} onUpdate={c => update(current, c)} onDownload={() => void download(current)} />}
+    {current && <Detail key={current.id} asset={current} note={noteFor(current, notes)} notes={notes} onClose={() => setOpen(null)} onUpdate={c => update(current, c)} onDownload={() => void download(current)} />}
   </main>;
 }
 
 /** One video: playback (when the file exists), editable title / platform / format. */
-function Detail({ asset, note, onClose, onUpdate, onDownload }: { asset: HubAsset; note: HistoryEntry | null; onClose: () => void; onUpdate: (c: { title?: string; platform?: PlatformId; contentFormat?: FormatId }) => Promise<void>; onDownload: () => void }) {
+function Detail({ asset, note, notes, onClose, onUpdate, onDownload }: { asset: HubAsset; note: HistoryEntry | null; notes: HistoryEntry[]; onClose: () => void; onUpdate: (c: { title?: string; platform?: PlatformId; contentFormat?: FormatId; historyId?: string | null }) => Promise<void>; onDownload: () => void }) {
   const [src, setSrc] = useState("");
   const [err, setErr] = useState("");
   const [title, setTitle] = useState(asset.title);
@@ -213,7 +213,17 @@ function Detail({ asset, note, onClose, onUpdate, onDownload }: { asset: HubAsse
       {asset.status === "ready" && <div className="hub-row"><button className="hub-btn solid" onClick={onDownload}>Unduh</button></div>}
       <div className="hub-notes" data-testid="hub-notes">
         <h3>Paket SEO, prompt &amp; naskah</h3>
-        {note ? <EntryDetail e={note} /> : <p className="hub-note">Belum ada catatan untuk video ini. Paket SEO dibuat di Studio Motion atau Clipper (bagian Paket SEO &amp; distribusi); jika ada, otomatis muncul di sini.</p>}
+        {note
+          ? <><EntryDetail e={note} /><button className="hub-btn small" style={{ marginTop: 10 }} onClick={() => void onUpdate({ historyId: null })} data-testid="hub-unlink">Lepas tautan catatan</button></>
+          : <>
+            <p className="hub-note">Belum ada catatan yang tertaut ke video ini. Paket SEO dibuat di Studio Motion atau Clipper (bagian Paket SEO &amp; distribusi) dan otomatis tertaut saat video disimpan ke sini.</p>
+            {notes.length > 0 && <label className="hub-field">Tautkan ke catatan yang ada
+              <select value="" onChange={e => { if (e.target.value) void onUpdate({ historyId: e.target.value }); }} data-testid="hub-link-note">
+                <option value="">Pilih catatan…</option>
+                {notes.map(n => <option key={n.id} value={n.id}>{(n.title || "(tanpa judul)").slice(0, 60)} · {n.kind === "clip" ? "klip" : "motion"} · {fmtDate(new Date(n.updatedAt).toISOString())}</option>)}
+              </select>
+            </label>}
+          </>}
       </div>
     </div>
   </div>;
