@@ -36,7 +36,7 @@ const LINES = [
   { start: 55, end: 80, text: "Tips kedua sisihkan tabungan di awal bulan." },
 ];
 async function until(check, message) { for (let i = 0; i < 80; i++) { if (await check().catch(() => false)) return; await new Promise(r => setTimeout(r, 100)); } throw new Error(message); }
-const seen = { audio: [], moments: 0, status: 0, captions: 0, ytMomentLines: 0, failAudioAt: 0, audioRequests: 0 };
+const seen = { judge: [], moment_prompts: [], audio: [], moments: 0, status: 0, captions: 0, ytMomentLines: 0, failAudioAt: 0, audioRequests: 0 };
 /** Captions of a 100 s video, a line every 5 s. */
 const CAPTIONS = Array.from({ length: 20 }, (_, i) => ({ start: i * 5, end: i * 5 + 4, text: `Kalimat ke ${i} tentang topik penting.` }));
 const pastedText = CAPTIONS.map(l => `${Math.floor(l.start / 60)}:${String(l.start % 60).padStart(2, "0")}\n${l.text}`).join("\n");
@@ -77,7 +77,15 @@ try {
         seen.audio.push({ format: audio.input_audio.format, bytes: raw.length, head: raw.subarray(0, 3).toString("latin1") });
         return answer({ lines: LINES });
       }
+      if (text.includes('"judgements"')) {
+        // The reading test: in the comedy run the first clip lacks its setup (one line before it), the rest are clear.
+        seen.judge.push(text);
+        const items = JSON.parse(text.split("\n").at(-1));
+        const comedy = /tertawa|lucunya/.test(text);
+        return answer({ judgements: items.map((it, i) => (comedy && i === 0 ? { i: it.i, score: 5, understood: "ada yang lucu tapi tokohnya tidak jelas", missing: "siapa pembicaranya", extendStart: 1, extendEnd: 0 } : { i: it.i, score: 9, understood: "jelas", missing: "", extendStart: 0, extendEnd: 0 })) });
+      }
       if (text.includes('"moments"')) {
+        seen.moment_prompts.push(text);
         const lines = JSON.parse(text.split("\n").at(-1));
         if (lines.length > 6) { seen.ytMomentLines = lines.length; return answer({ moments: [{ start: 1, end: 4, title: "Bagian awal penting", reason: "dari teks YouTube" }, { start: 6, end: 9, title: "Bagian akhir penting", reason: "dari teks YouTube" }] }); }
         seen.moments++; return answer({ moments: [{ start: 2, end: 2, title: "Tiga tips keuangan", reason: "pembuka kuat" }, { start: 3, end: 3, title: "Sisihkan tabungan dulu", reason: "tips praktis" }] });
@@ -183,6 +191,33 @@ try {
     assert((await page.getByTestId("timing-lost").count()) === 0, "caption timing still follows the transcript after snapping");
     await page.reload();
     assert((await page.getByTestId("handoff-note").count()) === 0, "the hand-off is used once");
+  });
+
+  await step("comedy: the AI looks for whole jokes, every suggestion gets a reading test by a viewer who has not seen the rest, and a clip that lacks its setup is extended and left unticked", async () => {
+    const p = await ctx.newPage();
+    p.on("pageerror", e => pageErrors.push(e.message));
+    await p.goto(BASE);
+    await p.getByTestId("file-input").setInputFiles(video);
+    await p.getByTestId("flow-consent").waitFor({ timeout: 15000 });
+    await p.getByTestId("flow-consent").check();
+    assert(await p.getByTestId("flow-genre").inputValue() === "umum", "general by default");
+    await p.getByTestId("flow-genre").selectOption("komedi");
+    seen.moment_prompts.length = 0; seen.judge.length = 0;
+    await p.getByTestId("flow-analyze").click();
+    await p.getByTestId("flow-item").first().waitFor({ timeout: 120000 });
+    assert(seen.moment_prompts.length >= 1 && /lelucon atau momen lucu yang UTUH/.test(seen.moment_prompts.at(-1)), "the AI is asked for whole jokes");
+    assert(seen.judge.length === 1 && /BELUM melihat bagian video yang lain/.test(seen.judge[0]), "one reading test for all candidates");
+    const first = await p.getByTestId("flow-item").first().innerText();
+    assert(/Konteks kurang 5\/10/.test(first) && /siapa pembicaranya/.test(first) && /Penonton baru menangkap: ada yang lucu/.test(first), "says what is missing: " + first);
+    assert(/Ditambah 1 kalimat di awal/.test(first), "the start was extended by the line the reader asked for: " + first);
+    assert(!(await p.getByTestId("flow-check").first().isChecked()), "a clip that lacks context is not ticked");
+    const second = await p.getByTestId("flow-item").nth(1).innerText();
+    assert(/Mudah dipahami 9\/10/.test(second) && await p.getByTestId("flow-check").nth(1).isChecked(), "a clear clip is ticked: " + second);
+    // The choice is remembered on this device; put it back for the other steps.
+    assert(await p.evaluate(() => localStorage.getItem("clipper:genre:v1")) === "komedi", "the genre is remembered");
+    await p.getByTestId("flow-genre").selectOption("umum");
+    assert(await p.evaluate(() => localStorage.getItem("clipper:genre:v1")) === "umum", "and changes back");
+    await p.close();
   });
 
   await step("a long video is listened to in parts of at most two minutes; a part that fails does not throw the finished parts away", async () => {

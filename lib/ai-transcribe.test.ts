@@ -145,6 +145,16 @@ describe("a whole video", () => {
     await transcribeLong(480, cutter(log), { ...base, transport: counting }, { done });
     expect(log).toEqual([]); expect(sent).toEqual([]);
   });
+  it("sharpens each part's lines with its own audio, shifts the words onto the video's timeline, and keeps the AI's times when that fails", async () => {
+    const refine = async (_mp3: Uint8Array, lines: { start: number; end: number; text: string }[]) =>
+      lines.map(l => ({ ...l, start: l.start - 0.5, end: l.end + 0.2, words: [{ text: "x", start: l.start - 0.5, end: l.start - 0.4 }] }));
+    const t = await transcribeLong(240, cutter(), { ...base, transport }, { refine });
+    expect(t.segments.map(s => s.start)).toEqual([0.5, 4.5, 120.5, 124.5]);
+    expect(t.segments[2].words).toEqual([{ text: "x", start: 120.5, end: 120.6 }]);
+    const broken = await transcribeLong(240, cutter(), { ...base, transport }, { refine: async () => { throw new Error("decode"); } });
+    expect(broken.segments.map(s => s.start)).toEqual([1, 5, 121, 125]);
+    expect(broken.segments[0].words.length).toBeGreaterThan(0);
+  });
   it("stops when cancelled", async () => {
     const ctl = new AbortController();
     ctl.abort();

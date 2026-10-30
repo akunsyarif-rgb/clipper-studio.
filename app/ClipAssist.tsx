@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { formatTime } from "@/lib/clip";
-import { suggestMoments, writeCopy, type Copy, type Moment } from "@/lib/clip-assist";
+import { suggestMoments, WEAK_SCORE, writeCopy, type Copy, type Moment } from "@/lib/clip-assist";
 import { GeminiError } from "@/lib/gemini";
 import type { Transcript } from "@/lib/transcript";
 import { useGeminiAccess } from "./useGeminiAccess";
@@ -70,6 +70,7 @@ export default function ClipAssist({ transcript, rangeStart, language, disabled,
       {moments.map((m, i) => <div className="assist-moment" key={`${m.start}:${m.end}`} data-testid="assist-moment">
         <b>{m.title}</b>
         <small>{formatTime(rangeStart + m.start)} – {formatTime(rangeStart + m.end)} · {Math.round(m.end - m.start)} detik{m.reason ? ` · ${m.reason}` : ""}</small>
+        {m.judged && <small data-testid="assist-understood">{m.judged.score >= WEAK_SCORE ? "Mudah dipahami" : "Konteks kurang"} {m.judged.score}/10{m.judged.understood ? ` · Penonton baru menangkap: ${m.judged.understood}` : ""}{m.judged.missing ? ` · Kurang: ${m.judged.missing}` : ""}</small>}
         <div className="range-tools">
           {onPickRange && <button onClick={() => onPickRange(rangeStart + m.start, rangeStart + m.end)} data-testid="assist-use-range">Pakai rentang ini</button>}
           <button onClick={() => void writeFor(`momen ${i + 1}: ${m.title}`, textOf(m))} disabled={busy !== null} data-testid="assist-copy-moment">Judul &amp; tagar untuk momen ini</button>

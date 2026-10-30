@@ -54,3 +54,6 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
 .chip { border: 1px solid var(--line, #d8d8e0); background: transparent; color: inherit; border-radius: 999px; padding: 4px 10px; font-size: 0.8rem; cursor: pointer; }
 .chip:hover { border-color: currentColor; }
+
+.flow-understood { display: block; margin: 2px 0; }
+.flow-understood.weak { color: #b45309; }
