@@ -7,6 +7,7 @@ import { filterEntries, toCsv, toJson, type Filter, type HistoryEntry } from "@/
 import { deleteHistory, loadHistory, onHistoryChange, onSyncChange, startHistorySync, syncHistory, syncState } from "@/lib/history-store";
 import { cloud } from "@/lib/cloud";
 import { seoToText, SEO_PLATFORMS } from "@/lib/seo";
+import { buildCoverPrompt } from "@/lib/cover-prompt";
 
 const fmtDate = (t: number) => new Date(t).toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 const mb = (n: number) => (n / 1024 ** 2).toFixed(1) + " MB";
@@ -111,6 +112,15 @@ export default function HistoryPage() {
                   {e.trend && <p className="seo-text"><b>Dari tren:</b> {e.trend.trend || "-"} · niche {e.trend.niche || "-"}{e.trend.audience ? ` · ${e.trend.audience}` : ""}</p>}
                   {e.videos.length > 0 && <ul className="seo-list">{e.videos.map((v, i) => <li key={i}>{v.saved ? "✓ diunduh" : "dirender"} · {v.name} · {v.label} · {mb(v.size)} · {fmtDate(v.at)}</li>)}</ul>}
                   {e.script && <details><summary>Naskah</summary><p className="seo-text" style={{ whiteSpace: "pre-wrap" }}>{e.script}</p></details>}
+                  {e.kind === "motion" && e.script && (() => {
+                    const cp = buildCoverPrompt({ topic: e.trend?.niche ?? "", title: e.title, transcript: e.script, platform: packs[0]?.id ?? "tiktok" });
+                    const id = `${e.id}:cover`;
+                    return <details data-testid="history-cover"><summary>Prompt foto sampul (dasar)</summary>
+                      <p className="seo-text" style={{ whiteSpace: "pre-wrap" }}>{cp.prompt}</p>
+                      <button type="button" className="text-link" onClick={() => void copy(id, cp.prompt)} data-testid="history-cover-copy">{copied === id ? "Tersalin ✓" : "Salin prompt"}</button>{" "}
+                      <button type="button" className="text-link" onClick={() => void copy(id + "n", cp.negative)}>{copied === id + "n" ? "Tersalin ✓" : "Salin negative prompt"}</button>
+                    </details>;
+                  })()}
                   {packs.map(p => {
                     const s = e.seo[p.id]!;
                     return (
