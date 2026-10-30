@@ -3,6 +3,8 @@ import type { FFmpeg } from "@ffmpeg/ffmpeg";
 import { AUDIO_OUTPUT_NAME, audioArgs, ffmpegArgs, isAudioFile, logTime, MP3_OUTPUT_NAME, mp3Args, OUTPUT_NAME, type Aspect, type Fit, type Quality } from "./clip";
 import { WATERMARK_PNG_NAME } from "./watermark";
 
+export const CTA_PNG_NAME = "cta.png";
+
 export const CORE_BASE = "/ffmpeg";
 
 export class ExportCancelled extends Error {
@@ -55,6 +57,8 @@ export type ExportJob = {
   fit: Fit;
   /** Watermark picture (see lib/watermark-canvas.ts) laid over every frame; leave out for a clean video. */
   watermark?: { data: Uint8Array; x: number; y: number } | null;
+  /** Closing call-to-action picture (see lib/cta-canvas.ts) that fades in at `start` seconds; leave out for none. */
+  cta?: { data: Uint8Array; x: number; y: number; start: number; fade: number } | null;
   onProgress: (fraction: number) => void;
 };
 
@@ -82,7 +86,8 @@ export async function exportClip(job: ExportJob): Promise<Blob> {
       await ff.writeFile(input, await fetchFile(job.file));
     }
     if (job.watermark) await ff.writeFile(WATERMARK_PNG_NAME, job.watermark.data);
-    const code = await ff.exec(ffmpegArgs(input, job, job.aspect, job.quality, job.fit, job.watermark ? { file: WATERMARK_PNG_NAME, x: job.watermark.x, y: job.watermark.y } : null, isAudioFile(job.file)));
+    if (job.cta) await ff.writeFile(CTA_PNG_NAME, job.cta.data);
+    const code = await ff.exec(ffmpegArgs(input, job, job.aspect, job.quality, job.fit, job.watermark ? { file: WATERMARK_PNG_NAME, x: job.watermark.x, y: job.watermark.y } : null, isAudioFile(job.file), job.cta ? { file: CTA_PNG_NAME, x: job.cta.x, y: job.cta.y, start: job.cta.start, fade: job.cta.fade } : null));
     if (code !== 0) throw new Error(`FFmpeg keluar dengan kode ${code}: ${lastLogs.slice(-6).join(" | ")}`);
     const data = await ff.readFile(OUTPUT_NAME);
     if (typeof data === "string" || data.byteLength < 1024) throw new Error(`Output MP4 kosong. ${lastLogs.slice(-6).join(" | ")}`);
@@ -93,6 +98,7 @@ export async function exportClip(job: ExportJob): Promise<Blob> {
     if (engine === ff) {
       await ff.deleteFile(OUTPUT_NAME).catch(() => undefined);
       if (job.watermark) await ff.deleteFile(WATERMARK_PNG_NAME).catch(() => undefined);
+      if (job.cta) await ff.deleteFile(CTA_PNG_NAME).catch(() => undefined);
       if (mounted) await ff.unmount(mountPoint).catch(() => undefined);
       else if (input) await ff.deleteFile(input).catch(() => undefined);
     }
