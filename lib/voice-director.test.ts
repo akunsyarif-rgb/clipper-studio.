@@ -10,6 +10,12 @@ describe("voice direction rules", () => {
     expect(d.emotion).toBe("suspense");
     expect(d.pauseAfter).toBe(0.8);
   });
+  it("recommends rising intonation for a question", () => {
+    expect(analyzeVoiceSegment("Mengapa hal ini bisa terjadi?").intonation).toBe("rising");
+  });
+  it("recommends suspense intonation for a reveal", () => {
+    expect(analyzeVoiceSegment("Ternyata jawabannya berbeda.").intonation).toBe("suspense");
+  });
   it("slows reflective language", () => {
     expect(analyzeVoiceSegment("Renungkan makna hidup dan bersyukurlah.").pace).toBe("slow");
   });
