@@ -16,6 +16,8 @@ import { measureWatermark, WatermarkLayer } from "./Watermark";
 import { FamilyView } from "./Families";
 import { VideoOverlay } from "./Overlays";
 import { BottomVisual, TopVisual } from "./SceneVisuals";
+import { EditLayers } from "./EditEffects";
+import { zoomAt } from "../lib/edit-profile";
 
 function resolveAudio(src: string): string {
   // Browser renders pass blob:/http(s):/data: URLs; CLI renders pass a file name inside public/.
@@ -47,9 +49,10 @@ function outlineShadow(px: number, color = "#000"): string {
 }
 
 /** Caption over the speaker (source-video edits): short phrase, spoken word highlighted, stable layout. */
-function VideoCaption({ scene, captionStyle, colors }: { scene: Scene; captionStyle: CaptionStyleId; colors: Colors }) {
+function VideoCaption({ scene, captionStyle, colors, emphasis }: { scene: Scene; captionStyle: CaptionStyleId; colors: Colors; /** Comedy: punchline ranges (output seconds) and where this scene starts (frame). */ emphasis?: { ranges: { from: number; to: number }[]; sceneStart: number } }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const punch = !!emphasis && emphasis.ranges.some(r => (emphasis.sceneStart + frame) / fps >= r.from && (emphasis.sceneStart + frame) / fps <= r.to + 0.3);
   const state = captionState(scene, frame);
   if (!state) return null;
   const pop = Math.min(1, spring({ frame: state.since, fps, config: { damping: 16, stiffness: 220, mass: 0.5 } }));
@@ -61,7 +64,7 @@ function VideoCaption({ scene, captionStyle, colors }: { scene: Scene; captionSt
   const gap = (i: number) => (i < words.length - 1 ? " " : "");
   return (
     <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", paddingBottom: CAPTION_BOTTOM }}>
-      <div data-caption-style={captionStyle} style={{ ...wrap, ...base, color: "#fff", textShadow: captionStyle === "classic" ? "0 4px 22px #000d, 0 0 3px #000c" : captionStyle === "box" ? "0 3px 14px #000c" : outlineShadow(captionStyle === "pop" ? 6 : 4) }}>
+      <div data-caption-style={captionStyle} data-punch={punch ? "1" : undefined} style={{ ...wrap, ...base, ...(punch ? { fontSize: Math.round(base.fontSize * 1.18), transform: `${wrap.transform} rotate(-2deg)` } : {}), color: "#fff", textShadow: captionStyle === "classic" ? "0 4px 22px #000d, 0 0 3px #000c" : captionStyle === "box" ? "0 3px 14px #000c" : outlineShadow(captionStyle === "pop" ? 6 : 4) }}>
         {words.map((w, i) => {
           const on = i === activeIn;
           if (captionStyle === "classic") return <span key={i} style={{ color: on ? "#ffe066" : "#fff" }}>{w}{gap(i)}</span>;
@@ -162,7 +165,7 @@ function SceneView({ scene, index, count, title, style, colors, layout, insets, 
   );
 }
 
-export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech, video, overlay, brandMotion, watermark, storyVisuals, typography, captionStyle, backdrop, grain, sfx }) => {
+export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech, video, overlay, brandMotion, watermark, storyVisuals, typography, captionStyle, backdrop, grain, sfx, edits, captionEmphasis }) => {
   // The type pack is set before anything below draws or measures text, and the frame waits for its fonts.
   const pack = resolveTypePack(typography);
   setActiveType(pack);
@@ -197,7 +200,8 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
       {particles.map(p => <div key={p.key} aria-hidden="true" style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: p.size, height: p.size, borderRadius: "50%", background: colors.accent, opacity: p.opacity, transform: `translateY(${p.drift}px)`, pointerEvents: "none" }} />)}
       {!quiet && <div style={{ position: "absolute", width: 700, height: 700, border: `1px solid ${colors.accent}45`, borderRadius: "50%", right: -380, top: 250, transform: `rotate(${frame * 0.3}deg)` }} />}
       {backdrop === "mesh" && !video ? <MeshBackdrop colors={colors} /> : null}
-      {video ? (video.audioOnly ? <Audio src={resolveAudio(video.src)} trimBefore={Math.round((video.trimStart ?? 0) * fps)} /> : <AbsoluteFill><Video src={resolveAudio(video.src)} trimBefore={Math.round((video.trimStart ?? 0) * fps)} objectFit="cover" /></AbsoluteFill>) : null}
+      {video ? (video.audioOnly ? <Audio src={resolveAudio(video.src)} trimBefore={Math.round((video.trimStart ?? 0) * fps)} /> : <AbsoluteFill style={edits?.length ? { transform: `scale(${zoomAt(edits, frame / fps)})`, transformOrigin: "50% 40%" } : undefined}><Video src={resolveAudio(video.src)} trimBefore={Math.round((video.trimStart ?? 0) * fps)} objectFit="cover" /></AbsoluteFill>) : null}
+      {video && !video.audioOnly && edits?.length ? <EditLayers edits={edits} src={resolveAudio(video.src)} trimStart={video.trimStart ?? 0} zoom={t => zoomAt(edits, t)} /> : null}
       {audioSrc ? <Audio src={resolveAudio(audioSrc)} /> : null}
       {sfx ? <Audio src={resolveAudio(sfx.src)} volume={sfx.volume} /> : null}
       {music ? (
@@ -226,7 +230,7 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
             {video
               ? <>
                 {clip && video ? <Sequence from={0} durationInFrames={clip.lengthFrames}><ClipCutaway src={video.src} startFrame={clip.startFrame} length={clip.lengthFrames} /></Sequence> : null}
-                {captions ? <VideoCaption scene={scene} captionStyle={captionStyle ?? "classic"} colors={colors} /> : null}
+                {captions ? <VideoCaption scene={scene} captionStyle={captionStyle ?? "classic"} colors={colors} emphasis={captionEmphasis?.length ? { ranges: captionEmphasis, sceneStart: start } : undefined} /> : null}
                 {/* Cutaway: an opaque graphic over the speaker (at most 4 s); the video underneath keeps playing, so audio never breaks. */}
                 {scene.cut === "graphic" ? <Sequence from={0} durationInFrames={Math.min(scene.durationInFrames, 120)}><Cutaway scene={scene} colors={colors} length={Math.min(scene.durationInFrames, 120)} index={i} /></Sequence> : null}
               </>
