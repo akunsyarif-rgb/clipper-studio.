@@ -117,3 +117,10 @@ Upload dari browser langsung ke R2 butuh CORS. Dashboard Cloudflare, R2, bucket 
 ```
 
 Tanpa ini unggahan gagal dengan pesan "Penyimpanan cloud menolak atau tidak menjawab". Gratis.
+
+### Perawatan Content Hub
+
+- **Kuota gratis R2: 10 GB.** `/hub` menampilkan pemakaian terhadap 10 GB dan memberi peringatan mulai 80%. Aplikasi tidak memblokir unggahan; melewati kuota berarti R2 mulai menagih, jadi hapus file yang tidak dipakai.
+- **Unggahan yang tersangkut** (tab ditutup, koneksi putus) tampil sebagai "Belum selesai" atau "Gagal". Tombol "Bersihkan ... unggahan yang tidak selesai" menghapus sisa filenya (catatannya tetap). R2 juga membatalkan multipart yang terbengkalai sendiri lewat aturan lifecycle bawaan.
+- **Rotasi token R2** (disarankan tiap 3-6 bulan, atau segera jika dicurigai bocor): di Cloudflare buat API token R2 baru (Object Read & Write, hanya bucket ini), perbarui `R2_ACCESS_KEY_ID` dan `R2_SECRET_ACCESS_KEY` di Supabase (Edge Functions, Secrets), uji satu unggahan, baru cabut token lama.
+- **Cadangan catatan produksi:** tab "Catatan produksi" punya Ekspor CSV dan JSON; unduh JSON sesekali. Video sendiri ada di R2 dan di perangkat.

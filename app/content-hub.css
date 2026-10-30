@@ -76,3 +76,11 @@
 .hub-notes h3{margin:0 0 8px;font-size:14px}
 .hub-sheet{max-width:640px}
 .hub-thumb video{pointer-events:none}
+.hub-usage{margin-top:14px}
+.hub-usage p{margin:6px 0 0;font-size:12px;color:var(--h-muted)}
+.hub-usage .hub-progress{margin-top:0;height:6px}
+.hub-usage.warn .hub-progress>i{background:#c98a00}
+.hub-usage.over .hub-progress>i{background:var(--h-danger)}
+.hub-usage.warn p,.hub-usage.over p{color:var(--h-ink)}
+.hub-stale{margin-top:12px;padding:10px;border:1px dashed var(--h-line);border-radius:9px;font-size:12px}
+.hub-stale p{margin:0 0 8px}

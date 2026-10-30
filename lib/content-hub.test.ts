@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countByPlatform, createHubApi, explainHubError, filterAssets, formatDuration, HubError, uploadToHub, type HubApi, type HubAsset, type PutFn } from "./content-hub";
+import { FREE_STORAGE_BYTES, staleUploads, storageUsed, usageLevel, countByPlatform, createHubApi, explainHubError, filterAssets, formatDuration, HubError, uploadToHub, type HubApi, type HubAsset, type PutFn } from "./content-hub";
 
 const MIB = 1024 * 1024;
 const asset = (o: Partial<HubAsset>): HubAsset => ({
@@ -141,5 +141,26 @@ describe("list helpers", () => {
   });
   it("formats duration", () => {
     expect([formatDuration(5), formatDuration(65), formatDuration(3725), formatDuration(null)]).toEqual(["0:05", "1:05", "1:02:05", ""]);
+  });
+});
+
+describe("storage and housekeeping helpers", () => {
+  const GB = 1024 ** 3;
+  it("counts finished and in-flight uploads, not failed or deleted ones", () => {
+    const l = [asset({ fileSize: 2 * GB }), asset({ status: "uploading", fileSize: GB }), asset({ status: "failed", fileSize: 5 * GB }), asset({ status: "deleted", fileSize: 7 * GB })];
+    expect(storageUsed(l)).toBe(3 * GB);
+  });
+  it("warns at 80% and flags the free allowance as passed", () => {
+    expect([usageLevel(0), usageLevel(7.9 * GB), usageLevel(8 * GB), usageLevel(FREE_STORAGE_BYTES - 1), usageLevel(FREE_STORAGE_BYTES)]).toEqual(["ok", "ok", "warn", "warn", "over"]);
+  });
+  it("finds uploads that will never finish: failed, or uploading for over an hour", () => {
+    const now = Date.parse("2026-10-30T12:00:00Z");
+    const l = [
+      asset({ id: "f", status: "failed", createdAt: "2026-10-30T11:59:00Z" }),
+      asset({ id: "old", status: "uploading", createdAt: "2026-10-30T10:30:00Z" }),
+      asset({ id: "live", status: "uploading", createdAt: "2026-10-30T11:30:00Z" }),
+      asset({ id: "ok", status: "ready", createdAt: "2026-10-01T00:00:00Z" }),
+    ];
+    expect(staleUploads(l, now).map(a => a.id)).toEqual(["f", "old"]);
   });
 });
