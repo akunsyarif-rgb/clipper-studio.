@@ -194,3 +194,6 @@ button.scene-row{width:100%;text-align:left;color:inherit;font:inherit;backgroun
 .voice-direction-controls select{width:100%;min-width:0;padding:8px 6px!important;font-size:11px!important}
 .voice-direction-reason{display:block}
 @media(max-width:520px){.voice-direction-controls{grid-template-columns:1fr 1fr}.voice-direction-controls label:last-child{grid-column:1/-1}.voice-direction-controls select{font-size:14px!important}}
+
+.voice-emphasis{display:flex;flex-direction:column;gap:5px;font-size:9px;color:var(--m-muted)}
+.voice-emphasis input{width:100%;min-width:0;padding:8px 9px!important;font-size:11px!important}
