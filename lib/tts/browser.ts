@@ -14,8 +14,8 @@ export const MODEL_BYTES = Object.values(SIZES).reduce((a, b) => a + b, 0);
 
 /** Voice styles in voice.bin order; gender measured from synthesized pitch (F0 ≈ 170–245 Hz vs 90–150 Hz). */
 export const VOICES = [
-  { id: 0, label: "Wanita 1" }, { id: 1, label: "Wanita 2" }, { id: 2, label: "Wanita 3" }, { id: 3, label: "Wanita 4" }, { id: 4, label: "Wanita 5" },
-  { id: 5, label: "Pria 1" }, { id: 6, label: "Pria 2" }, { id: 7, label: "Pria 3" }, { id: 8, label: "Pria 4" }, { id: 9, label: "Pria 5" },
+  { id: 0, label: "Female Adult · 1" }, { id: 1, label: "Female Adult · 2" }, { id: 2, label: "Female Adult · 3" }, { id: 3, label: "Female Adult · 4" }, { id: 4, label: "Female Adult · 5" },
+  { id: 5, label: "Male Adult · 1" }, { id: 6, label: "Male Adult · 2" }, { id: 7, label: "Male Adult · 3" }, { id: 8, label: "Male Adult · 4" }, { id: 9, label: "Male Adult · 5" },
 ];
 
 type Manifest = { files: Record<string, { size: number; sha256: string; parts: string[] }> };
