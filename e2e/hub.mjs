@@ -46,7 +46,7 @@ const seed = () => [
 
 /** A fake media-library + R2. `calls` records every function call; `puts` every upload to storage. */
 function fakeBackend() {
-  const f = { assets: seed(), calls: [], puts: [], gets: [], putFailures: 0, putHang: false, listFails: 0, seq: 0 };
+  const f = { assets: seed(), calls: [], puts: [], gets: [], putFailures: 0, partFailures: 0, multipart: null, parts: {}, putHang: false, listFails: 0, seq: 0 };
   async function install(ctx) {
     await ctx.route("https://smwealrfgnzxquqqscxs.supabase.co/functions/v1/media-library", async route => {
       const req = route.request();
@@ -67,9 +67,17 @@ function fakeBackend() {
             f.assets.push(a);
           }
           a.status = "uploading";
+          if (f.multipart) return json(200, { asset: a, mode: "multipart", partSize: f.multipart, partCount: Math.ceil(a.fileSize / f.multipart), thumbPutUrl: a.hasThumb ? `https://fake-r2.test/thumb-put/${a.id}` : undefined });
           return json(200, { asset: a, mode: "single", putUrl: `https://fake-r2.test/put/${a.id}`, contentType: a.mimeType, expiresIn: 900, thumbPutUrl: a.hasThumb ? `https://fake-r2.test/thumb-put/${a.id}` : undefined });
         }
         case "complete-single": { const a = find(body.assetId); const got = f.puts.filter(p => p.id === a.id && p.kind === "video" && p.ok).at(-1); if (!got || got.size !== a.fileSize) return json(409, { error: { status: "NOT_UPLOADED", message: "File belum sampai." } }); a.status = "ready"; a.thumbUrl = a.hasThumb ? `https://fake-r2.test/thumb/${a.id}.png` : null; return json(200, { asset: a }); }
+        case "multipart-init": { const a = find(body.assetId); f.parts[a.id] ??= {}; return json(200, { asset: a, partSize: f.multipart, partCount: Math.ceil(a.fileSize / f.multipart) }); }
+        case "list-parts": return json(200, { parts: Object.entries(f.parts[body.assetId] ?? {}).map(([n, size]) => ({ partNumber: Number(n), size })) });
+        case "sign-parts": return json(200, { parts: body.partNumbers.map(n => ({ partNumber: n, url: `https://fake-r2.test/part/${body.assetId}/${n}` })), expiresIn: 900 });
+        case "complete-upload": { const a = find(body.assetId); const held = f.parts[a.id] ?? {}; const n = Math.ceil(a.fileSize / f.multipart); const total = Object.values(held).reduce((x, y) => x + y, 0);
+          for (let i = 1; i <= n; i++) if (held[i] === undefined) return json(409, { error: { status: "PARTS_MISMATCH", message: "belum lengkap", missing: [i], wrongSize: [] } });
+          if (total !== a.fileSize) return json(409, { error: { status: "PARTS_MISMATCH", message: "ukuran", missing: [], wrongSize: [1] } });
+          a.status = "ready"; return json(200, { asset: a }); }
         case "abort-upload": { const a = find(body.assetId); a.status = "failed"; return json(200, { asset: a }); }
         case "update-meta": { const a = find(body.assetId); for (const k of ["title", "platform", "contentFormat"]) if (body[k] !== undefined) a[k] = body[k]; return json(200, { asset: a }); }
         case "get-download-url": return json(200, { url: `https://fake-r2.test/${body.inline ? "play" : "dl"}/${body.assetId}`, fileName: "x.mp4", expiresIn: 300 });
@@ -82,6 +90,12 @@ function fakeBackend() {
       if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
       if (req.method() === "PUT") {
         const parts = url.pathname.split("/");
+        if (parts[1] === "part") {
+          const size = req.postDataBuffer()?.length ?? 0;
+          if (f.partFailures > 0) { f.partFailures--; f.puts.push({ id: parts[2], kind: "part", n: Number(parts[3]), size, ok: false }); return route.fulfill({ status: 500, headers: CORS, body: "" }); }
+          (f.parts[parts[2]] ??= {})[Number(parts[3])] = size; f.puts.push({ id: parts[2], kind: "part", n: Number(parts[3]), size, ok: true });
+          return route.fulfill({ status: 200, headers: { ...CORS, etag: '"e"' }, body: "" });
+        }
         const kind = parts[1] === "thumb-put" ? "thumb" : "video", id = parts[2];
         const size = req.postDataBuffer()?.length ?? 0;
         if (kind === "video" && f.putHang) return; // never answers: the upload stays in flight until the page aborts it
@@ -196,6 +210,35 @@ try {
     assert(outside.length === 0, "no third-party request: " + outside.join(", "));
   });
 
+  await step("multipart in the browser: parts sent in order of need, one failed part retried, progress reaches the full size, then completed", async () => {
+    await page.goto(BASE);
+    await page.getByTestId("file-input").setInputFiles(source);
+    await page.getByText("00:00:08").first().waitFor({ timeout: 15000 });
+    await page.getByTestId("export").click();
+    await page.getByTestId("result").waitFor({ timeout: 120000 });
+    b.f.multipart = 512 * 1024; b.f.partFailures = 1; b.f.puts.length = 0; b.f.calls.length = 0;
+    await page.getByTestId("hub-open").click();
+    await page.getByTestId("hub-platform").selectOption("youtube");
+    await page.getByTestId("hub-format").selectOption("long_form");
+    await page.getByTestId("hub-consent").check();
+    await page.getByTestId("hub-upload").click();
+    await page.getByTestId("hub-done").waitFor({ timeout: 60000 });
+    const init = b.f.calls.find(c => c.action === "init-upload");
+    const parts = b.f.puts.filter(p => p.kind === "part");
+    const okParts = parts.filter(p => p.ok);
+    const count = Math.ceil(init.fileSize / b.f.multipart);
+    assert(count >= 4, "enough parts to be a real multipart: " + count);
+    assert(parts.some(p => !p.ok), "a part failed once");
+    assert(okParts.length === count && new Set(okParts.map(p => p.n)).size === count, "each part stored exactly once after the retry");
+    assert(okParts.reduce((x, p) => x + p.size, 0) === init.fileSize, "stored bytes equal the file size");
+    assert(okParts.every(p => p.n === count ? p.size === init.fileSize - b.f.multipart * (count - 1) : p.size === b.f.multipart), "part sizes");
+    const actions = b.f.calls.map(c => c.action);
+    assert(actions.indexOf("multipart-init") < actions.indexOf("list-parts") && actions.at(-1) === "complete-upload" && !actions.includes("complete-single"), "call order: " + actions.join(","));
+    assert(b.f.assets.find(a => a.id === init.assetId || a.title === init.title && a.platform === "youtube").status === "ready", "asset ready");
+    b.f.multipart = null;
+    return `${count} parts, ${parts.length - okParts.length} retried`;
+  });
+
   await step("motion studio: render, then the same save box (dark) uploads with source=motion and 1080x1920", async () => {
     await page.goto(BASE + "/motion");
     await page.evaluate(() => document.querySelectorAll("details.fold").forEach(d => { d.open = true; }));
@@ -225,7 +268,7 @@ try {
     assert(await count("all") === total, "count for all");
     for (const id of ["tiktok", "youtube", "instagram", "facebook", "threads", "x", "other", "uncategorized"]) await page.getByTestId("cat-" + id).waitFor();
     await page.getByTestId("cat-youtube").click();
-    assert((await page.getByTestId("hub-item").count()) === 1, "youtube filter");
+    assert((await page.getByTestId("hub-item").count()) === b.f.assets.filter(x => x.platform === "youtube").length, "youtube filter");
     await page.getByTestId("cat-all").click();
     await page.getByTestId("hub-search").fill("NASI goreng");
     assert((await page.getByTestId("hub-item").count()) === 1 && (await page.getByTestId("hub-item").innerText()).includes("Resep nasi goreng"), "search by title");
@@ -250,6 +293,30 @@ try {
     await page.getByTestId("hub-search").fill("");
     const fb = Number(await page.getByTestId("cat-facebook").locator("b").innerText()), un = Number(await page.getByTestId("cat-uncategorized").locator("b").innerText());
     assert(fb === 1 && un === b.f.assets.filter(a => a.platform === "uncategorized").length, "counts moved");
+  });
+
+  await step("hub: every category can be assigned and filtered (8 of 8) and every format saved", async () => {
+    await page.getByTestId("hub-search").fill("Resep");
+    for (const id of ["tiktok", "youtube", "instagram", "facebook", "threads", "x", "other", "uncategorized"]) {
+      await page.getByTestId("hub-move").selectOption(id);
+      await until(async () => b.f.assets.find(a => a.id === "a2").platform === id, "server stored " + id);
+      await page.getByTestId("hub-search").fill("");
+      await page.getByTestId("cat-" + id).click();
+      const titles = await page.locator(".hub-title").allInnerTexts();
+      assert(titles.includes("Resep nasi goreng"), `the video is listed under ${id}`);
+      assert(Number(await page.getByTestId("cat-" + id).locator("b").innerText()) === b.f.assets.filter(a => a.platform === id).length, "count for " + id);
+      await page.getByTestId("cat-all").click();
+      await page.getByTestId("hub-search").fill("Resep");
+    }
+    await page.getByTestId("hub-move").selectOption("youtube");
+    await until(async () => b.f.assets.find(a => a.id === "a2").platform === "youtube", "restored");
+    await page.locator(".hub-thumb").click();
+    for (const f of ["shorts", "reels", "long_form", "story", "video"]) {
+      await page.locator(".hub-sheet select").nth(1).selectOption(f);
+      await until(async () => b.f.assets.find(a => a.id === "a2").contentFormat === f, "format " + f);
+    }
+    await page.keyboard.press("Escape");
+    await page.getByTestId("hub-search").fill("");
   });
 
   await step("hub: download starts a file download from a short-lived URL", async () => {
