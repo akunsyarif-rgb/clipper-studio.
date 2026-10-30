@@ -67,3 +67,7 @@
 @media(min-width:700px){.hub-modal{align-items:center}.hub-sheet{border-radius:16px}.hub-grid{grid-template-columns:repeat(auto-fill,minmax(176px,1fr))}}
 @media(max-width:699px){.hub-thumb{aspect-ratio:3/4}.hub-list .hub-thumb{aspect-ratio:3/4}}
 @media(max-width:380px){.hub-two{grid-template-columns:1fr}}
+.hub-tabs{display:flex;gap:4px;margin:14px 0 4px;border-bottom:1px solid var(--h-line)}
+.hub-tabs button{min-height:44px;padding:0 16px;border:0;border-bottom:3px solid transparent;background:transparent;color:var(--h-muted);font:700 14px inherit;font-family:inherit;cursor:pointer}
+.hub-tabs button[aria-selected=true]{color:var(--h-ink);border-bottom-color:var(--h-accent)}
+.history-panel{padding-top:10px}

@@ -278,7 +278,7 @@ try {
     const p = await ctxH.newPage();
     p.on("pageerror", e => pageErrors.push(e.message));
     await p.goto(BASE); await p.getByTestId("fold-trend").waitFor({ timeout: 8000 }); await openFolds(p);
-    await p.getByTestId("link-history").waitFor({ timeout: 3000 });
+    await p.getByTestId("link-hub").waitFor({ timeout: 3000 });
     await p.getByTestId("voice-none").click();
     await p.getByTestId("duration").selectOption("15");
     await p.getByTestId("title").fill("Video A");
@@ -302,7 +302,8 @@ try {
     await Promise.all([p.waitForEvent("download"), p.getByTestId("download").click()]);
     await p.waitForTimeout(500);
     // The history page.
-    await p.getByTestId("link-history").click();
+    await p.getByTestId("link-hub").click();
+    await p.getByTestId("tab-catatan").click();
     await p.getByTestId("history-entry").first().waitFor({ timeout: 8000 });
     const entry = p.getByTestId("history-entry").filter({ hasText: "Video A" });
     assert(await entry.count() === 1, "one entry for video A: " + JSON.stringify(await p.getByTestId("history-entry").allInnerTexts()));

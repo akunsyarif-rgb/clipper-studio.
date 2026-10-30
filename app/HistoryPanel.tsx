@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { copyText } from "../SeoPanel";
+import { copyText } from "./SeoPanel";
 import { filterEntries, toCsv, toJson, type Filter, type HistoryEntry } from "@/lib/history";
 import { deleteHistory, loadHistory, onHistoryChange, onSyncChange, startHistorySync, syncHistory, syncState } from "@/lib/history-store";
 import { cloud } from "@/lib/cloud";
@@ -23,7 +22,7 @@ function download(name: string, text: string, type: string) {
  * started from, the SEO and distribution pack per platform, and when each video was rendered and saved. It survives
  * downloading, closing the tab and making the next video.
  */
-export default function HistoryPage() {
+export default function HistoryPanel() {
   const [list, setList] = useState<HistoryEntry[] | null>(null);
   const [filter, setFilter] = useState<Filter>({ text: "", status: "all" });
   const [open, setOpen] = useState<string | null>(null);
@@ -58,13 +57,11 @@ export default function HistoryPage() {
   }
 
   return (
-    <main className="history-page" style={{ maxWidth: 860, margin: "0 auto", padding: "16px" }}>
-      <header className="topbar"><Link className="brand" href="/"><span className="logo">c</span><span>clipper<span className="light">studio</span></span></Link><Link className="text-link" href="/motion">Studio Motion →</Link></header>
-      <h1>Riwayat produksi</h1>
+    <section className="history-panel" data-testid="history-panel">
       <p className="field-hint" data-testid="history-intro">Naskah, paket SEO &amp; distribusi, dan catatan render/unduh setiap video, disimpan di perangkat ini (teks, bukan video) dan, bila Anda masuk ke akun, disinkronkan ke perangkat lain. Tetap ada setelah video diunduh atau tab ditutup. Tanpa akun, riwayat hilang jika data situs browser dihapus, jadi ekspor secara berkala.</p>
 
       <div className="notice" role="status" data-testid="history-sync">
-        {!signedIn ? <>Belum masuk: riwayat hanya ada di perangkat ini. Masuk ke akun di halaman utama untuk menyinkronkannya antar perangkat (hanya teks).</>
+        {!signedIn ? <>Belum masuk: riwayat hanya ada di perangkat ini. Masuk ke akun (tautan ☁ di atas) untuk menyinkronkannya antar perangkat (hanya teks).</>
           : sync.phase === "syncing" ? <>Menyinkronkan…</>
           : sync.phase === "error" ? <>{sync.message} <button type="button" className="text-link" onClick={() => void syncHistory()} data-testid="history-sync-retry">Coba lagi</button></>
           : sync.phase === "done" ? <>✓ Tersinkron dengan akun {cloud.user()} · {new Date(sync.at ?? Date.now()).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} <button type="button" className="text-link" onClick={() => void syncHistory()} data-testid="history-sync-now">Sinkron sekarang</button></>
@@ -141,6 +138,6 @@ export default function HistoryPage() {
             );
           })}
         </>}
-    </main>
+    </section>
   );
 }

@@ -353,14 +353,27 @@ try {
     await page.getByTestId("hub-detail").waitFor({ state: "detached" });
   });
 
+  await step("production notes live in the hub: tab switch, old /riwayat address redirects, one header link", async () => {
+    await page.goto(BASE + "/riwayat");
+    await page.waitForURL(/\/hub\?tab=catatan/, { timeout: 10000 });
+    await page.getByTestId("history-panel").waitFor({ timeout: 10000 });
+    assert(await page.getByTestId("tab-catatan").getAttribute("aria-selected") === "true", "notes tab selected");
+    assert(await page.getByTestId("hub-grid").count() === 0, "video list hidden on the notes tab");
+    await page.getByTestId("tab-video").click();
+    await page.getByTestId("hub-grid").waitFor({ timeout: 10000 });
+    assert(await page.getByTestId("history-panel").count() === 0, "notes hidden on the video tab");
+    await page.goto(BASE);
+    assert(await page.getByTestId("link-hub").count() === 1 && await page.getByTestId("link-history").count() === 0, "single header link");
+  });
+
   await step("hub: load error offers a retry; empty library explains what to do", async () => {
     b.f.listFails = 1;
-    await page.reload();
+    await page.goto(BASE + "/hub");
     await page.getByTestId("hub-load-error").waitFor({ timeout: 10000 });
     await page.getByRole("button", { name: "Muat ulang" }).click();
     await page.getByTestId("hub-grid").waitFor({ timeout: 10000 });
     const saved = b.f.assets; b.f.assets = [];
-    await page.reload();
+    await page.goto(BASE + "/hub");
     await page.getByTestId("hub-empty").waitFor({ timeout: 10000 });
     await page.getByText("Simpan ke Content Hub").first().waitFor();
     b.f.assets = saved;

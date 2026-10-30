@@ -814,7 +814,7 @@ export default function MotionStudio() {
     <main className="motion-shell">
       <header className="motion-header">
         <Link className="motion-brand" href="/"><span className="motion-logo">✳</span> clipper<span>studio</span></Link>
-        <span><Link className="back-link" href="/hub" data-testid="link-hub">Content Hub</Link> · <Link className="back-link" href="/riwayat" data-testid="link-history">Riwayat</Link> · <Link className="back-link" href="/">← Clipper Studio</Link></span>
+        <span><Link className="back-link" href="/hub" data-testid="link-hub">Content Hub</Link> · <Link className="back-link" href="/">← Clipper Studio</Link></span>
       </header>
 
       <section className="motion-intro compact">

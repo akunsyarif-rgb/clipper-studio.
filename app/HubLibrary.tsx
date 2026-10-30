@@ -9,6 +9,7 @@ import {
   type Filter, type FormatId, type HubAsset, type PlatformId,
 } from "@/lib/content-hub";
 import CloudAccount from "./CloudAccount";
+import HistoryPanel from "./HistoryPanel";
 import "./content-hub.css";
 
 const api = createHubApi();
@@ -39,9 +40,12 @@ export default function HubLibrary() {
   const [confirm, setConfirm] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const [tab, setTab] = useState<"video" | "catatan">("video");
 
   useEffect(() => { const sync = () => { setUser(cloud.user()); setReady(true); }; sync(); return cloud.subscribe(sync); }, []);
   useEffect(() => { try { const v = localStorage.getItem(VIEW_KEY); if (v === "list" || v === "grid") setView(v); } catch { /* storage blocked */ } }, []);
+  useEffect(() => { try { if (new URLSearchParams(window.location.search).get("tab") === "catatan") setTab("catatan"); } catch { /* no URL */ } }, []);
+  const pickTab = (t: "video" | "catatan") => { setTab(t); try { window.history.replaceState(null, "", t === "catatan" ? "/hub?tab=catatan" : "/hub"); } catch { /* no history API */ } };
   const pickView = (v: "grid" | "list") => { setView(v); try { localStorage.setItem(VIEW_KEY, v); } catch { /* storage blocked */ } };
 
   const reload = useCallback(async () => {
@@ -85,12 +89,18 @@ export default function HubLibrary() {
       <span><Link className="text-link" href="/">Clipper</Link> · <Link className="text-link" href="/motion">Motion</Link></span>
     </header>
     <h1>Content Hub</h1>
-    <p className="hub-note">Video yang Anda simpan sendiri dari Clipper Studio atau Motion Studio. File disimpan di penyimpanan cloud privat; tidak ada yang diunggah otomatis.</p>
+    <p className="hub-note">Video yang Anda simpan sendiri dari Clipper Studio atau Motion Studio disimpan di penyimpanan cloud privat; tidak ada yang diunggah otomatis. Catatan produksi (naskah, paket SEO, riwayat render) ada di tab sebelahnya.</p>
     <CloudAccount />
+    <div className="hub-tabs" role="tablist" aria-label="Bagian">
+      <button role="tab" aria-selected={tab === "video"} onClick={() => pickTab("video")} data-testid="tab-video">Video</button>
+      <button role="tab" aria-selected={tab === "catatan"} onClick={() => pickTab("catatan")} data-testid="tab-catatan">Catatan produksi</button>
+    </div>
 
-    {ready && !user && <div className="hub-empty"><strong>Masuk untuk membuka Content Hub</strong>Video lokal Anda tidak terpengaruh. Content Hub hanya memakai akun yang sama dengan sinkron naskah.</div>}
+    {tab === "catatan" && <HistoryPanel />}
 
-    {user && <>
+    {tab === "video" && ready && !user && <div className="hub-empty"><strong>Masuk untuk membuka Content Hub</strong>Video lokal Anda tidak terpengaruh. Content Hub hanya memakai akun yang sama dengan sinkron naskah.</div>}
+
+    {tab === "video" && user && <>
       <div className="hub-tools">
         <input className="hub-input" type="search" placeholder="Cari judul atau nama file" value={filter.query} onChange={e => setFilter({ ...filter, query: e.target.value })} aria-label="Cari" data-testid="hub-search" />
         <select className="hub-input" value={filter.sort} onChange={e => setFilter({ ...filter, sort: e.target.value as Filter["sort"] })} aria-label="Urutkan" data-testid="hub-sort">
