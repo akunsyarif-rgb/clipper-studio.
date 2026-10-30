@@ -347,7 +347,7 @@ export default function MotionStudio() {
 
   // Automatic voice over is valid only for the exact sentences, language, voice and speed it was made from.
   const voiceDirections = useMemo(() => analyzeVoiceScript(splitScriptWithPauses(script).texts).map((direction, index) => ({ ...direction, ...voiceDirectionOverrides[`${index}:${direction.sourceText}`] })), [script, voiceDirectionOverrides]);
-  const voiceKey = useMemo(() => JSON.stringify([splitScriptWithPauses(script), ttsLang, ttsVoice, ttsSpeed, voiceDirections.map(d => [d.emotion, d.delivery, d.pace, d.pauseAfter, d.emphasis])]), [script, ttsLang, ttsVoice, ttsSpeed, voiceDirections]);
+  const voiceKey = useMemo(() => JSON.stringify([splitScriptWithPauses(script), ttsLang, ttsVoice, ttsSpeed, voiceDirections.map(d => [d.pace, d.pauseAfter])]), [script, ttsLang, ttsVoice, ttsSpeed, voiceDirections]);
   const aiFresh = voiceMode === "ai" && aiNarration?.key === voiceKey ? aiNarration : null;
   const narration = voiceMode === "ai" ? aiFresh?.narration ?? null : voiceMode === "manual" ? manualNarration : null;
   // Transcript timing applies while the script still matches the transcript words and the narration is the original audio.
