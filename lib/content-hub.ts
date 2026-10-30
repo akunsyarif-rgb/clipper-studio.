@@ -40,7 +40,7 @@ export function explainHubError(e: unknown): string {
     case "signed-out": return "Sesi masuk berakhir. Masuk lagi, lalu coba lagi. Video tetap aman di perangkat.";
     case "network": return "Koneksi terputus. Periksa internet, lalu ketuk Coba lagi. Bagian yang sudah terkirim tidak diulang.";
     case "cancelled": return "Dibatalkan.";
-    case "storage": return "Penyimpanan cloud menolak atau tidak menjawab. Ketuk Coba lagi. Jika terus gagal, periksa pengaturan CORS bucket (lihat README).";
+    case "storage": return `Video tidak bisa dikirim ke penyimpanan dari alamat ini (${typeof location !== "undefined" ? location.origin : "halaman ini"}). Jika internet normal, alamat itu belum diizinkan di CORS bucket R2: tambahkan persis alamat tersebut di AllowedOrigins (lihat README), lalu ketuk Coba lagi.`;
     case "rejected": return e.message;
     default: return e.message || "Layanan sedang bermasalah. Coba lagi sebentar lagi.";
   }
@@ -76,7 +76,8 @@ export const xhrPut: PutFn = (url, blob, headers, onProgress, signal) => new Pro
   for (const [k, v] of Object.entries(headers)) x.setRequestHeader(k, v);
   x.upload.onprogress = e => onProgress(e.loaded);
   x.onload = () => (x.status >= 200 && x.status < 300 ? resolve() : reject(new HubError("storage", `Penyimpanan menjawab ${x.status}.`)));
-  x.onerror = () => reject(new HubError("network", "Koneksi terputus."));
+  // A browser reports a CORS refusal exactly like a dead connection. While the device is online, point at the likelier cause.
+  x.onerror = () => reject(typeof navigator !== "undefined" && navigator.onLine === false ? new HubError("network", "Koneksi terputus.") : new HubError("storage", "Browser tidak bisa mengirim ke penyimpanan."));
   x.ontimeout = () => reject(new HubError("network", "Koneksi habis waktu."));
   x.onabort = () => reject(new HubError("cancelled", "Dibatalkan."));
   signal?.addEventListener("abort", () => x.abort(), { once: true });
