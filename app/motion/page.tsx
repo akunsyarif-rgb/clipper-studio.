@@ -13,6 +13,7 @@ import {
 import { explainVoiceError, loadVoiceEngine, MODEL_BYTES, VOICES } from "@/lib/tts/browser";
 import { assembleNarration, clipKey, SPEEDS } from "@/lib/tts/narration";
 import { spokenText } from "@/lib/tts/numbers";
+import { analyzeVoiceScript, paceToSpeed, VOICE_EMOTION_LABELS, VOICE_PACE_LABELS, type VoiceDirection, type VoiceEmotion, type VoicePace } from "@/lib/voice-director";
 import { TTS_LANGS, type TtsLang } from "@/lib/tts/supertonic";
 import { allWords, shiftWords, HANDOFF_KEY, parseHandoff, sceneTimings, scriptFromTranscript, mergeShortScenes, type Transcript } from "@/lib/transcript";
 import { ICONS, resolveVisual, sceneTopics, type Cut, stripMarks, TEMPLATES, type Template, type VisualOverride } from "@/lib/visuals";
@@ -161,6 +162,7 @@ export default function MotionStudio() {
   const [ttsLang, setTtsLang] = useState<TtsLang>("id");
   const [ttsVoice, setTtsVoice] = useState(0);
   const [ttsSpeed, setTtsSpeed] = useState(1.05);
+  const [voiceDirectionOverrides, setVoiceDirectionOverrides] = useState<Record<number, Partial<VoiceDirection>>>({});
   const [aiNarration, setAiNarration] = useState<AiNarration | null>(null);
   const [voiceProgress, setVoiceProgress] = useState<VoiceProgress | null>(null);
   const [voiceError, setVoiceError] = useState("");
@@ -344,7 +346,8 @@ export default function MotionStudio() {
   useEffect(() => { if (!moodTouched) setMood(moodForStyle(style)); }, [style, moodTouched]);
 
   // Automatic voice over is valid only for the exact sentences, language, voice and speed it was made from.
-  const voiceKey = useMemo(() => JSON.stringify([splitScriptWithPauses(script), ttsLang, ttsVoice, ttsSpeed]), [script, ttsLang, ttsVoice, ttsSpeed]);
+  const voiceDirections = useMemo(() => analyzeVoiceScript(splitScriptWithPauses(script).texts).map((direction, index) => ({ ...direction, ...voiceDirectionOverrides[index] })), [script, voiceDirectionOverrides]);
+  const voiceKey = useMemo(() => JSON.stringify([splitScriptWithPauses(script), ttsLang, ttsVoice, ttsSpeed, voiceDirections.map(d => [d.emotion, d.delivery, d.pace, d.pauseAfter, d.emphasis])]), [script, ttsLang, ttsVoice, ttsSpeed, voiceDirections]);
   const aiFresh = voiceMode === "ai" && aiNarration?.key === voiceKey ? aiNarration : null;
   const narration = voiceMode === "ai" ? aiFresh?.narration ?? null : voiceMode === "manual" ? manualNarration : null;
   // Transcript timing applies while the script still matches the transcript words and the narration is the original audio.
@@ -560,11 +563,13 @@ export default function MotionStudio() {
         if (voiceCancel.current) throw new Error("cancelled");
         // Digits are spoken as words ("1.300" → "seribu tiga ratus"); the screen keeps the digits.
         const spoken = spokenText(stripMarks(text), ttsLang);
-        const k = clipKey(spoken, ttsLang, ttsVoice, ttsSpeed);
+        const direction = voiceDirections[i];
+        const segmentSpeed = paceToSpeed(direction.pace, ttsSpeed);
+        const k = clipKey(spoken, ttsLang, ttsVoice, segmentSpeed);
         let clip = clipCache.current.get(k);
         if (!clip) {
           clip = await engine.synthesize(spoken, ttsLang, ttsVoice, {
-            speed: ttsSpeed,
+            speed: segmentSpeed,
             onStep: async (step, total) => {
               setVoiceProgress({ phase: "synth", loaded: i * total + step, total: texts.length * total, label: `Membuat suara scene ${i + 1}/${texts.length}…` });
               // Let the browser paint progress between model steps.
@@ -576,7 +581,8 @@ export default function MotionStudio() {
         }
         clips.push(clip);
       }
-      const { samples, sceneSeconds } = assembleNarration(clips, engine.sampleRate, FPS, pauses);
+      const directedPauses = pauses.map((pause, i) => Math.max(pause, voiceDirections[i]?.pauseAfter ?? 0));
+      const { samples, sceneSeconds } = assembleNarration(clips, engine.sampleRate, FPS, directedPauses);
       normalize(samples, 0.9, 3);
       const file = new File([encodeWav([samples], engine.sampleRate)], `suara-otomatis-${ttsLang}.wav`, { type: "audio/wav" });
       setAiNarration({
@@ -954,6 +960,20 @@ export default function MotionStudio() {
             </div>
             <label className="field-label" htmlFor="tts-speed">Kecepatan bicara</label>
             <select id="tts-speed" data-testid="tts-speed" value={ttsSpeed} disabled={voiceBusy} onChange={e => setTtsSpeed(Number(e.target.value))}>{SPEEDS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
+            <div className="voice-director" data-testid="voice-director">
+              <div className="voice-director-heading"><b>AI Voice Director</b><small>Analisis lokal · tanpa biaya API</small></div>
+              <p>Rekomendasi otomatis per kalimat. Tempo dan jeda diterapkan saat sintesis; emosi dan penekanan adalah arahan editorial, bukan jaminan perubahan karakter suara.</p>
+              {voiceDirections.map((direction, index) => <div className="voice-direction-row" key={`${index}-${direction.sourceText}`} data-testid={`voice-direction-${index}`}>
+                <div className="voice-direction-title"><b>Segmen {index + 1}</b><small>{direction.sourceText}</small></div>
+                <div className="voice-direction-controls">
+                  <label>Emosi<select aria-label={`Emosi segmen ${index + 1}`} value={direction.emotion} disabled={voiceBusy} onChange={e => setVoiceDirectionOverrides(old => ({ ...old, [index]: { ...old[index], emotion: e.target.value as VoiceEmotion } }))}>{Object.entries(VOICE_EMOTION_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+                  <label>Tempo<select aria-label={`Tempo segmen ${index + 1}`} value={direction.pace} disabled={voiceBusy} onChange={e => setVoiceDirectionOverrides(old => ({ ...old, [index]: { ...old[index], pace: e.target.value as VoicePace } }))}>{Object.entries(VOICE_PACE_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+                  <label>Jeda setelah kalimat<select aria-label={`Jeda segmen ${index + 1}`} value={direction.pauseAfter} disabled={voiceBusy} onChange={e => setVoiceDirectionOverrides(old => ({ ...old, [index]: { ...old[index], pauseAfter: Number(e.target.value) as VoiceDirection["pauseAfter"] } }))}><option value={0}>Tanpa jeda tambahan</option><option value={0.25}>0,25 detik</option><option value={0.5}>0,5 detik</option><option value={0.8}>0,8 detik</option></select></label>
+                </div>
+                <small className="voice-direction-reason">{direction.reason} · keyakinan {direction.confidence} · penekanan: {direction.emphasis.join(", ") || "tidak ada"}</small>
+              </div>)}
+              {Object.keys(voiceDirectionOverrides).length > 0 && <button type="button" className="motion-secondary" disabled={voiceBusy} onClick={() => setVoiceDirectionOverrides({})}>Pulihkan rekomendasi otomatis</button>}
+            </div>
             {voiceProgress ? <div className="render-progress" data-testid="voice-progress">
               <div><span>{voiceProgress.label}</span><b>{voiceProgress.phase === "download" ? `${(voiceProgress.loaded / 1e6).toFixed(0)} / ${(voiceProgress.total / 1e6).toFixed(0)} MB` : `${Math.round((voiceProgress.loaded / voiceProgress.total) * 100)}%`}</b></div>
               <i><em style={{ width: Math.min(100, (voiceProgress.loaded / Math.max(1, voiceProgress.total)) * 100) + "%" }} /></i>
