@@ -46,8 +46,8 @@ export default function ClipAssist({ transcript, rangeStart, language, disabled,
     const found = await call("moments", o => suggestMoments(lines, o));
     if (found) { setMoments(found); if (found.length === 0) setError("AI tidak menemukan momen yang layak dipotong dari transkrip ini."); }
   }
-  async function writeFor(label: string, text: string) {
-    const value = await call("copy", o => writeCopy(text, o));
+  async function writeFor(label: string, text: string, context = "") {
+    const value = await call("copy", o => writeCopy(text, o, context));
     if (value) setCopy({ for: label, value });
   }
   async function copyText(what: string, text: string) {
@@ -55,6 +55,8 @@ export default function ClipAssist({ transcript, rangeStart, language, disabled,
     catch { setError("Browser menolak menyalin. Salin teks secara manual."); }
   }
   const textOf = (m: Moment) => transcript.segments.slice(m.startIndex, m.endIndex + 1).map(s => s.text).join(" ");
+  /** The lines just before a moment: what a new viewer would be missing, for the title and description. */
+  const contextOf = (m: Moment) => transcript.segments.slice(Math.max(0, m.startIndex - 6), m.startIndex).map(s => s.text).join(" ");
   const allText = transcript.segments.map(s => s.text).join(" ");
 
   return <details className="gemini-box" data-testid="assist-box">
@@ -73,7 +75,7 @@ export default function ClipAssist({ transcript, rangeStart, language, disabled,
         {m.judged && <small data-testid="assist-understood">{m.judged.score >= WEAK_SCORE ? "Mudah dipahami" : "Konteks kurang"} {m.judged.score}/10{m.judged.understood ? ` · Penonton baru menangkap: ${m.judged.understood}` : ""}{m.judged.missing ? ` · Kurang: ${m.judged.missing}` : ""}</small>}
         <div className="range-tools">
           {onPickRange && <button onClick={() => onPickRange(rangeStart + m.start, rangeStart + m.end)} data-testid="assist-use-range">Pakai rentang ini</button>}
-          <button onClick={() => void writeFor(`momen ${i + 1}: ${m.title}`, textOf(m))} disabled={busy !== null} data-testid="assist-copy-moment">Judul &amp; tagar untuk momen ini</button>
+          <button onClick={() => void writeFor(`momen ${i + 1}: ${m.title}`, textOf(m), contextOf(m))} disabled={busy !== null} data-testid="assist-copy-moment">Judul &amp; tagar untuk momen ini</button>
         </div>
       </div>)}
     </div>}

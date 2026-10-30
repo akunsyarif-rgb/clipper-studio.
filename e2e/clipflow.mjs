@@ -82,7 +82,7 @@ try {
         seen.judge.push(text);
         const items = JSON.parse(text.split("\n").at(-1));
         const comedy = /tertawa|lucunya/.test(text);
-        return answer({ judgements: items.map((it, i) => (comedy && i === 0 ? { i: it.i, score: 5, understood: "ada yang lucu tapi tokohnya tidak jelas", missing: "siapa pembicaranya", extendStart: 1, extendEnd: 0 } : { i: it.i, score: 9, understood: "jelas", missing: "", extendStart: 0, extendEnd: 0 })) });
+        return answer({ judgements: items.map((it, i) => (comedy && i === 0 ? { i: it.i, score: 5, understood: "ada yang lucu tapi tokohnya tidak jelas", missing: "siapa pembicaranya", extendStart: 1, extendEnd: 0, opening: "Hari ini bahas tiga tips keuangan" } : { i: it.i, score: 9, understood: "jelas", missing: "", extendStart: 0, extendEnd: 0, opening: comedy ? "Seminar Andi di Surabaya" : "" })) });
       }
       if (text.includes('"moments"')) {
         seen.moment_prompts.push(text);
@@ -211,12 +211,22 @@ try {
     assert(/Konteks kurang 5\/10/.test(first) && /siapa pembicaranya/.test(first) && /Penonton baru menangkap: ada yang lucu/.test(first), "says what is missing: " + first);
     assert(/Ditambah 1 kalimat di awal/.test(first), "the start was extended by the line the reader asked for: " + first);
     assert(!(await p.getByTestId("flow-check").first().isChecked()), "a clip that lacks context is not ticked");
+    // The opening text: grounded in the transcript, so it is offered (editable); an invented one (a name and a city that nobody said) is not used, and the creator is told.
+    assert(await p.getByTestId("flow-opening").first().inputValue() === "Hari ini bahas tiga tips keuangan", "grounded opening offered: " + await p.getByTestId("flow-opening").first().inputValue());
+    assert(await p.getByTestId("flow-opening").nth(1).inputValue() === "", "an invented opening is not used");
+    assert(/Teks pembuka dari AI tidak dipakai: memuat hal yang tidak ada di transkrip \(Andi/.test(await p.getByTestId("flow-item").nth(1).innerText()), "says why: " + await p.getByTestId("flow-item").nth(1).innerText());
     const second = await p.getByTestId("flow-item").nth(1).innerText();
     assert(/Mudah dipahami 9\/10/.test(second) && await p.getByTestId("flow-check").nth(1).isChecked(), "a clear clip is ticked: " + second);
+    // The opening text becomes the title of the video in Motion.
+    await p.getByTestId("flow-opening").first().fill("Hari ini bahas tiga tips keuangan (cek)");
+    await p.getByTestId("flow-motion").first().click();
+    await p.waitForURL(/\/motion/, { timeout: 60000 });
+    await p.getByTestId("title").waitFor({ timeout: 20000 });
+    assert(await p.getByTestId("title").inputValue() === "Hari ini bahas tiga tips keuangan (cek)", "the opening text is the title in Motion: " + await p.getByTestId("title").inputValue());
+    await p.goto(BASE);
     // The choice is remembered on this device; put it back for the other steps.
     assert(await p.evaluate(() => localStorage.getItem("clipper:genre:v1")) === "komedi", "the genre is remembered");
-    await p.getByTestId("flow-genre").selectOption("umum");
-    assert(await p.evaluate(() => localStorage.getItem("clipper:genre:v1")) === "umum", "and changes back");
+    await p.evaluate(() => localStorage.setItem("clipper:genre:v1", "umum"));
     await p.close();
   });
 

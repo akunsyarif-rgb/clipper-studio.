@@ -76,7 +76,7 @@ export default function YoutubeFlow({ room, onApprove, onPreview }: {
   }
 
   const chosen = items?.filter(m => m.checked) ?? [];
-  const toClip = (m: Item): NewClip => ({ start: m.start, end: m.end, title: m.title, transcript: sliceTranscript(source!.transcript, m.start, m.end) });
+  const toClip = (m: Item): NewClip => ({ start: m.start, end: m.end, title: m.title, ...(m.opening?.trim() ? { opening: m.opening.trim() } : {}), transcript: sliceTranscript(source!.transcript, m.start, m.end) });
   const at = (s: number) => `https://youtu.be/${source!.videoId}?t=${Math.floor(s)}`;
 
   return <div className="yt-flow" data-testid="yt-flow">

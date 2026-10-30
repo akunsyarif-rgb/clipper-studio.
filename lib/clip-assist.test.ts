@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyJudgements, continuesEarlier, DROP_SCORE, GENRES, judgePrompt, MAX_EXTEND_START, parseJudgements, WEAK_SCORE, copyPrompt, LEAD_IN_SECONDS, lineTextAt, MAX_MOMENTS, MAX_REACH_BACK, startWithLeadIn, stepped, stepToLine, type Item, MOMENT_MAX_SECONDS, momentsPrompt, parseCopy, parseMoments, suggestMoments, writeCopy, type Line } from "./clip-assist";
+import { applyJudgements, continuesEarlier, groundedIn, itemOf, OPENING_MAX_CHARS, DROP_SCORE, GENRES, judgePrompt, MAX_EXTEND_START, parseJudgements, WEAK_SCORE, copyPrompt, LEAD_IN_SECONDS, lineTextAt, MAX_MOMENTS, MAX_REACH_BACK, startWithLeadIn, stepped, stepToLine, type Item, MOMENT_MAX_SECONDS, momentsPrompt, parseCopy, parseMoments, suggestMoments, writeCopy, type Line } from "./clip-assist";
 
 const gem = (obj: unknown) => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] } }] });
 const oa = (obj: unknown) => ({ choices: [{ message: { content: JSON.stringify(obj) } }] });
@@ -215,7 +215,7 @@ describe("clips a new viewer can follow (comedy and the reading test)", () => {
     const p = judgePrompt(joke, [moment(6, 8)], "id", "komedi");
     const items = JSON.parse(p.split("\n").at(-1)!);
     expect(items[0].klip).toEqual(["Ternyata ojeknya malah nunggu kita.", "kalimat 7", "kalimat 8"]);
-    expect(items[0].sebelum).toHaveLength(4);
+    expect(items[0].sebelum).toHaveLength(6); // up to 8 lines of context; the clip starts at line 6
     expect(items[0].sebelum.at(-1)).toBe("Jadi Budi ini janji jemput jam enam.");
     expect(items[0].sesudah).toEqual(["kalimat 9", "kalimat 10"]);
     expect(p).toMatch(/BELUM melihat bagian video yang lain/);
@@ -223,13 +223,13 @@ describe("clips a new viewer can follow (comedy and the reading test)", () => {
     expect(p).not.toContain('"moments"');
   });
   it("reads the judgements: clamps them, ignores unknown clips, leaves skipped clips unjudged", () => {
-    const j = parseJudgements(gem({ judgements: [{ i: 0, score: 12, understood: "x", missing: "", extendStart: 9, extendEnd: -2 }, { i: 7, score: 5, understood: "", missing: "", extendStart: 0, extendEnd: 0 }, { i: 1, score: "banyak" }] }), 3);
-    expect(j[0]).toEqual({ score: 10, understood: "x", missing: "", extendStart: MAX_EXTEND_START, extendEnd: 0 });
+    const j = parseJudgements(gem({ judgements: [{ i: 0, score: 12, understood: "x", missing: "", extendStart: 9, extendEnd: -2, opening: "" }, { i: 7, score: 5, understood: "", missing: "", extendStart: 0, extendEnd: 0, opening: "" }, { i: 1, score: "banyak" }] }), 3);
+    expect(j[0]).toEqual({ score: 10, understood: "x", missing: "", extendStart: MAX_EXTEND_START, extendEnd: 0, opening: "" });
     expect(j[1]).toBeUndefined(); expect(j[2]).toBeUndefined();
     expect(() => parseJudgements(gem({ nope: 1 }), 2)).toThrow(/penilaian/);
   });
   it("extends a clip that lacks its setup by the lines the reader asked for, with its lead-in", () => {
-    const [m] = applyJudgements([moment(6, 8)], [{ score: 4, understood: "ada yang lucu", missing: "siapa Budi", extendStart: 1, extendEnd: 1 }], joke, lim);
+    const [m] = applyJudgements([moment(6, 8)], [{ score: 4, understood: "ada yang lucu", missing: "siapa Budi", extendStart: 1, extendEnd: 1, opening: "" }], joke, lim);
     expect(m.startIndex).toBe(5); expect(m.endIndex).toBe(9);
     expect(m.start).toBeCloseTo(startWithLeadIn(joke, 5), 5);
     expect(m.end).toBe(joke[9].end);
@@ -237,22 +237,22 @@ describe("clips a new viewer can follow (comedy and the reading test)", () => {
   });
   it("never takes lines that belong to the clip before or after, and gives lines back when the clip would get too long", () => {
     const two = [moment(2, 6), moment(8, 12)];
-    const out = applyJudgements(two, [{ score: 5, understood: "", missing: "", extendStart: 4, extendEnd: 3 }, { score: 5, understood: "", missing: "", extendStart: 4, extendEnd: 3 }], joke, { ...lim, count: 5 });
+    const out = applyJudgements(two, [{ score: 5, understood: "", missing: "", extendStart: 4, extendEnd: 3, opening: "" }, { score: 5, understood: "", missing: "", extendStart: 4, extendEnd: 3, opening: "" }], joke, { ...lim, count: 5 });
     expect(out[0].startIndex).toBe(0);               // may use lines 0-1, free
     expect(out[0].endIndex).toBe(7);                  // line 7 only: the next clip starts at 8
     expect(out[1].startIndex).toBe(8);                // line 7 belongs to the first clip's extension, but its own start can reach no earlier than the first clip's original end + 1
-    const tight = applyJudgements([moment(6, 10)], [{ score: 5, understood: "", missing: "", extendStart: 4, extendEnd: 3 }], joke, { min: 8, max: 36, count: 3 });
+    const tight = applyJudgements([moment(6, 10)], [{ score: 5, understood: "", missing: "", extendStart: 4, extendEnd: 3, opening: "" }], joke, { min: 8, max: 36, count: 3 });
     expect(tight[0].end - tight[0].start).toBeLessThanOrEqual(36);
     expect(tight[0].endIndex).toBeLessThan(13);
   });
   it("drops what stays incomprehensible when others remain, keeps the best in time order, and keeps unjudged clips", () => {
     const ms = [moment(0, 2), moment(4, 6), moment(8, 10), moment(12, 14), moment(16, 18)];
     const js = [
-      { score: 9, understood: "a", missing: "", extendStart: 0, extendEnd: 0 },
-      { score: 2, understood: "b", missing: "tidak jelas", extendStart: 0, extendEnd: 0 },   // dropped
-      { score: 7, understood: "c", missing: "", extendStart: 0, extendEnd: 0 },
+      { score: 9, understood: "a", missing: "", extendStart: 0, extendEnd: 0, opening: "" },
+      { score: 2, understood: "b", missing: "tidak jelas", extendStart: 0, extendEnd: 0, opening: "" },   // dropped
+      { score: 7, understood: "c", missing: "", extendStart: 0, extendEnd: 0, opening: "" },
       undefined,                                                                          // not judged: kept
-      { score: 8, understood: "d", missing: "", extendStart: 0, extendEnd: 0 },
+      { score: 8, understood: "d", missing: "", extendStart: 0, extendEnd: 0, opening: "" },
     ];
     const out = applyJudgements(ms, js, joke, { ...lim, count: 4 });
     expect(out.map(m => m.title)).toEqual(["m0", "m8", "m12", "m16"]);
@@ -265,7 +265,7 @@ describe("clips a new viewer can follow (comedy and the reading test)", () => {
     const moments = { moments: [{ start: 6, end: 8, title: "Ojek nunggu", reason: "lucu" }, { start: 12, end: 14, title: "Lain", reason: "x" }] };
     const t = async (p: object) => {
       const text = (p as { contents: { parts: { text: string }[] }[] }).contents[0].parts[0].text; prompts.push(text);
-      return ok(text.includes('"judgements"') ? gem({ judgements: [{ i: 0, score: 5, understood: "ada yang lucu", missing: "siapa Budi", extendStart: 1, extendEnd: 0 }, { i: 1, score: 9, understood: "jelas", missing: "", extendStart: 0, extendEnd: 0 }] }) : gem(moments));
+      return ok(text.includes('"judgements"') ? gem({ judgements: [{ i: 0, score: 5, understood: "ada yang lucu", missing: "siapa Budi", extendStart: 1, extendEnd: 0, opening: "" }, { i: 1, score: 9, understood: "jelas", missing: "", extendStart: 0, extendEnd: 0, opening: "" }] }) : gem(moments));
     };
     const out = await suggestMoments(joke, opts(t), lim, { genre: "komedi" });
     expect(prompts).toHaveLength(2);
@@ -282,5 +282,63 @@ describe("clips a new viewer can follow (comedy and the reading test)", () => {
     prompts.length = 0;
     await suggestMoments(joke, opts(t), lim, { judge: false });
     expect(prompts).toHaveLength(1);
+  });
+});
+
+describe("an opening text that gives the context, and only what the transcript says", () => {
+  const lines: Line[] = [
+    { start: 1, end: 6, text: "Jadi ceritanya Budi janji jemput Sari jam enam." },
+    { start: 7, end: 12, text: "Sari sudah nunggu di halte dari tadi." },
+    { start: 13, end: 18, text: "Tiba-tiba Budi telepon, katanya ojeknya macet." },
+    { start: 19, end: 24, text: "Ternyata ojeknya malah nunggu Budi di rumah." },
+    { start: 25, end: 30, text: "Sari cuma bisa ketawa sambil geleng-geleng." },
+    ...Array.from({ length: 6 }, (_, i) => ({ start: 31 + i * 6, end: 36 + i * 6, text: `kalimat ${i}` })),
+  ];
+  const moment = { startIndex: 3, endIndex: 4, start: startWithLeadIn(lines, 3), end: lines[4].end, title: "Ojek nunggu", reason: "" };
+  const j = (opening: string, extra: object = {}) => ({ score: 5, understood: "ada yang lucu", missing: "siapa Budi dan Sari", extendStart: 0, extendEnd: 0, opening, ...extra });
+  const lim = { min: 8, max: 90, count: 3 };
+
+  it("asks for an opening only from facts in the lines, none when the clip is clear, and shows 8 lines of context", () => {
+    const p = judgePrompt(lines, [moment], "id", "komedi");
+    expect(p).toMatch(/opening: teks pembuka/);
+    expect(p).toMatch(/HANYA dari fakta yang ada di baris/);
+    expect(p).toMatch(/jangan membocorkan punchline/);
+    expect(p).toMatch(/Kosongkan jika klip sudah jelas sendiri/);
+    const items = JSON.parse(p.split("\n").at(-1)!);
+    expect(items[0].sebelum).toHaveLength(3);
+  });
+  it("checks names, numbers and content words against the transcript", () => {
+    const src = lines.map(l => l.text);
+    expect(groundedIn("Budi janji jemput Sari, tapi ojeknya macet", src)).toEqual({ ok: true, unknown: [] });
+    expect(groundedIn("Sari menunggu Budi di halte", src).ok).toBe(true);                 // endings differ, same words
+    const invented = groundedIn("Budi dan Andi janji jemput di halte", src);
+    expect(invented.ok).toBe(false); expect(invented.unknown).toContain("Andi");
+    expect(groundedIn("Budi janji jemput jam 7", src).ok).toBe(false);                    // a number that is not there
+    expect(groundedIn("Budi janji jemput jam 6", ["Budi janji jemput jam 6"]).ok).toBe(true);
+    expect(groundedIn("Seminar kepemimpinan perusahaan multinasional kemarin", src).ok).toBe(false); // made-up content
+  });
+  it("keeps a grounded opening, drops an invented or too long one and says why", () => {
+    const ok = applyJudgements([moment], [j("Budi janji jemput Sari, tapi ojeknya macet")], lines, lim)[0];
+    expect(ok.judged?.opening).toBe("Budi janji jemput Sari, tapi ojeknya macet");
+    const fake = applyJudgements([moment], [j("Budi dan Andi janji jemput Sari")], lines, lim)[0];
+    expect(fake.judged?.opening).toBe(""); expect(fake.judged?.openingDropped).toMatch(/tidak ada di transkrip \(Andi\)/);
+    const long = applyJudgements([moment], [j("Jadi ceritanya Budi janji jemput Sari jam enam tapi ojeknya macet dan Sari sudah nunggu di halte")], lines, lim)[0];
+    expect(long.judged?.opening).toBe(""); expect(long.judged?.openingDropped).toMatch(/terlalu panjang/);
+    expect("Jadi ceritanya Budi janji jemput Sari jam enam tapi ojeknya macet dan Sari sudah nunggu di halte".length).toBeGreaterThan(OPENING_MAX_CHARS);
+  });
+  it("shows the opening and why one was dropped on the list item", () => {
+    const [kept] = applyJudgements([moment], [j("Budi janji jemput Sari, tapi ojeknya macet")], lines, lim);
+    expect(itemOf(kept, true).opening).toBe("Budi janji jemput Sari, tapi ojeknya macet");
+    const [fake] = applyJudgements([moment], [j("Budi dan Andi janji jemput Sari")], lines, lim);
+    const item = itemOf(fake, true);
+    expect(item.opening).toBeUndefined();
+    expect(item.note).toMatch(/Teks pembuka dari AI tidak dipakai: memuat hal yang tidak ada di transkrip/);
+  });
+  it("the title and description writer gets the lines before the clip and must not invent", () => {
+    const p = copyPrompt("Ternyata ojeknya malah nunggu Budi.", "id", "Budi janji jemput Sari jam enam.");
+    expect(p).toMatch(/bisa dipahami penonton yang belum melihat bagian video yang lain/);
+    expect(p).toMatch(/Konteks sebelum klip:\nBudi janji jemput Sari jam enam\./);
+    expect(p).toMatch(/hanya dengan fakta yang ada di konteks atau isi klip/);
+    expect(copyPrompt("isi klip", "id")).not.toMatch(/Konteks sebelum klip/);
   });
 });

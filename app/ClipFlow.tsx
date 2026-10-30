@@ -15,7 +15,7 @@ import { useGeminiAccess } from "./useGeminiAccess";
 import SuggestionList, { type Item } from "./SuggestionList";
 import GenreSelect, { useGenre } from "./GenreSelect";
 
-export type NewClip = { start: number; end: number; title: string; transcript: Transcript };
+export type NewClip = { start: number; end: number; title: string; /** Opening text for the video (its title in Motion); empty = the clip title. */ opening?: string; transcript: Transcript };
 
 /**
  * The main way to make clips: the AI listens to the whole video, suggests the best clips (up to three minutes each), and
@@ -95,7 +95,7 @@ export default function ClipFlow({ file, duration, video, busy, room, onAdd, onM
     const stop = () => { if (v.currentTime >= m.end) { v.pause(); v.removeEventListener("timeupdate", stop); } };
     v.addEventListener("timeupdate", stop);
   }
-  const toClip = (m: Item): NewClip => ({ start: m.start, end: m.end, title: m.title, transcript: sliceTranscript(full.current!, m.start, m.end) });
+  const toClip = (m: Item): NewClip => ({ start: m.start, end: m.end, title: m.title, ...(m.opening?.trim() ? { opening: m.opening.trim() } : {}), transcript: sliceTranscript(full.current!, m.start, m.end) });
 
   if (access === undefined) return null;
   const chosen = items?.filter(m => m.checked) ?? [];

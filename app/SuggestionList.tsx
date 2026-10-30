@@ -29,6 +29,9 @@ export default function SuggestionList({ items, onItems, duration, actions, intr
         {m.score >= WEAK_SCORE ? "Mudah dipahami" : "Konteks kurang"} {m.score}/10{m.understood ? ` · Penonton baru menangkap: ${m.understood}` : ""}{m.missing ? ` · Kurang: ${m.missing}` : ""}
       </small>}
       {m.note && <small className="field-hint" data-testid="flow-note-item">{m.note}</small>}
+      <label className="field-label flow-opening">Teks pembuka <span className="field-hint">opsional · jadi judul di Motion · hanya dari isi transkrip, periksa sebelum dipakai</span>
+        <input value={m.opening ?? ""} maxLength={70} placeholder={m.score !== undefined && m.score < WEAK_SCORE ? "Tulis konteks singkat untuk penonton baru" : "Kosong = judul klip dipakai"} onChange={e => set(i, x => ({ ...x, opening: e.target.value }))} data-testid="flow-opening" />
+      </label>
       <div className="range-tools">{actions(m, i)}</div>
       <details className="flow-adjust"><summary>Sesuaikan waktu</summary>
         {lines && lines.length > 0 && <div className="range-tools">

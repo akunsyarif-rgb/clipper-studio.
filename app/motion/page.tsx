@@ -279,7 +279,7 @@ export default function MotionStudio() {
     setTrim(around); setClipperTrim(around); setTrimNote(""); setEdits([]); setEmphasis([]);
     // A clip the browser cannot read is reported at once, instead of showing a black player.
     void probeVideo(file).then(p => { if (!p.ok) { setSource(null); setVideoEdit(false); setHandoffNote(`Klip yang diterima tidak bisa diputar di browser ini. Kembali ke Clipper lalu ekspor ulang klipnya, atau pilih video langsung di sini. (Detail: ${p.detail})`); } });
-    if (h.title) setTitle(h.title.slice(0, 48).trim());
+    if (h.opening?.trim() || h.title) setTitle((h.opening?.trim() || h.title).slice(0, 60).trim());
     if (h.transcript && h.transcript.segments.length > 0) {
       setScript(scriptFromTranscript(h.transcript, FPS)); setImported(h.transcript);
       setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptionOffset(0); setPalette("pearl"); setContentPreset("custom"); setOffer(null);
