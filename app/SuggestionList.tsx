@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { formatTime } from "@/lib/clip";
-import { lineTextAt, nudged, stepped, type Item, type Line } from "@/lib/clip-assist";
+import { lineTextAt, nudged, stepped, WEAK_SCORE, type Item, type Line } from "@/lib/clip-assist";
 
 export type { Item };
 
@@ -25,7 +25,13 @@ export default function SuggestionList({ items, onItems, duration, actions, intr
       <label className="flow-title"><input type="checkbox" checked={m.checked} onChange={e => set(i, x => ({ ...x, checked: e.target.checked }))} data-testid="flow-check" /> <b>{m.title}</b></label>
       <small>{formatTime(m.start)} – {formatTime(m.end)} · {Math.round(m.end - m.start)} detik{m.reason ? ` · ${m.reason}` : ""}</small>
       {lines && lines.length > 0 && <small className="flow-ends" data-testid="flow-ends">Mulai: “{lineTextAt(lines, m.start, "start") || "…"}” · Berakhir: “{lineTextAt(lines, m.end, "end") || "…"}”</small>}
+      {m.score !== undefined && <small className={m.score >= WEAK_SCORE ? "flow-understood" : "flow-understood weak"} data-testid="flow-understood">
+        {m.score >= WEAK_SCORE ? "Mudah dipahami" : "Konteks kurang"} {m.score}/10{m.understood ? ` · Penonton baru menangkap: ${m.understood}` : ""}{m.missing ? ` · Kurang: ${m.missing}` : ""}
+      </small>}
       {m.note && <small className="field-hint" data-testid="flow-note-item">{m.note}</small>}
+      <label className="field-label flow-opening">Teks pembuka <span className="field-hint">opsional · jadi judul di Motion · hanya dari isi transkrip, periksa sebelum dipakai</span>
+        <input value={m.opening ?? ""} maxLength={70} placeholder={m.score !== undefined && m.score < WEAK_SCORE ? "Tulis konteks singkat untuk penonton baru" : "Kosong = judul klip dipakai"} onChange={e => set(i, x => ({ ...x, opening: e.target.value }))} data-testid="flow-opening" />
+      </label>
       <div className="range-tools">{actions(m, i)}</div>
       <details className="flow-adjust"><summary>Sesuaikan waktu</summary>
         {lines && lines.length > 0 && <div className="range-tools">

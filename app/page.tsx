@@ -26,7 +26,7 @@ import { handoffRange } from "@/lib/trim";
 import { startHistorySync, updateHistory } from "@/lib/history-store";
 import { ExportCancelled, exportClip, isEngineLoaded, terminateEngine } from "@/lib/engine";
 
-type Clip = { id: number; start: number; end: number; title?: string; transcript?: Transcript };
+type Clip = { id: number; start: number; end: number; title?: string; opening?: string; transcript?: Transcript };
 /** `after` takes the finished clip instead of offering it for download (used to hand it to the motion studio). */
 type Job = { start: number; duration: number; aspect?: Aspect; after?: (blob: Blob) => Promise<void>; /** The clip goes on to the motion studio, which draws the watermark itself; never bake it in twice. */ noWatermark?: boolean };
 const MAX_CLIPS = 10;
@@ -142,12 +142,12 @@ export default function Home() {
     const room = MAX_CLIPS - clips.length;
     if (room <= 0) return say(`Maksimal ${MAX_CLIPS} klip dalam daftar kerja.`, true);
     const take = items.slice(0, room);
-    setClips(old => [...old, ...take.map((c, i) => ({ id: Date.now() + i, start: c.start, end: c.end, title: c.title, transcript: c.transcript }))]);
+    setClips(old => [...old, ...take.map((c, i) => ({ id: Date.now() + i, start: c.start, end: c.end, title: c.title, opening: c.opening, transcript: c.transcript }))]);
     say(`${take.length} klip ditambahkan ke daftar. Ketuk Ekspor pada klip, atau Ke Motion untuk mengeditnya lebih lanjut.`);
   }
 
   /** Cuts one clip (always 9:16, what the motion studio edits) and hands it over, with its own subtitles, to the motion studio. */
-  function sendToMotion(c: { start: number; end: number; title?: string; transcript?: Transcript | null }) {
+  function sendToMotion(c: { start: number; end: number; title?: string; opening?: string; transcript?: Transcript | null }) {
     if (!file) return;
     // The clip comes with up to 3 s of footage on each side, so the motion studio can still move its start or end.
     const around = handoffRange(c.start, c.end, duration);
@@ -163,7 +163,7 @@ export default function Home() {
           say("Hasil potongan tidak bisa diputar di browser ini, jadi tidak dikirim ke Motion. Coba unduh hasilnya, atau ekspor ulang (kualitas lebih rendah bisa membantu).", true);
           return;
         }
-        const ok = await saveClipHandoff({ blob: checked.blob, name, type: "video/mp4", seconds: c.end - c.start, padStart: around.padStart, padEnd: around.padEnd, title: c.title ?? "", transcript: c.transcript ?? null, at: Date.now() });
+        const ok = await saveClipHandoff({ blob: checked.blob, name, type: "video/mp4", seconds: c.end - c.start, padStart: around.padStart, padEnd: around.padEnd, title: c.title ?? "", opening: c.opening ?? "", transcript: c.transcript ?? null, at: Date.now() });
         if (!ok) { say("Browser menolak menyimpan klip untuk dikirim. Ekspor dulu lalu pilih videonya di Motion Graphics.", true); return; }
         router.push("/motion");
       },

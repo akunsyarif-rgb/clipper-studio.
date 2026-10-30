@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { formatTime } from "@/lib/clip";
-import { limitsForVideo, suggestMoments } from "@/lib/clip-assist";
+import { itemOf, limitsForVideo, suggestMoments } from "@/lib/clip-assist";
 import { planChunks, transcribeLong, type TimedLine } from "@/lib/ai-transcribe";
+import { refineLines, voicedRegions } from "@/lib/align";
+import { decodeMono } from "@/lib/mp3-decode";
 import { releaseAsr } from "@/lib/asr/client";
 import { extractMp3Chunks } from "@/lib/engine";
 import { GeminiError } from "@/lib/gemini";
@@ -11,8 +13,9 @@ import { loadCachedTranscript, saveCachedTranscript } from "@/lib/session-store"
 import { sliceTranscript, type LanguageId, type Transcript } from "@/lib/transcript";
 import { useGeminiAccess } from "./useGeminiAccess";
 import SuggestionList, { type Item } from "./SuggestionList";
+import GenreSelect, { useGenre } from "./GenreSelect";
 
-export type NewClip = { start: number; end: number; title: string; transcript: Transcript };
+export type NewClip = { start: number; end: number; title: string; /** Opening text for the video (its title in Motion); empty = the clip title. */ opening?: string; transcript: Transcript };
 
 /**
  * The main way to make clips: the AI listens to the whole video, suggests the best clips (up to three minutes each), and
@@ -30,6 +33,7 @@ export default function ClipFlow({ file, duration, video, busy, room, onAdd, onM
   onMotion: (clip: NewClip) => void;
 }) {
   const access = useGeminiAccess();
+  const [genre, setGenre] = useGenre();
   const [language, setLanguage] = useState<LanguageId>("indonesian");
   const [consent, setConsent] = useState(false);
   const [phase, setPhase] = useState<"idle" | "listening" | "choosing">("idle");
@@ -44,6 +48,13 @@ export default function ClipFlow({ file, duration, video, busy, room, onAdd, onM
   useEffect(() => () => abort.current?.abort(), []);
   // A different video starts over.
   useEffect(() => { setItems(null); setError(""); setNote(""); full.current = null; doneParts.current = new Map(); }, [file]);
+
+  /** The AI's line times, sharpened with the part's own audio (where speech really starts and stops). */
+  async function refineFromAudio(mp3: Uint8Array, lines: TimedLine[]): Promise<TimedLine[]> {
+    const pcm = await decodeMono(mp3);
+    if (!pcm) return lines;
+    return refineLines(lines, voicedRegions(pcm.samples, pcm.rate));
+  }
 
   const working = phase !== "idle";
   const parts = planChunks(duration).length;
@@ -61,15 +72,14 @@ export default function ClipFlow({ file, duration, video, busy, room, onAdd, onM
       if (t) setNote("Memakai transkrip video ini yang sudah tersimpan (tanpa mendengarkan ulang).");
       else {
         setPhase("listening");
-        t = await transcribeLong(duration, (chunks, onChunk) => extractMp3Chunks(file, chunks, onChunk), o, { signal: ctl.signal, done: doneParts.current, onProgress: (done, total) => setProgress({ done, total }) });
+        t = await transcribeLong(duration, (chunks, onChunk) => extractMp3Chunks(file, chunks, onChunk), o, { signal: ctl.signal, done: doneParts.current, refine: refineFromAudio, onProgress: (done, total) => setProgress({ done, total }) });
         void saveCachedTranscript(file, range, cacheModel, language, t);
       }
       full.current = t;
       setPhase("choosing");
-      const moments = await suggestMoments(t.segments.map(s => ({ start: s.start, end: s.end, text: s.text })), o, limitsForVideo(duration));
+      const moments = await suggestMoments(t.segments.map(s => ({ start: s.start, end: s.end, text: s.text })), o, limitsForVideo(duration), { genre });
       if (moments.length === 0) setError("AI tidak menemukan bagian yang layak dijadikan klip. Coba video lain, atau potong manual di bawah.");
-      setItems(moments.map((m, i) => ({ start: m.start, end: m.end, title: m.title, reason: m.reason, checked: i < Math.max(room, 0) && i < 5,
-        ...(m.reachedBack ? { note: `Awal dimundurkan ${m.reachedBack} kalimat karena kalimat pilihan AI hanya melanjutkan kalimat sebelumnya. Bila kurang pas, geser lagi di "Sesuaikan waktu".` } : {}) })));
+      setItems(moments.map((m, i) => itemOf(m, i < Math.max(room, 0) && i < 5)));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(/no audio/i.test(msg) ? "Video ini tidak punya suara, jadi tidak ada yang bisa dianalisis." : e instanceof GeminiError ? `${e.message}${doneParts.current.size ? ` Bagian yang sudah selesai (${doneParts.current.size}) tersimpan: tekan "Analisis video & sarankan klip" lagi untuk melanjutkan dari situ.` : ""}` : `Analisis gagal: ${msg}`);
@@ -85,7 +95,7 @@ export default function ClipFlow({ file, duration, video, busy, room, onAdd, onM
     const stop = () => { if (v.currentTime >= m.end) { v.pause(); v.removeEventListener("timeupdate", stop); } };
     v.addEventListener("timeupdate", stop);
   }
-  const toClip = (m: Item): NewClip => ({ start: m.start, end: m.end, title: m.title, transcript: sliceTranscript(full.current!, m.start, m.end) });
+  const toClip = (m: Item): NewClip => ({ start: m.start, end: m.end, title: m.title, ...(m.opening?.trim() ? { opening: m.opening.trim() } : {}), transcript: sliceTranscript(full.current!, m.start, m.end) });
 
   if (access === undefined) return null;
   const chosen = items?.filter(m => m.checked) ?? [];
@@ -96,6 +106,7 @@ export default function ClipFlow({ file, duration, video, busy, room, onAdd, onM
       ? <div className="notice" data-testid="flow-needs-ai">Fitur ini memakai AI yang mendengarkan audio. <b>Masuk ke akun</b> (bagian atas halaman) lalu simpan kunci AI Anda di kotak &quot;Rapikan transkrip dengan Gemini&quot; di bawah. Sementara itu Anda tetap bisa memotong secara manual.</div>
       : <>
         <div className="time-grid">
+          <GenreSelect genre={genre} onGenre={setGenre} disabled={working} />
           <label>Bahasa ucapan<select value={language} disabled={working} onChange={e => setLanguage(e.target.value as LanguageId)} data-testid="flow-language"><option value="indonesian">Indonesia</option><option value="english">Inggris</option></select></label>
           <div className="flow-info"><small>Video {formatTime(duration)} dibagi ±{parts} bagian audio. Biaya biasanya beberapa sen. Klip hasil maksimal 3 menit.</small></div>
         </div>

@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { formatTime, parseYouTube } from "@/lib/clip";
-import { limitsForVideo, suggestMoments } from "@/lib/clip-assist";
+import { itemOf, limitsForVideo, suggestMoments } from "@/lib/clip-assist";
 import { GeminiError } from "@/lib/gemini";
 import { sliceTranscript, type Transcript } from "@/lib/transcript";
 import { captionsToTranscript, fetchYoutubeCaptions, parsePastedTranscript, YoutubeError, type YoutubeCaptions } from "@/lib/youtube";
 import type { NewClip } from "./ClipFlow";
 import SuggestionList, { type Item } from "./SuggestionList";
 import { useGeminiAccess } from "./useGeminiAccess";
+import GenreSelect, { useGenre } from "./GenreSelect";
 
 type Source = { videoId: string; title: string; seconds: number; language: string; auto: boolean; transcript: Transcript; origin: "youtube" | "paste" };
 
@@ -25,6 +26,7 @@ export default function YoutubeFlow({ room, onApprove, onPreview }: {
   onPreview: (url: string) => void;
 }) {
   const access = useGeminiAccess();
+  const [genre, setGenre] = useGenre();
   const [url, setUrl] = useState("");
   const [pasted, setPasted] = useState("");
   const [busy, setBusy] = useState<"captions" | "suggest" | null>(null);
@@ -66,16 +68,15 @@ export default function YoutubeFlow({ room, onApprove, onPreview }: {
     setBusy("suggest"); setError("");
     try {
       const o = { apiKey: access.apiKey, model: access.model, language: source.language === "english" ? "en" : "id", signal: ctl.signal, transport: access.transport, format: access.format };
-      const moments = await suggestMoments(source.transcript.segments.map(s => ({ start: s.start, end: s.end, text: s.text })), o, limitsForVideo(source.seconds));
+      const moments = await suggestMoments(source.transcript.segments.map(s => ({ start: s.start, end: s.end, text: s.text })), o, limitsForVideo(source.seconds), { genre });
       if (moments.length === 0) setError("AI tidak menemukan bagian yang layak dijadikan klip dari teks ini.");
-      setItems(moments.map((m, i) => ({ start: m.start, end: m.end, title: m.title, reason: m.reason, checked: i < Math.min(Math.max(room, 0), 5),
-        ...(m.reachedBack ? { note: `Awal dimundurkan ${m.reachedBack} kalimat karena kalimat pilihan AI hanya melanjutkan kalimat sebelumnya. Bila kurang pas, geser lagi di "Sesuaikan waktu".` } : {}) })));
+      setItems(moments.map((m, i) => itemOf(m, i < Math.min(Math.max(room, 0), 5))));
     } catch (e) { setError(e instanceof GeminiError ? e.message : "Gagal menghubungi layanan AI."); }
     finally { setBusy(null); }
   }
 
   const chosen = items?.filter(m => m.checked) ?? [];
-  const toClip = (m: Item): NewClip => ({ start: m.start, end: m.end, title: m.title, transcript: sliceTranscript(source!.transcript, m.start, m.end) });
+  const toClip = (m: Item): NewClip => ({ start: m.start, end: m.end, title: m.title, ...(m.opening?.trim() ? { opening: m.opening.trim() } : {}), transcript: sliceTranscript(source!.transcript, m.start, m.end) });
   const at = (s: number) => `https://youtu.be/${source!.videoId}?t=${Math.floor(s)}`;
 
   return <div className="yt-flow" data-testid="yt-flow">
@@ -93,6 +94,7 @@ export default function YoutubeFlow({ room, onApprove, onPreview }: {
     {source && <div className="notice" role="status" data-testid="yt-source">
       {source.title ? <><b>{source.title}</b> · </> : null}{source.transcript.segments.length} bagian teks · {formatTime(source.seconds)}{source.origin === "youtube" ? (source.auto ? " · teks otomatis YouTube (bisa ada salah dengar)" : " · teks buatan manusia") : " · transkrip tempelan"}
     </div>}
+    {source && <div className="time-grid"><GenreSelect genre={genre} onGenre={setGenre} disabled={busy !== null} /></div>}
     {source && <div className="range-tools"><button className="primary-button" onClick={() => void suggest()} disabled={busy !== null || !access} data-testid="yt-suggest"><span>{busy === "suggest" ? "Memilih klip terbaik…" : items ? "Sarankan ulang" : "Sarankan klip dengan AI"}</span></button></div>}
     {source && !access && <div className="notice" data-testid="yt-needs-ai">Butuh kunci AI: masuk ke akun lalu simpan kunci di kotak &quot;Rapikan transkrip dengan Gemini&quot; (muncul setelah ada transkrip), atau pakai alur &quot;Klip otomatis dengan AI&quot; setelah memilih video.</div>}
     {source && items && items.length > 0 && <SuggestionList items={items} onItems={setItems} duration={source.seconds} lines={source.transcript.segments.map(sg => ({ start: sg.start, end: sg.end, text: sg.text }))}

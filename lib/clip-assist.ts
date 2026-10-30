@@ -17,10 +17,59 @@ export function limitsForVideo(durationSeconds: number): MomentLimits {
 }
 
 export type Line = { start: number; end: number; text: string };
-export type Moment = { startIndex: number; endIndex: number; /** Seconds in the transcript's own time. */ start: number; end: number; title: string; reason: string; /** The start was moved earlier by this many lines because the chosen line only continues an earlier thought. */ reachedBack?: number };
+/** What the video is: it changes what a good clip is. For comedy a clip must be a whole joke a new viewer understands. */
+export type Genre = "umum" | "komedi";
+export const GENRES: { id: Genre; label: string; hint: string }[] = [
+  { id: "umum", label: "Umum", hint: "bagian paling menarik dari video apa saja" },
+  { id: "komedi", label: "Komedi / hiburan", hint: "lelucon utuh: pembuka, punchline, reaksi, dan bisa dipahami tanpa menonton bagian lain" },
+];
+
+export type Judgement = {
+  /** 1-10: how well a viewer who has not seen the rest of the video understands the clip and gets what is good in it. */
+  score: number;
+  /** What such a viewer takes from the clip (what is funny or interesting), in one sentence. */
+  understood: string;
+  /** What they would be missing, or "" when nothing. */
+  missing: string;
+  /** Lines before the clip / after it that would make it understandable (0 = none). */
+  extendStart: number;
+  extendEnd: number;
+  /** A short opening text that gives a new viewer the context the clip lacks, written only from facts in the lines; "" when the clip stands on its own. */
+  opening: string;
+};
+
+export type Moment = {
+  startIndex: number; endIndex: number; /** Seconds in the transcript's own time. */ start: number; end: number; title: string; reason: string;
+  /** The start was moved earlier by this many lines because the chosen line only continues an earlier thought. */ reachedBack?: number;
+  /** The reading test of a viewer who has not seen the rest of the video (absent when it could not be done). */
+  judged?: Judgement & { extendedStart: number; extendedEnd: number; /** Why the AI's opening text was not used (it named something that is not in the transcript). */ openingDropped?: string };
+};
 
 /** A suggested clip as the creator sees and adjusts it. */
-export type Item = { start: number; end: number; title: string; reason: string; checked: boolean; /** Said to the creator under the clip, e.g. that the start was moved earlier. */ note?: string };
+export type Item = {
+  start: number; end: number; title: string; reason: string; checked: boolean;
+  /** Said to the creator under the clip, e.g. that the start was moved earlier. */ note?: string;
+  /** The reading test of a viewer who has not seen the rest: score 1-10, what they take from the clip, what they would miss. */
+  score?: number; understood?: string; missing?: string;
+  /** Opening text for the video (becomes its title in Motion); editable. Only from facts in the transcript. */
+  opening?: string;
+};
+
+/** A suggestion as a list item: ticked by default only when a new viewer can follow it; what the reading test found is carried along. */
+export function itemOf(m: Moment, tick: boolean): Item {
+  const notes: string[] = [];
+  if (m.reachedBack) notes.push(`Awal dimundurkan ${m.reachedBack} kalimat karena kalimat pilihan AI hanya melanjutkan kalimat sebelumnya.`);
+  const j = m.judged;
+  if (j && (j.extendedStart || j.extendedEnd)) notes.push(`Ditambah ${[j.extendedStart ? `${j.extendedStart} kalimat di awal` : "", j.extendedEnd ? `${j.extendedEnd} kalimat di akhir` : ""].filter(Boolean).join(" dan ")} agar penonton yang belum melihat bagian lain bisa paham.`);
+  if (j?.openingDropped) notes.push(`Teks pembuka dari AI tidak dipakai: ${j.openingDropped}.`);
+  if (notes.length) notes.push('Bila kurang pas, geser lagi di "Sesuaikan waktu".');
+  return {
+    start: m.start, end: m.end, title: m.title, reason: m.reason, checked: tick && (!j || j.score >= WEAK_SCORE),
+    ...(notes.length ? { note: notes.join(" ") } : {}),
+    ...(j ? { score: j.score, understood: j.understood, missing: j.missing } : {}),
+    ...(j?.opening ? { opening: j.opening } : {}),
+  };
+}
 
 /** A little air before the first word, so a clip does not open on a cut-off syllable (never reaching into the line before). */
 export const LEAD_IN_SECONDS = 0.3;
@@ -56,7 +105,8 @@ export function lineTextAt(lines: Line[], time: number, edge: "start" | "end", m
 const langName = (language: string) => (language === "en" ? "bahasa Inggris" : "bahasa Indonesia");
 const tidy = (v: unknown, max: number) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
 
-export function momentsPrompt(lines: Line[], language: string, limits: MomentLimits = DEFAULT_LIMITS): string {
+export function momentsPrompt(lines: Line[], language: string, limits: MomentLimits = DEFAULT_LIMITS, genre: Genre = "umum"): string {
+  const comedy = genre === "komedi";
   return [
     `Kamu editor video pendek (TikTok, Reels, Shorts). Berikut transkrip sebuah video (${langName(language)}), tiap baris bernomor dan punya detik mulai dan selesai.`,
     `Pilih 3 sampai ${limits.count} potongan terbaik untuk dijadikan klip pendek.`,
@@ -64,7 +114,14 @@ export function momentsPrompt(lines: Line[], language: string, limits: MomentLim
     `- tiap potongan berdiri sendiri: ada pembuka dan penutup yang utuh, tidak dimulai atau diakhiri di tengah gagasan;`,
     "- baris awal harus kalimat yang memperkenalkan topik atau pernyataan utama, bukan lanjutan: jangan mulai dari kalimat yang diawali kata sambung (jadi, nah, lalu, tapi, dan, karena itu) atau yang merujuk ke kalimat sebelumnya; mulailah dari kalimat sebelumnya yang memuat pokok bahasannya;",
     `- panjang ${limits.min} sampai ${limits.max} detik (lebih pendek lebih baik bila pesannya sudah utuh);`,
-    "- pilih yang paling menarik: pernyataan yang mengejutkan, cerita, angka atau fakta kuat, tips yang bisa langsung dipakai, atau ajakan yang jelas;",
+    comedy
+      ? "- pilih lelucon atau momen lucu yang UTUH: premis/setup yang cukup agar penonton baru paham siapa, di mana, dan apa situasinya, lalu punchline, lalu reaksi atau tawa sesudahnya; jangan berhenti sebelum reaksinya selesai;"
+      : "- pilih yang paling menarik: pernyataan yang mengejutkan, cerita, angka atau fakta kuat, tips yang bisa langsung dipakai, atau ajakan yang jelas;",
+    ...(comedy ? [
+      "- penonton yang belum pernah melihat bagian lain video harus paham dan ikut masuk: sertakan baris pengenalan tokoh atau situasi bila lelucon bergantung padanya;",
+      "- jangan memilih lelucon yang bergantung pada kejadian di bagian lain (\"tadi\", \"yang itu\", \"seperti sebelumnya\", lanjutan cerita) kecuali penjelasannya ikut masuk di potongan;",
+      "- lebih baik satu lelucon utuh yang rapi daripada potongan panjang yang bertele-tele; beri beberapa kandidat lebih banyak dari yang perlu agar bisa disaring;",
+    ] : []),
     "- potongan tidak boleh tumpang tindih; jangan memilih basa-basi atau pengulangan;",
     "- bila transkrip terlalu pendek atau tidak ada yang menarik, kembalikan lebih sedikit potongan (boleh kosong).",
     "Balas hanya JSON: {\"moments\": [{\"start\": nomor_baris_awal, \"end\": nomor_baris_akhir, \"title\": \"maksimal 8 kata\", \"reason\": \"maksimal 15 kata, mengapa menarik\"}]}. start dan end adalah nomor baris (inklusif).",
@@ -105,10 +162,145 @@ export function parseMoments(response: unknown, lines: Line[], limits: MomentLim
 
 const MOMENTS_SCHEMA = { type: "OBJECT", properties: { moments: { type: "ARRAY", items: { type: "OBJECT", properties: { start: { type: "INTEGER" }, end: { type: "INTEGER" }, title: { type: "STRING" }, reason: { type: "STRING" } }, required: ["start", "end", "title", "reason"] } } }, required: ["moments"] };
 
+// ---- the reading test: does a viewer who has not seen the rest understand this clip? ------------------------------------------
+
+/** How many lines of context the reader sees on each side of a candidate, and the most a clip may be extended by. */
+export const CONTEXT_BEFORE = 8;
+export const CONTEXT_AFTER = 2;
+export const MAX_EXTEND_START = 4;
+export const MAX_EXTEND_END = 3;
+/** A clip scoring below this is shown as lacking context and is not ticked. */
+export const WEAK_SCORE = 6;
+/** A clip scoring below this (after extending) is dropped when there are enough others. */
+export const DROP_SCORE = 4;
+
+export function judgePrompt(lines: Line[], moments: Moment[], language: string, genre: Genre): string {
+  const text = (a: number, b: number) => lines.slice(Math.max(0, a), Math.min(lines.length, b)).map(l => l.text.replace(/\s+/g, " ").trim());
+  const items = moments.map((m, i) => ({ i, sebelum: text(m.startIndex - CONTEXT_BEFORE, m.startIndex), klip: text(m.startIndex, m.endIndex + 1), sesudah: text(m.endIndex + 1, m.endIndex + 1 + CONTEXT_AFTER) }));
+  return [
+    `Kamu penonton pertama yang menilai calon klip video pendek (${langName(language)}). Kamu BELUM melihat bagian video yang lain.`,
+    "Untuk tiap calon klip kamu diberi: baris SEBELUM klip (tidak ikut diputar, hanya konteks), baris KLIP (yang diputar), dan baris SESUDAH (tidak ikut).",
+    "Baca hanya baris KLIP seolah itu seluruh videonya, lalu nilai:",
+    genre === "komedi"
+      ? "- score 1-10: apakah penonton baru paham situasinya, mengerti di mana lucunya, dan merasakan punchline serta reaksinya? 10 = paham dan ikut tertawa tanpa konteks lain; 5 = tahu ada yang lucu tapi tidak tahu kenapa; 1 = tidak paham sama sekali;"
+      : "- score 1-10: apakah penonton baru paham apa yang dibicarakan dan mendapat hal menarik darinya tanpa konteks lain? 10 = utuh dan jelas; 5 = tertangkap sebagian; 1 = tidak paham;",
+    "- understood: satu kalimat, apa yang ditangkap penonton baru dari klip itu (apa yang lucu atau menarik);",
+    "- missing: konteks yang kurang bagi penonton baru (siapa tokohnya, situasi apa, apa yang dirujuk); kosongkan jika tidak ada;",
+    `- extendStart: berapa baris dari SEBELUM yang perlu dimasukkan agar klip bisa dipahami (0 sampai ${MAX_EXTEND_START}; 0 jika sudah cukup); jangan menambah bila tidak perlu;`,
+    `- extendEnd: berapa baris dari SESUDAH yang perlu dimasukkan agar reaksi atau penutup selesai (0 sampai ${MAX_EXTEND_END}).`,
+    "- opening: teks pembuka satu kalimat pendek (maksimal 12 kata) yang ditampilkan di awal klip untuk memberi penonton baru konteks yang kurang, mis. siapa tokohnya atau situasinya. Tulis HANYA dari fakta yang ada di baris SEBELUM, KLIP, atau SESUDAH (nama, angka, situasi); jangan menambah fakta, nama, atau angka yang tidak ada di baris, dan jangan membocorkan punchline. Kosongkan jika klip sudah jelas sendiri, jika extendStart sudah menutup kekurangannya, atau jika konteksnya memang tidak ada di baris.",
+    "Catatan extendStart: dihitung dari baris SEBELUM yang paling dekat dengan klip (baris terakhir pada daftar sebelum).",
+    "Jujurlah: nilai rendah jika klip bergantung pada bagian lain. Jangan membuat konteks yang tidak ada di baris.",
+    "Balas hanya JSON: {\"judgements\": [{\"i\": nomor, \"score\": 1-10, \"understood\": \"...\", \"missing\": \"...\", \"extendStart\": 0, \"extendEnd\": 0, \"opening\": \"...\"}]}.",
+    "",
+    "Calon klip (JSON):",
+    JSON.stringify(items),
+  ].join("\n");
+}
+
+const JUDGE_SCHEMA = { type: "OBJECT", properties: { judgements: { type: "ARRAY", items: { type: "OBJECT", properties: { i: { type: "INTEGER" }, score: { type: "INTEGER" }, understood: { type: "STRING" }, missing: { type: "STRING" }, extendStart: { type: "INTEGER" }, extendEnd: { type: "INTEGER" }, opening: { type: "STRING" } }, required: ["i", "score", "understood", "missing", "extendStart", "extendEnd", "opening"] } } }, required: ["judgements"] };
+
+const clampInt = (v: unknown, lo: number, hi: number) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo; };
+
+/** Reads the reading test: one judgement per candidate (by number); candidates the answer skips stay unjudged. */
+export function parseJudgements(response: unknown, count: number): (Judgement | undefined)[] {
+  const parsed = answerJson(response);
+  const list = Array.isArray(parsed) ? parsed : (parsed as { judgements?: unknown } | null)?.judgements;
+  if (!Array.isArray(list)) throw new GeminiError("format", "Jawaban tidak berisi penilaian klip. Coba lagi.");
+  const out: (Judgement | undefined)[] = Array.from({ length: count }, () => undefined);
+  for (const j of list as { i?: unknown; score?: unknown; understood?: unknown; missing?: unknown; extendStart?: unknown; extendEnd?: unknown; opening?: unknown }[]) {
+    if (!Number.isInteger(j?.i) || (j.i as number) < 0 || (j.i as number) >= count || !Number.isFinite(Number(j.score))) continue;
+    out[j.i as number] = { score: clampInt(j.score, 1, 10), understood: tidy(j.understood, 200), missing: tidy(j.missing, 200), extendStart: clampInt(j.extendStart, 0, MAX_EXTEND_START), extendEnd: clampInt(j.extendEnd, 0, MAX_EXTEND_END), opening: tidy(j.opening, 120) };
+  }
+  return out;
+}
+
+// ---- an opening text must only say what the transcript says -------------------------------------------------------------
+
+export const OPENING_MAX_CHARS = 70;
+const FUNCTION_WORDS = new Set("yang dan di ke dari untuk dengan ini itu pada adalah atau karena tapi tetapi namun jadi nah lalu terus kemudian juga sudah belum akan bisa tidak bukan saja hanya sangat lebih para kita kami kamu saya aku dia mereka ada seperti sebagai dalam oleh agar supaya ketika saat sambil sebelum sesudah setelah hingga sampai the and for with from that this you are was were have has had but not his her their they them then than into out about when what who why how".split(" "));
+const words = (t: string) => t.replace(/[^\p{L}\p{N}\s'-]/gu, " ").split(/\s+/).filter(Boolean);
+const key = (w: string) => w.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+
+/**
+ * Whether an opening text says only things the transcript lines say: every number and every name (a capitalised word that is not the
+ * first word) must appear in them, and most of its other content words must too (a shared start of 5 letters counts, for endings and
+ * prefixes). The AI is told not to invent; this is the check that does not take its word for it.
+ */
+export function groundedIn(text: string, sources: string[]): { ok: boolean; unknown: string[] } {
+  const known = new Set(sources.flatMap(words).map(key));
+  const has = (w: string) => { const k = key(w); if (known.has(k)) return true; if (k.length >= 5) for (const s of known) if (s.length >= 5 && s.slice(0, 5) === k.slice(0, 5)) return true; return false; };
+  const tokens = words(text);
+  const unknown: string[] = [];
+  const content: string[] = [];
+  tokens.forEach((w, i) => {
+    if (/\d/.test(w)) { if (!known.has(key(w))) unknown.push(w); return; }
+    const name = i > 0 && /^\p{Lu}/u.test(w) && w.length > 2 && !FUNCTION_WORDS.has(key(w));
+    if (name) { if (!has(w)) unknown.push(w); return; }
+    if (key(w).length >= 5 && !FUNCTION_WORDS.has(key(w))) content.push(w);
+  });
+  const missing = content.filter(w => !has(w));
+  if (content.length >= 3 && missing.length / content.length > 0.4) unknown.push(...missing);
+  return { ok: unknown.length === 0, unknown: [...new Set(unknown)] };
+}
+
+/**
+ * Applies the reading test: a clip that needs more context is extended by the lines the reader asked for (never into the
+ * clip before it or the one after, and never past the length limit), clips that stay incomprehensible are dropped when there
+ * are enough others, and the best `limits.count` are kept in time order. Unjudged clips are kept as they are.
+ */
+export function applyJudgements(moments: Moment[], judgements: (Judgement | undefined)[], lines: Line[], limits: MomentLimits): Moment[] {
+  let prevEnd = -1; // the last line taken by the clip before (after its own extension)
+  const out: Moment[] = moments.map((m, k) => {
+    const j = judgements[k];
+    if (!j) { prevEnd = m.endIndex; return m; }
+    const floor = Math.max(prevEnd + 1, k > 0 ? moments[k - 1].endIndex + 1 : 0);
+    const ceil = k + 1 < moments.length ? moments[k + 1].startIndex - 1 : lines.length - 1;
+    let s = Math.max(floor, m.startIndex - j.extendStart), e = Math.min(ceil, m.endIndex + j.extendEnd);
+    const span = () => lines[e].end - startWithLeadIn(lines, s);
+    // Too long: give back the end first (the reaction), then the start, one line at a time, down to the original clip.
+    while (span() > limits.max && e > m.endIndex) e--;
+    while (span() > limits.max && s < m.startIndex) s++;
+    if (span() > limits.max) { s = m.startIndex; e = m.endIndex; }
+    const changed = s !== m.startIndex || e !== m.endIndex;
+    prevEnd = e;
+    // The opening text stays only if it is short and says nothing the transcript does not say.
+    let opening = j.opening, dropped: string | undefined;
+    if (opening) {
+      const source = lines.slice(Math.max(0, m.startIndex - CONTEXT_BEFORE), Math.min(lines.length, m.endIndex + 1 + CONTEXT_AFTER)).map(l => l.text);
+      const g = groundedIn(opening, source);
+      if (opening.length > OPENING_MAX_CHARS) { dropped = `terlalu panjang (${opening.length} huruf; maksimal ${OPENING_MAX_CHARS})`; opening = ""; }
+      else if (!g.ok) { dropped = `memuat hal yang tidak ada di transkrip (${g.unknown.slice(0, 3).join(", ")})`; opening = ""; }
+    }
+    return { ...m, startIndex: s, endIndex: e, start: changed ? startWithLeadIn(lines, s) : m.start, end: lines[e].end, judged: { ...j, opening, extendedStart: m.startIndex - s, extendedEnd: e - m.endIndex, ...(dropped ? { openingDropped: dropped } : {}) } };
+  });
+  // The reader's score is for the clip as sent; after extending it is assumed to have improved what was missing, so only clips that
+  // were very weak AND could not be extended are dropped.
+  const strong = out.filter(m => !m.judged || m.judged.score >= DROP_SCORE || m.judged.extendedStart + m.judged.extendedEnd > 0);
+  const pool = strong.length >= Math.min(3, out.length) ? strong : out;
+  const rank = (m: Moment) => (m.judged ? m.judged.score + Math.min(2, m.judged.extendedStart + m.judged.extendedEnd) * 0.2 : 6);
+  const best = [...pool].sort((a, b) => rank(b) - rank(a)).slice(0, limits.count);
+  return best.sort((a, b) => a.start - b.start);
+}
+
+export type SuggestOptions = { genre?: Genre; /** Run the reading test (one more request; skipped quietly if it fails). Default true. */ judge?: boolean };
+
 /** Asks for the best moments of a transcript. An empty list means the model found none worth cutting. */
-export async function suggestMoments(lines: Line[], o: CleanupOptions, limits: MomentLimits = DEFAULT_LIMITS): Promise<Moment[]> {
+export async function suggestMoments(lines: Line[], o: CleanupOptions, limits: MomentLimits = DEFAULT_LIMITS, opts: SuggestOptions = {}): Promise<Moment[]> {
   if (lines.length === 0) return [];
-  return ask(o, [{ text: momentsPrompt(lines, o.language, limits) }], MOMENTS_SCHEMA, json => parseMoments(json, lines, limits));
+  const genre = opts.genre ?? "umum", judge = opts.judge !== false;
+  // With the reading test more candidates are asked for, so the ones a new viewer cannot follow can be dropped.
+  const asked: MomentLimits = judge ? { ...limits, count: Math.min(12, limits.count + 3) } : limits;
+  const moments = await ask(o, [{ text: momentsPrompt(lines, o.language, asked, genre) }], MOMENTS_SCHEMA, json => parseMoments(json, lines, asked));
+  if (!judge || moments.length === 0) return moments.slice(0, limits.count);
+  try {
+    const judgements = await ask(o, [{ text: judgePrompt(lines, moments, o.language, genre) }], JUDGE_SCHEMA, json => parseJudgements(json, moments.length));
+    return applyJudgements(moments, judgements, lines, limits);
+  } catch (e) {
+    // The test is an extra: if it cannot be done the suggestions still stand (only a cancel stops everything).
+    if (e instanceof GeminiError && e.message === "Dibatalkan.") throw e;
+    return moments.slice(0, limits.count);
+  }
 }
 
 // ---- title, description, hashtags -----------------------------------------------------------------------------------
@@ -116,15 +308,19 @@ export async function suggestMoments(lines: Line[], o: CleanupOptions, limits: M
 export type Copy = { title: string; description: string; hashtags: string[] };
 const MAX_COPY_CHARS = 6000;
 
-export function copyPrompt(text: string, language: string): string {
+export function copyPrompt(text: string, language: string, context = ""): string {
+  const before = context.replace(/\s+/g, " ").trim().slice(0, 1200);
   return [
     `Kamu penulis teks untuk video pendek (TikTok, Reels, Shorts). Berikut ucapan dalam sebuah klip (${langName(language)}). Tulis dalam ${langName(language)}:`,
     "- title: judul menarik, jelas, maksimal 60 karakter, tanpa janji yang tidak ada di klip;",
     "- description: 1 sampai 2 kalimat, maksimal 200 karakter;",
     "- hashtags: 5 sampai 8 tagar relevan, tanpa spasi, tanpa tanda baca selain #.",
     "Hanya gunakan isi klip; jangan mengarang fakta, angka, atau nama.",
+    "Judul dan deskripsi harus bisa dipahami penonton yang belum melihat bagian video yang lain.",
+    ...(before ? ["Konteks yang terjadi tepat SEBELUM klip (tidak ikut diputar) tersedia di bawah. Jika klip bergantung pada konteks itu, tulis konteks singkatnya di judul atau deskripsi, tetapi hanya dengan fakta yang ada di konteks atau isi klip."] : []),
     "Balas hanya JSON: {\"title\": \"...\", \"description\": \"...\", \"hashtags\": [\"#...\"]}.",
     "",
+    ...(before ? ["Konteks sebelum klip:", before, ""] : []),
     "Isi klip:",
     text.replace(/\s+/g, " ").trim().slice(0, MAX_COPY_CHARS),
   ].join("\n");
@@ -140,9 +336,9 @@ export function parseCopy(response: unknown): Copy {
 
 const COPY_SCHEMA = { type: "OBJECT", properties: { title: { type: "STRING" }, description: { type: "STRING" }, hashtags: { type: "ARRAY", items: { type: "STRING" } } }, required: ["title", "description", "hashtags"] };
 
-export async function writeCopy(text: string, o: CleanupOptions): Promise<Copy> {
+export async function writeCopy(text: string, o: CleanupOptions, context = ""): Promise<Copy> {
   if (!text.trim()) throw new GeminiError("format", "Tidak ada teks untuk dibuatkan judul.");
-  return ask(o, [{ text: copyPrompt(text, o.language) }], COPY_SCHEMA, parseCopy);
+  return ask(o, [{ text: copyPrompt(text, o.language, context) }], COPY_SCHEMA, parseCopy);
 }
 
 const MIN_SECONDS = 5;

@@ -5,7 +5,7 @@
 import type { Aspect, Fit, Quality } from "./clip";
 import type { Transcript } from "./transcript";
 
-export type ClipperClip = { id: number; start: number; end: number; title?: string; transcript?: Transcript };
+export type ClipperClip = { id: number; start: number; end: number; title?: string; opening?: string; transcript?: Transcript };
 export type ClipperWork = {
   file: File;
   duration: number;

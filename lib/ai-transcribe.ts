@@ -4,6 +4,8 @@
 // good enough to find and cut moments, but not as exact as word timing from the on-device model.
 import { answerJson, ask, GeminiError, type CleanupOptions } from "./gemini";
 import { spreadWords, type Segment, type Transcript } from "./transcript";
+import type { TimedLine } from "./align";
+export type { TimedLine } from "./align";
 
 /**
  * Each request carries this much audio (about 0.5 MB as 32 kbps MP3). Two minutes, not four: the answer (every line with its
@@ -56,7 +58,6 @@ export function toSeconds(v: unknown): number {
   return parts.map(Number).reduce((total, n) => total * 60 + n, 0);
 }
 
-export type TimedLine = { start: number; end: number; text: string };
 
 /**
  * Reads the lines of one part. Times are clamped to the part, kept in order and never overlapping. If the service gave
@@ -113,7 +114,10 @@ export type LongOptions = {
   signal?: AbortSignal;
   /** Parts already done (kept by the caller for this video): they are not cut or sent again, so a retry continues where it stopped. */
   done?: Map<string, TimedLine[]>;
+  /** Sharpens the times of one part's lines from its own audio (see lib/align.ts); on any failure the lines keep the AI's times. */
+  refine?: (mp3: Uint8Array, lines: TimedLine[]) => Promise<TimedLine[]>;
 };
+const shifted = (l: TimedLine, by: number): TimedLine => ({ ...l, start: l.start + by, end: l.end + by, ...(l.words ? { words: l.words.map(w => ({ ...w, start: w.start + by, end: w.end + by })) } : {}) });
 const keyOf = (c: Chunk) => `${c.start}:${c.duration}`;
 
 /**
@@ -135,7 +139,7 @@ export async function transcribeLong(
   const todo: Chunk[] = [];
   for (const c of chunks) {
     const kept = opts.done?.get(keyOf(c));
-    if (kept) { results[c.index] = kept.map(l => ({ ...l, start: l.start + c.start, end: l.end + c.start })); done++; } else todo.push(c);
+    if (kept) { results[c.index] = kept.map(l => shifted(l, c.start)); done++; } else todo.push(c);
   }
   opts.onProgress?.(done, chunks.length);
   const request = { ...o, signal: opts.signal ?? o.signal, timeoutMs: o.timeoutMs ?? CHUNK_TIMEOUT_MS };
@@ -151,7 +155,11 @@ export async function transcribeLong(
       throw e;
     });
     const job = attempt()
-      .then(lines => { opts.done?.set(keyOf(chunk), lines); results[chunk.index] = lines.map(l => ({ ...l, start: l.start + chunk.start, end: l.end + chunk.start })); opts.onProgress?.(++done, chunks.length); })
+      .then(async lines => {
+        // The audio of this part is at hand: sharpen the AI's times with it (a failure here only means the AI's times are kept).
+        if (opts.refine) lines = await opts.refine(mp3, lines).catch(() => lines);
+        opts.done?.set(keyOf(chunk), lines); results[chunk.index] = lines.map(l => shifted(l, chunk.start)); opts.onProgress?.(++done, chunks.length);
+      })
       .catch(e => { failure ??= e instanceof GeminiError ? new GeminiError(e.kind, `Bagian ${chunk.index + 1} dari ${chunks.length}: ${e.message}`) : (e as Error); })
       .finally(() => { inflight.delete(job); });
     inflight.add(job);
@@ -160,7 +168,7 @@ export async function transcribeLong(
   await Promise.all(inflight);
   if (failure) throw failure;
 
-  const segments: Segment[] = results.flat().map(l => ({ start: l.start, end: l.end, text: l.text, words: spreadWords(l.text, l.start, l.end) }));
+  const segments: Segment[] = results.flat().map(l => ({ start: l.start, end: l.end, text: l.text, words: l.words && l.words.length ? l.words : spreadWords(l.text, l.start, l.end) }));
   if (segments.length === 0) throw new GeminiError("format", "Tidak ada ucapan yang terdeteksi di video ini.");
   return { language: o.language === "en" ? "english" : "indonesian", granularity: "segment", duration, segments };
 }
