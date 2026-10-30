@@ -162,7 +162,7 @@ export default function MotionStudio() {
   const [ttsLang, setTtsLang] = useState<TtsLang>("id");
   const [ttsVoice, setTtsVoice] = useState(0);
   const [ttsSpeed, setTtsSpeed] = useState(1.05);
-  const [voiceDirectionOverrides, setVoiceDirectionOverrides] = useState<Record<number, Partial<VoiceDirection>>>({});
+  const [voiceDirectionOverrides, setVoiceDirectionOverrides] = useState<Record<string, Partial<VoiceDirection>>>({});
   const [aiNarration, setAiNarration] = useState<AiNarration | null>(null);
   const [voiceProgress, setVoiceProgress] = useState<VoiceProgress | null>(null);
   const [voiceError, setVoiceError] = useState("");
