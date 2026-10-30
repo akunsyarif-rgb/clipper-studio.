@@ -122,6 +122,20 @@ export const OUTPUT_NAME = "clipper-export.mp4";
 
 /** A watermark image (second input, file name inside FFmpeg's file system) laid over the finished frame at x, y. */
 export type WatermarkOverlay = { file: string; x: number; y: number };
+/** The closing call-to-action picture (see lib/cta.ts): fades in at `start` seconds and stays to the end of the clip. */
+export type CtaOverlay = { file: string; x: number; y: number; start: number; fade: number };
+
+/** FFmpeg input arguments and filter graph for a CTA, optionally after a watermark. `base` is the label of the finished frame so far. */
+function ctaGraph(base: string, firstExtra: number, watermark: WatermarkOverlay | null | undefined, cta: CtaOverlay): { inputs: string[]; graph: string } {
+  const inputs = [...(watermark ? ["-i", watermark.file] : []), "-loop", "1", "-framerate", "30", "-i", cta.file];
+  const ci = firstExtra + (watermark ? 1 : 0);
+  const stages = [
+    ...(watermark ? [`[${base}][${firstExtra}:v]overlay=${watermark.x}:${watermark.y}:format=auto[withwm]`] : []),
+    `[${ci}:v]format=rgba,fade=t=in:st=${cta.start.toFixed(3)}:d=${cta.fade.toFixed(3)}:alpha=1[ctaf]`,
+    `[${watermark ? "withwm" : base}][ctaf]overlay=${cta.x}:${cta.y}:format=auto,format=yuv420p[out]`,
+  ];
+  return { inputs, graph: stages.join(";") };
+}
 
 /** Backdrop of an MP4 made from audio only (dark, like the studio's own backgrounds). */
 export const AUDIO_ONLY_BACKDROP = "0x10131c";
@@ -130,9 +144,12 @@ export const AUDIO_ONLY_BACKDROP = "0x10131c";
  * Audio-only source: the picture is a plain dark frame of the output size (so the result is an ordinary 9:16 / 16:9 / 1:1 MP4
  * that plays everywhere and can go on to the motion studio), with the audio of the chosen range and the watermark if any.
  */
-function audioOnlyArgs(input: string, range: { start: number; duration: number }, aspect: Aspect, quality: Quality, watermark?: WatermarkOverlay | null): string[] {
+function audioOnlyArgs(input: string, range: { start: number; duration: number }, aspect: Aspect, quality: Quality, watermark?: WatermarkOverlay | null, cta?: CtaOverlay | null): string[] {
   const { width: w, height: h } = outputSize(aspect, quality);
-  const picture = watermark
+  const withCta = cta ? ctaGraph("1:v", 2, watermark, cta) : null;
+  const picture = withCta
+    ? [...withCta.inputs, "-t", range.duration.toFixed(3), "-filter_complex", withCta.graph, "-map", "[out]", "-map", "0:a:0"]
+    : watermark
     ? ["-i", watermark.file, "-t", range.duration.toFixed(3), "-filter_complex", `[1:v][2:v]overlay=${watermark.x}:${watermark.y}:format=auto,format=yuv420p[out]`, "-map", "[out]", "-map", "0:a:0"]
     : ["-t", range.duration.toFixed(3), "-map", "1:v:0", "-map", "0:a:0"];
   return [
@@ -148,9 +165,12 @@ function audioOnlyArgs(input: string, range: { start: number; duration: number }
   ];
 }
 
-export function ffmpegArgs(input: string, range: { start: number; duration: number }, aspect: Aspect, quality: Quality, fit: Fit, watermark?: WatermarkOverlay | null, audioOnly = false): string[] {
-  if (audioOnly) return audioOnlyArgs(input, range, aspect, quality, watermark);
-  const picture = watermark
+export function ffmpegArgs(input: string, range: { start: number; duration: number }, aspect: Aspect, quality: Quality, fit: Fit, watermark?: WatermarkOverlay | null, audioOnly = false, cta?: CtaOverlay | null): string[] {
+  if (audioOnly) return audioOnlyArgs(input, range, aspect, quality, watermark, cta);
+  const withCta = cta ? ctaGraph("base", 1, watermark, cta) : null;
+  const picture = withCta
+    ? [...withCta.inputs, "-t", range.duration.toFixed(3), "-filter_complex", `[0:v:0]${videoFilter(aspect, quality, fit)}[base];${withCta.graph}`, "-map", "[out]", "-map", "0:a:0?"]
+    : watermark
     ? ["-i", watermark.file, "-t", range.duration.toFixed(3),
       "-filter_complex", `[0:v:0]${videoFilter(aspect, quality, fit)}[base];[base][1:v]overlay=${watermark.x}:${watermark.y}:format=auto,format=yuv420p[out]`,
       "-map", "[out]", "-map", "0:a:0?"]

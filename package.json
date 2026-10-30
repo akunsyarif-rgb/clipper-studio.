@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "node e2e/clipper.mjs && node e2e/motion.mjs && node e2e/transcript.mjs && node e2e/seo.mjs && node e2e/editing.mjs && node e2e/hub.mjs",
+    "test:e2e": "node e2e/clipper.mjs && node e2e/motion.mjs && node e2e/transcript.mjs && node e2e/seo.mjs && node e2e/editing.mjs && node e2e/hub.mjs && node e2e/cta.mjs",
     "remotion:studio": "remotion studio remotion/index.ts",
     "render:motion": "remotion render remotion/index.ts MotionGraphics30 out/motion-graphics.mp4",
     "render:script": "remotion render remotion/index.ts ScriptVideo out/script-video.mp4 --props=props.json",

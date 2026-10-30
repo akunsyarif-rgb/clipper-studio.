@@ -12,6 +12,9 @@ import CloudAccount from "./CloudAccount";
 import SaveToHub from "./SaveToHub";
 import ClipFlow, { type NewClip } from "./ClipFlow";
 import WatermarkPanel from "./WatermarkPanel";
+import CtaPanel from "./CtaPanel";
+import { renderCtaPng } from "@/lib/cta-canvas";
+import { DEFAULT_CTA, loadCta, saveCta, type CtaSettings } from "@/lib/cta";
 import { canvasMeasure, renderWatermarkPng } from "@/lib/watermark-canvas";
 import { cleanWatermarkText, DEFAULT_WATERMARK, isWatermarkActive, loadWatermark, saveWatermark, watermarkBox, WATERMARK_FONT, WATERMARK_SHADOW, WATERMARK_WEIGHT, type Watermark } from "@/lib/watermark";
 import YoutubeFlow from "./YoutubeFlow";
@@ -28,7 +31,9 @@ import { ExportCancelled, exportClip, isEngineLoaded, terminateEngine } from "@/
 
 type Clip = { id: number; start: number; end: number; title?: string; opening?: string; transcript?: Transcript };
 /** `after` takes the finished clip instead of offering it for download (used to hand it to the motion studio). */
-type Job = { start: number; duration: number; aspect?: Aspect; after?: (blob: Blob) => Promise<void>; /** The clip goes on to the motion studio, which draws the watermark itself; never bake it in twice. */ noWatermark?: boolean };
+/** What a clip says, for the closing CTA (the clip's own transcript, title and opening text). */
+type Content = { text?: string; title?: string; hook?: string };
+type Job = { start: number; duration: number; aspect?: Aspect; /** Where the closing CTA is written from; the current form when absent. */ content?: Content; after?: (blob: Blob) => Promise<void>; /** The clip goes on to the motion studio, which draws the watermark itself; never bake it in twice. */ noWatermark?: boolean };
 const MAX_CLIPS = 10;
 
 export default function Home() {
@@ -65,6 +70,10 @@ export default function Home() {
   const [watermark, setWatermarkState] = useState<Watermark>(DEFAULT_WATERMARK);
   useEffect(() => { setWatermarkState(loadWatermark()); }, []);
   const setWatermark = (w: Watermark) => { setWatermarkState(w); saveWatermark(w); };
+  // Closing CTA: on by default and remembered on this device; the text is written from each clip's content unless the creator types one.
+  const [cta, setCtaState] = useState<CtaSettings>(DEFAULT_CTA);
+  useEffect(() => { setCtaState(loadCta()); }, []);
+  const setCta = (c: CtaSettings) => { setCtaState(c); saveCta(c); };
   // Coming back from another page (e.g. the motion studio): the video, cut list and settings are put back as they were.
   const [restored, setRestored] = useState(false);
   const keepRange = useRef(false);
@@ -189,8 +198,14 @@ export default function Home() {
     say(isEngineLoaded() ? "Memproses video…" : "Menyiapkan mesin video lokal (±32 MB, sekali per sesi)…");
     try {
       const jobAspect = job.aspect ?? aspect;
+      // The closing CTA (never on a clip that goes on to the motion studio). A failure here must not cost the export.
+      let ctaImage: Awaited<ReturnType<typeof renderCtaPng>> = null;
+      if (!job.noWatermark) {
+        try { ctaImage = await renderCtaPng(cta, job.content ?? { text: transcript, hook, title: file.name.replace(/\.[^.]+$/, "") }, job.duration, outputSize(jobAspect, quality), watermark); }
+        catch { ctaImage = null; }
+      }
       const blob = await exportClip({
-        file, start: job.start, duration: job.duration, aspect: jobAspect, quality, fit,
+        file, start: job.start, duration: job.duration, aspect: jobAspect, quality, fit, cta: ctaImage,
         watermark: job.noWatermark ? null : await renderWatermarkPng(watermark, outputSize(jobAspect, quality)),
         onProgress: p => { setPhase("encoding"); setProgress(Math.round(p * 100)); },
       });
@@ -202,7 +217,7 @@ export default function Home() {
       setResult({ url: URL.createObjectURL(blob), name, size: blob.size, label, seconds: job.duration, w: width, h: height, historyId: clipId(file.name, job.start, job.duration) });
       historyBase.current = { id: clipId(file.name, job.start, job.duration), kind: "clip", title: file.name.replace(/\.[^.]+$/, "").slice(0, 80), script: "" };
       void updateHistory(l => logRender(l, { ...historyBase.current!, now: Date.now() }, { name, size: blob.size, label }));
-      say("MP4 berhasil dibuat di perangkat ini. Simpan hasilnya sebelum menutup tab.");
+      say(ctaImage ? `MP4 berhasil dibuat di perangkat ini, dengan CTA di akhir: “${ctaImage.text}”. Simpan hasilnya sebelum menutup tab.` : "MP4 berhasil dibuat di perangkat ini. Simpan hasilnya sebelum menutup tab.");
     } catch (err) {
       if (cancelled.current || err instanceof ExportCancelled) {
         setEngineReady(false);
@@ -281,9 +296,11 @@ export default function Home() {
       <div className="settings-label">Teks opsional <span>catatan, belum dibakar ke video</span></div><label className="field-label">Hook / teks pembuka<input value={hook} maxLength={90} onChange={e=>setHook(e.target.value)} placeholder="Contoh: 3 hal yang baru saya sadari…"/></label><label className="field-label">Subtitle / transkrip<textarea value={transcript} maxLength={4000} onChange={e=>setTranscript(e.target.value)} rows={3} placeholder="Tempel teks transkrip sebagai referensi klip."/></label>
       <div className="settings-label">Watermark video <span>teks sendiri, ikut tertanam di MP4</span></div>
       <WatermarkPanel value={watermark} onChange={setWatermark} disabled={busy} />
+      <div className="settings-label">CTA penutup <span>ajakan di akhir video, ikut tertanam di MP4</span></div>
+      <CtaPanel value={cta} onChange={setCta} disabled={busy} content={{ text: transcript, title: file ? file.name.replace(/\.[^.]+$/, "") : "", hook }} />
       <div className="preview-card"><div className={"frame-preview fit-" + fit} style={{ aspectRatio: `${outW} / ${outH}`, containerType: "inline-size" }}>{src && fit === "blur" && <video className="frame-bg" src={src} muted playsInline preload="metadata"/>}{src && <video className="frame-fg" src={src} muted playsInline preload="metadata"/>}<div className="portrait-overlay">{hook&&<strong>{hook}</strong>}{transcript&&<span>{transcript.slice(0,120)}</span>}</div>{wmBox ? <div data-testid="wm-preview" data-position={watermark.position} aria-hidden="true" style={{ position: "absolute", left: `${(wmBox.x / outW) * 100}%`, top: `${(wmBox.y / outH) * 100}%`, width: `${(wmBox.width / outW) * 100}%`, height: `${(wmBox.height / outH) * 100}%`, display: "flex", alignItems: "center", justifyContent: wmBox.align === "right" ? "flex-end" : "flex-start", whiteSpace: "nowrap", pointerEvents: "none", fontFamily: WATERMARK_FONT, fontWeight: WATERMARK_WEIGHT, fontSize: `${(wmBox.fontSize / outW) * 100}cqw`, lineHeight: 1, color: "#fff", opacity: watermark.opacity, textShadow: `0 ${(WATERMARK_SHADOW.offsetY / outW) * 100}cqw ${(WATERMARK_SHADOW.blur / outW) * 100}cqw ${WATERMARK_SHADOW.color}` }}>{cleanWatermarkText(watermark.text)}</div> : null}<span className="preview-label">PRATINJAU</span></div><div className="preview-copy"><strong>Format output {aspect}{file && isAudioFile(file) ? " · audio saja" : ""}</strong><span>{outW} × {outH} · MP4 H.264/AAC · 30 fps</span><small>Pratinjau komposisi. Watermark ikut dirender; hook dan subtitle tidak ikut dirender pada build ini.</small></div></div>
       <button className="secondary-button" disabled={!file||!duration||clips.length>=MAX_CLIPS||busy||asrBusy} onClick={addClip}><span>＋</span> Tambahkan rentang ke daftar klip <small>{clips.length}/{MAX_CLIPS}</small></button>
-      {clips.length>0&&<div className="clip-list"><div className="clip-list-heading"><strong>Daftar klip</strong><button className="text-button" disabled={busy||asrBusy} onClick={()=>setClips([])}>Hapus semua</button></div>{clips.map((clip,i)=><div className="clip-row" key={clip.id}><span className="clip-number">{String(i+1).padStart(2,"0")}</span><div className="clip-meta"><strong>{clip.title || `Klip ${i+1}`}</strong><span>{formatTime(clip.start)} – {formatTime(clip.end)} · {formatTime(clip.end-clip.start)}</span></div><button className="text-button" onClick={()=>{setStart(formatTime(clip.start));setEnd(formatTime(clip.end));seek(clip.start);}}>Edit</button><button className="icon-button" aria-label="Hapus klip" disabled={busy||asrBusy} onClick={()=>setClips(old=>old.filter(c=>c.id!==clip.id))}>×</button><button className="text-button" disabled={busy||asrBusy} onClick={()=>sendToMotion(clip)} data-testid="clip-motion">Ke Motion</button><button className="row-export" disabled={busy||asrBusy} onClick={()=>runExport({ start: clip.start, duration: clip.end - clip.start })}>Ekspor</button></div>)}</div>}
+      {clips.length>0&&<div className="clip-list"><div className="clip-list-heading"><strong>Daftar klip</strong><button className="text-button" disabled={busy||asrBusy} onClick={()=>setClips([])}>Hapus semua</button></div>{clips.map((clip,i)=><div className="clip-row" key={clip.id}><span className="clip-number">{String(i+1).padStart(2,"0")}</span><div className="clip-meta"><strong>{clip.title || `Klip ${i+1}`}</strong><span>{formatTime(clip.start)} – {formatTime(clip.end)} · {formatTime(clip.end-clip.start)}</span></div><button className="text-button" onClick={()=>{setStart(formatTime(clip.start));setEnd(formatTime(clip.end));seek(clip.start);}}>Edit</button><button className="icon-button" aria-label="Hapus klip" disabled={busy||asrBusy} onClick={()=>setClips(old=>old.filter(c=>c.id!==clip.id))}>×</button><button className="text-button" disabled={busy||asrBusy} onClick={()=>sendToMotion(clip)} data-testid="clip-motion">Ke Motion</button><button className="row-export" disabled={busy||asrBusy} onClick={()=>runExport({ start: clip.start, duration: clip.end - clip.start, content: { text: clip.transcript?.segments.map(s => s.text).join(" "), title: clip.title, hook: clip.opening } })}>Ekspor</button></div>)}</div>}
 
       <div className="section-heading second"><div><small>LANGKAH 03</small><h2>Render dan simpan</h2></div><span className="step-count">03 / 03</span></div>
       <div className="engine-status"><span className={"status-dot "+(engineReady?"ready":"")}/><div><strong>{engineReady?"Mesin lokal siap":"Mesin video belum dimuat"}</strong><small>{engineReady?"FFmpeg berjalan di browser":"Dimuat (±32 MB) saat ekspor pertama"}</small></div><span className="engine-badge">WASM</span></div>
