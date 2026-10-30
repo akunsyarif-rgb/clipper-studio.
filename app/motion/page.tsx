@@ -13,7 +13,7 @@ import {
 import { explainVoiceError, loadVoiceEngine, MODEL_BYTES, VOICES } from "@/lib/tts/browser";
 import { assembleNarration, clipKey, SPEEDS } from "@/lib/tts/narration";
 import { spokenText } from "@/lib/tts/numbers";
-import { analyzeVoiceScript, paceToSpeed, VOICE_EMOTION_LABELS, VOICE_PACE_LABELS, type VoiceDirection, type VoiceEmotion, type VoicePace } from "@/lib/voice-director";
+import { analyzeVoiceScript, paceToSpeed, VOICE_DELIVERY_LABELS, VOICE_EMOTION_LABELS, VOICE_INTONATION_LABELS, VOICE_PACE_LABELS, type VoiceDelivery, type VoiceDirection, type VoiceEmotion, type VoiceIntonation, type VoicePace } from "@/lib/voice-director";
 import { TTS_LANGS, type TtsLang } from "@/lib/tts/supertonic";
 import { allWords, shiftWords, HANDOFF_KEY, parseHandoff, sceneTimings, scriptFromTranscript, mergeShortScenes, type Transcript } from "@/lib/transcript";
 import { ICONS, resolveVisual, sceneTopics, type Cut, stripMarks, TEMPLATES, type Template, type VisualOverride } from "@/lib/visuals";
@@ -967,10 +967,13 @@ export default function MotionStudio() {
                 <div className="voice-direction-title"><b>Segmen {index + 1}</b><small>{direction.sourceText}</small></div>
                 <div className="voice-direction-controls">
                   <label>Emosi<select aria-label={`Emosi segmen ${index + 1}`} value={direction.emotion} disabled={voiceBusy} onChange={e => setVoiceDirectionOverrides(old => ({ ...old, [`${index}:${direction.sourceText}`]: { ...old[`${index}:${direction.sourceText}`], emotion: e.target.value as VoiceEmotion } }))}>{Object.entries(VOICE_EMOTION_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+                  <label>Gaya<select aria-label={`Gaya segmen ${index + 1}`} value={direction.delivery} disabled={voiceBusy} onChange={e => setVoiceDirectionOverrides(old => ({ ...old, [`${index}:${direction.sourceText}`]: { ...old[`${index}:${direction.sourceText}`], delivery: e.target.value as VoiceDelivery } }))}>{Object.entries(VOICE_DELIVERY_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+                  <label>Intonasi<select aria-label={`Intonasi segmen ${index + 1}`} value={direction.intonation} disabled={voiceBusy} onChange={e => setVoiceDirectionOverrides(old => ({ ...old, [`${index}:${direction.sourceText}`]: { ...old[`${index}:${direction.sourceText}`], intonation: e.target.value as VoiceIntonation } }))}>{Object.entries(VOICE_INTONATION_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
                   <label>Tempo<select aria-label={`Tempo segmen ${index + 1}`} value={direction.pace} disabled={voiceBusy} onChange={e => setVoiceDirectionOverrides(old => ({ ...old, [`${index}:${direction.sourceText}`]: { ...old[`${index}:${direction.sourceText}`], pace: e.target.value as VoicePace } }))}>{Object.entries(VOICE_PACE_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
                   <label>Jeda setelah kalimat<select aria-label={`Jeda segmen ${index + 1}`} value={direction.pauseAfter} disabled={voiceBusy} onChange={e => setVoiceDirectionOverrides(old => ({ ...old, [`${index}:${direction.sourceText}`]: { ...old[`${index}:${direction.sourceText}`], pauseAfter: Number(e.target.value) as VoiceDirection["pauseAfter"] } }))}><option value={0}>Tanpa jeda tambahan</option><option value={0.25}>0,25 detik</option><option value={0.5}>0,5 detik</option><option value={0.8}>0,8 detik</option></select></label>
                 </div>
-                <small className="voice-direction-reason">{direction.reason} · keyakinan {direction.confidence} · penekanan: {direction.emphasis.join(", ") || "tidak ada"}</small>
+                <label className="voice-emphasis">Kata yang ditekankan<input aria-label={`Kata penekanan segmen ${index + 1}`} value={direction.emphasis.join(", ")} disabled={voiceBusy} onChange={e => setVoiceDirectionOverrides(old => ({ ...old, [`${index}:${direction.sourceText}`]: { ...old[`${index}:${direction.sourceText}`], emphasis: e.target.value.split(",").map(w => w.trim()).filter(Boolean).slice(0, 4) } }))} /></label>
+                <small className="voice-direction-reason">{direction.reason} · keyakinan {direction.confidence} · arahan intonasi dan penekanan tidak mengubah akustik Supertonic secara langsung.</small>
               </div>)}
               {Object.keys(voiceDirectionOverrides).length > 0 && <button type="button" className="motion-secondary" disabled={voiceBusy} onClick={() => setVoiceDirectionOverrides({})}>Pulihkan rekomendasi otomatis</button>}
             </div>
