@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 
 const API = "https://pixabay.com/api/";
 const IMAGE_HOST = "cdn.pixabay.com";
+const PIXABAY_HOST = "pixabay.com";
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 
 const fail = (status: number, code: string, message: string) =>
@@ -13,7 +14,10 @@ function cleanImageUrl(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   try {
     const url = new URL(raw);
-    if (url.protocol !== "https:" || url.hostname !== IMAGE_HOST || url.username || url.password || url.port || !url.pathname.startsWith("/photo/")) return null;
+    if (url.protocol !== "https:" || url.username || url.password || url.port) return null;
+    const cdnPhoto = url.hostname === IMAGE_HOST && url.pathname.startsWith("/photo/");
+    const pixabayDownload = url.hostname === PIXABAY_HOST && url.pathname.startsWith("/get/");
+    if (!cdnPhoto && !pixabayDownload) return null;
     return url.toString();
   } catch { return null; }
 }
