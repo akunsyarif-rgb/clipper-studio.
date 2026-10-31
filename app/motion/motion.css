@@ -210,3 +210,8 @@ button.scene-row{width:100%;text-align:left;color:inherit;font:inherit;backgroun
 .voice-reset{align-self:flex-start;margin:2px 0 6px;min-height:40px;padding:0 12px;border:1px solid var(--m-line);border-radius:8px;background:transparent;color:#bdb3ff;font-size:12px;cursor:pointer}
 @media(max-width:520px){.voice-direction-controls{grid-template-columns:1fr}}
 .audio-previous{display:flex;flex-direction:column;gap:6px;margin-top:10px;padding:10px;border:1px dashed var(--m-line);border-radius:10px;opacity:.85}.audio-previous small{font-size:11px;color:var(--m-muted);line-height:1.5}.audio-previous audio{width:100%}
+
+
+/* Pixabay photo picker touch targets. */
+.photo-picker [data-testid="pixabay-photo-grid"]{margin-top:2px}
+.photo-picker [data-testid="pixabay-photo-choice"]{touch-action:manipulation}
