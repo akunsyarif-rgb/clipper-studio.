@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanPixabayImageUrl, normalizePixabayPhotos } from "./pixabay-server";
+import { cleanPixabayImageUrl, cleanPixabayVideoUrl, normalizePixabayPhotos, normalizePixabayVideos } from "./pixabay-server";
 
 describe("Pixabay response validation", () => {
   it("accepts only HTTPS CDN image URLs", () => {
@@ -20,6 +20,15 @@ describe("Pixabay response validation", () => {
       id: 12, alt: "green forest", photographer: "author", pageUrl: "https://pixabay.com/photos/forest-12/",
       thumb: "https://cdn.pixabay.com/photo/preview.jpg", image: "https://pixabay.com/get/large_1280.jpg",
     }]);
+  });
+
+  it("normalizes safe Pixabay video renditions and rejects untrusted hosts", () => {
+    expect(cleanPixabayVideoUrl("https://cdn.pixabay.com/video/2024/01/01/a_medium.mp4")).toBe("https://cdn.pixabay.com/video/2024/01/01/a_medium.mp4");
+    expect(cleanPixabayVideoUrl("https://cdn.pixabay.com.evil.test/video/a.mp4")).toBeNull();
+    expect(normalizePixabayVideos({ hits: [
+      { id: 42, tags: "ocean waves", user: "creator", pageURL: "https://pixabay.com/videos/id-42/", duration: 12, videos: { medium: { url: "https://cdn.pixabay.com/video/2024/01/01/a_medium.mp4", thumbnail: "https://cdn.pixabay.com/video/2024/01/01/a_medium.jpg", width: 1280, height: 720, size: 1000 } } },
+      { id: 43, videos: { medium: { url: "https://evil.test/a.mp4", thumbnail: "https://evil.test/a.jpg" } } },
+    ] })).toEqual([{ id: 42, alt: "ocean waves", photographer: "creator", pageUrl: "https://pixabay.com/videos/id-42/", url: "https://cdn.pixabay.com/video/2024/01/01/a_medium.mp4", thumbnail: "https://cdn.pixabay.com/video/2024/01/01/a_medium.jpg", duration: 12, width: 1280, height: 720, size: 1000 }]);
   });
 
   it("handles malformed payloads", () => {
