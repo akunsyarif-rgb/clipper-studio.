@@ -1,5 +1,3 @@
-import { NextRequest } from "next/server";
-
 export const runtime = "nodejs";
 
 const API = "https://pixabay.com/api/";
@@ -86,7 +84,14 @@ export async function POST(request: NextRequest) {
     if (!url) return fail(400, "BAD_URL", "Alamat gambar Pixabay tidak valid.");
     try {
       // Fetch selected bytes through the server; never leave a permanent Pixabay CDN hotlink in the composition.
-      const upstream = await fetch(url, { redirect: "error", cache: "no-store" });
+      let upstream = await fetch(url, { redirect: "manual", cache: "no-store" });
+      if (upstream.status >= 300 && upstream.status < 400) {
+        const location = upstream.headers.get("location");
+        let redirected: string | null = null;
+        try { redirected = location ? cleanImageUrl(new URL(location, url).toString()) : null; } catch { redirected = null; }
+        if (!redirected) return fail(502, "IMAGE_REDIRECT", "Pixabay mengarahkan gambar ke alamat yang tidak diizinkan.");
+        upstream = await fetch(redirected, { redirect: "error", cache: "no-store" });
+      }
       if (!upstream.ok) return fail(502, "IMAGE_FAILED", "Gambar Pixabay gagal diambil.");
       const contentType = upstream.headers.get("content-type") ?? "";
       if (!/^image\/(jpeg|png|webp)/i.test(contentType)) return fail(502, "IMAGE_FAILED", "Sumber tidak mengembalikan berkas gambar.");
