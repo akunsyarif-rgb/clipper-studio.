@@ -102,7 +102,7 @@ function Cutaway({ scene, colors, length, index }: { scene: Scene; colors: Color
   const bottom = visual.template === "compare" || visual.template === "cta" || (visual.template === "statement" && !!visual.icon);
   return (
     <AbsoluteFill style={{ background: `linear-gradient(145deg, ${colors.bg1} 0%, ${colors.bg2} 100%)`, opacity: fade }}>
-      {scene.image ? <SceneImage src={scene.image} index={index} length={length} colors={colors} /> : null}
+      {scene.videoSrc ? <SceneImage src={scene.videoSrc} video index={index} length={length} colors={colors} /> : scene.image ? <SceneImage src={scene.image} index={index} length={length} colors={colors} /> : null}
       <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", padding: `0 ${SAFE.side}px`, color: colors.text, transform: `scale(${0.92 + 0.08 * Math.min(1, enter)})` }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", width: "100%" }}>
           {bottom ? <div style={{ transform: "scale(1.35)", margin: "0 0 40px" }}><BottomVisual visual={{ ...visual, template: visual.template }} colors={colors} /></div> : <TopVisual visual={visual} colors={colors} sceneFrames={length} />}
@@ -120,12 +120,12 @@ function Cutaway({ scene, colors, length, index }: { scene: Scene; colors: Color
  * own background colour so the palette's text colour keeps its contrast on any photo. Kept lighter at the
  * top so the picture reads, denser where the text sits.
  */
-function SceneImage({ src, index, length, colors }: { src: string; index: number; length: number; colors: Colors }) {
+function SceneImage({ src, video, index, length, colors }: { src: string; video?: boolean; index: number; length: number; colors: Colors }) {
   const frame = useCurrentFrame();
   const k = kenBurns(index, frame, length);
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
-      <Img src={resolveAudio(src)} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${k.scale}) translate(${k.x}%, ${k.y}%)` }} />
+      {video ? <Video src={resolveAudio(src)} muted loop objectFit="cover" /> : <Img src={resolveAudio(src)} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${k.scale}) translate(${k.x}%, ${k.y}%)` }} />}
       <AbsoluteFill style={{ background: `linear-gradient(180deg, ${colors.bg1}66 0%, ${colors.bg1}b8 34%, ${colors.bg1}d9 62%, ${colors.bg1}e6 100%)` }} />
     </AbsoluteFill>
   );

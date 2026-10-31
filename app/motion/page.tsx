@@ -55,6 +55,10 @@ import PexelsPanel from "../PexelsPanel";
 import AffiliatePanel from "../AffiliatePanel";
 import { removeLine, scenesForProductPhoto, type AffiliateBrief } from "@/lib/affiliate";
 import ScenePhotoPicker from "../ScenePhotoPicker";
+import PixabayPhotoPicker from "../PixabayPhotoPicker";
+import PixabayVideoPicker from "../PixabayVideoPicker";
+import type { PixabayPhoto, PixabayVideo } from "@/lib/pixabay";
+import { pixabayCredit, pixabayVideoCredit } from "@/lib/pixabay";
 import { creditText, type PexelsPhoto } from "@/lib/pexels";
 import { planToOverrides, type DirectorPlan } from "@/lib/director";
 import CloudAccount from "../CloudAccount";
@@ -90,7 +94,7 @@ const MODE_KEY = "clipper:motion:mode:v1";
 
 type Track = { file: File; url: string; seconds: number };
 /** A scene picture kept in memory only (never uploaded or saved with the session). */
-type SceneImageFile = { url: string; name: string; /** Set for stock photos: who to credit and where. */ credit?: { text: string; href: string } };
+type SceneImageFile = { url: string; name: string; mediaType?: "image" | "video"; /** Set for stock media: contributor and source page. */ credit?: { text: string; href: string } };
 type Generated = Track & { mood: Mood; seed: number };
 type MusicMode = "none" | "auto" | "upload";
 type VoiceMode = "ai" | "manual" | "none";
@@ -235,6 +239,7 @@ export default function MotionStudio() {
   // The last "Sutradara AI" pass: why each scene looks as it does (by scene text), and what to restore on undo.
   const [directorInfo, setDirectorInfo] = useState<Record<string, { reason: string; imageIdea?: string; imageQuery?: string }>>({});
   const [pickerFor, setPickerFor] = useState<string | null>(null);
+  const [pickerSource, setPickerSource] = useState<"pexels" | "pixabay" | "pixabay-video">("pexels");
   // Set while the affiliate panel holds a complete product brief: this is then a selling video.
   const [affiliateBrief, setAffiliateBrief] = useState<AffiliateBrief | null>(null);
   // Which kind of content this is: ordinary, or a selling (affiliate) video. The last choice is remembered on this device.
@@ -389,7 +394,7 @@ export default function MotionStudio() {
   const sceneList = timeline.ok ? (videoEdit && source ? (list: typeof timeline.scenes) => fitScenesToVideo(list, Math.round(trimSeconds(trim, source.seconds) * FPS)) : (list: typeof timeline.scenes) => list)(timeline.scenes).map((sc, i) => ({
     ...sc, visual: sceneVisuals[i], narrative: narrativePlan[i], ...(timed && !aiFresh ? { wordStarts: timed.wordStarts[i], wordEnds: timed.wordEnds[i], pauseFrames: undefined } : {}),
     ...(videoEdit && source ? { cut: cutOverrides[sc.text] ?? planned[i], ...(cutOverrides[sc.text] === "clip" ? { clipFrom: clipStarts[sc.text] ?? (trim?.start ?? 0) } : {}) } : {}),
-    ...(images[sc.text] ? { image: images[sc.text].url } : {}),
+    ...(images[sc.text]?.mediaType === "video" ? { videoSrc: images[sc.text].url } : images[sc.text] ? { image: images[sc.text].url } : {}),
     ...(stickerPlan[i] ? { sticker: stickerPlan[i]! } : {}),
   })) : [];
   // Sound effects: planned from the scenes, synthesised on the device into one small WAV that plays in the preview and the MP4.
@@ -739,6 +744,11 @@ export default function MotionStudio() {
     return targets.length;
   }
   const putStockPhoto = (text: string, file: File, photo: PexelsPhoto) => putSceneImage(text, file, { text: creditText(photo), href: photo.pexelsUrl || photo.photographerUrl || "https://www.pexels.com" });
+  const putPixabayPhoto = (text: string, file: File, photo: PixabayPhoto) => putSceneImage(text, file, pixabayCredit(photo));
+  function putPixabayVideo(text: string, video: PixabayVideo) {
+    setImages(prev => { if (prev[text]?.url.startsWith("blob:")) URL.revokeObjectURL(prev[text].url); return { ...prev, [text]: { url: video.url, name: `pixabay-video-${video.id}.mp4`, mediaType: "video", credit: pixabayVideoCredit(video) } }; });
+    if (videoEdit && source) setCutOverrides(prev => prev[text] === "graphic" ? prev : { ...prev, [text]: "graphic" });
+  }
   function removeSceneImage(text: string) {
     setImages(prev => { if (!prev[text]) return prev; URL.revokeObjectURL(prev[text].url); const next = { ...prev }; delete next[text]; return next; });
   }
@@ -755,7 +765,7 @@ export default function MotionStudio() {
     }
     // A picture whose temporary URL is gone would render as an empty frame: say so before spending minutes rendering.
     const gone: string[] = [];
-    for (const sc of renderProps.scenes) if (sc.image) { try { await (await fetch(sc.image)).blob(); } catch { gone.push(stripMarks(sc.text).slice(0, 30)); } }
+    for (const sc of renderProps.scenes) if (sc.image) { try { const response = await fetch(sc.image); if (!response.ok) throw new Error("image unavailable"); } catch { gone.push(stripMarks(sc.text).slice(0, 30)); } }
     if (gone.length) { setRenderError(`Gambar untuk scene "${gone.join('", "')}" tidak bisa dibaca lagi. Pilih ulang gambarnya lalu render.`); return; }
     // The speech model is no longer needed; its memory goes to the renderer.
     releaseAsr();
@@ -1154,13 +1164,16 @@ export default function MotionStudio() {
                   {images[s.text] ? "Ganti gambar" : "+ Gambar latar"}
                   <input type="file" accept="image/*" hidden disabled={rendering} data-testid="scene-image-input" onChange={e => void onSceneImage(s.text, e)} />
                 </label>
-                <button type="button" className="text-link" disabled={rendering} onClick={() => setPickerFor(pickerFor === s.text ? null : s.text)} data-testid="scene-image-pexels">Cari di Pexels</button>
+                <button type="button" className="text-link" disabled={rendering} onClick={() => { setPickerSource("pexels"); setPickerFor(pickerFor === s.text && pickerSource === "pexels" ? null : s.text); }} data-testid="scene-image-pexels">Cari di Pexels</button>
+                <button type="button" className="text-link" disabled={rendering} onClick={() => { setPickerSource("pixabay"); setPickerFor(pickerFor === s.text && pickerSource === "pixabay" ? null : s.text); }} data-testid="scene-image-pixabay">Cari gambar Pixabay</button>\n                <button type="button" className="text-link" disabled={rendering} onClick={() => { setPickerSource("pixabay-video"); setPickerFor(pickerFor === s.text && pickerSource === "pixabay-video" ? null : s.text); }} data-testid="scene-video-pixabay">Cari video Pixabay</button>
                 {images[s.text] ? <button type="button" className="text-link" disabled={rendering} onClick={() => removeSceneImage(s.text)} data-testid="scene-image-remove">Hapus</button> : null}
                 {images[s.text]?.credit ? <small className="scene-credit" data-testid="scene-credit"><a href={images[s.text].credit!.href} target="_blank" rel="noreferrer noopener">{images[s.text].credit!.text}</a></small> : null}
               </div>}
-              {pickerFor === s.text && <ScenePhotoPicker initialQuery={directorInfo[s.text]?.imageQuery ?? ""} onChoose={(file, photo) => putStockPhoto(s.text, file, photo)} onClose={() => setPickerFor(null)} />}
+              {pickerFor === s.text && pickerSource === "pexels" && <ScenePhotoPicker initialQuery={directorInfo[s.text]?.imageQuery ?? ""} onChoose={(file, photo) => putStockPhoto(s.text, file, photo)} onClose={() => setPickerFor(null)} />}
+              {pickerFor === s.text && pickerSource === "pixabay" && <PixabayPhotoPicker initialQuery={directorInfo[s.text]?.imageQuery ?? ""} onChoose={(file, photo) => putPixabayPhoto(s.text, file, photo)} onClose={() => setPickerFor(null)} />}
+              {pickerFor === s.text && pickerSource === "pixabay-video" && <PixabayVideoPicker initialQuery={directorInfo[s.text]?.imageQuery ?? ""} onChoose={video => putPixabayVideo(s.text, video)} onClose={() => setPickerFor(null)} />}
             </div>); }); })()}</div>
-          {timeline.ok && <p className="preview-disclaimer" data-testid="image-note">{imageError ? <span className="scene-image-error" data-testid="image-error">{imageError} </span> : null}{videoEdit && source ? "Di video sumber, gambar tampil sebagai layar penuh (maks. 4 detik) pada scene itu, dan pembicara kembali setelahnya. " : null}Gambar latar hanya dipakai di perangkat ini dan tidak ikut tersimpan atau tersinkron; pilih lagi setelah memuat ulang halaman. Pakai gambar milik Anda, foto Pexels, atau yang boleh dipakai ulang: gambar dari internet (mis. Pinterest) belum tentu bebas hak cipta.</p>}
+          {timeline.ok && <p className="preview-disclaimer" data-testid="image-note">{imageError ? <span className="scene-image-error" data-testid="image-error">{imageError} </span> : null}{videoEdit && source ? "Di video sumber, gambar tampil sebagai layar penuh (maks. 4 detik) pada scene itu, dan pembicara kembali setelahnya. " : null}Gambar latar hanya dipakai di perangkat ini dan tidak ikut tersimpan atau tersinkron; pilih lagi setelah memuat ulang halaman. Pakai gambar milik Anda, foto Pexels/Pixabay, atau yang boleh dipakai ulang: gambar dari internet (mis. Pinterest) belum tentu bebas hak cipta.</p>}
         </section>
       </div>
 

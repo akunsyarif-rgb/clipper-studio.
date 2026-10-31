@@ -75,6 +75,8 @@ export type Scene = {
   sticker?: string;
   /** Faceless videos only: the creator's picture behind the scene (blob:/http(s):/data: URL, or a file name inside public/ for CLI renders). */
   image?: string;
+  /** Stock video URL used as a muted scene background. */
+  videoSrc?: string;
 };
 
 export type CaptionStyleId = "classic" | "pop" | "outline" | "box";
