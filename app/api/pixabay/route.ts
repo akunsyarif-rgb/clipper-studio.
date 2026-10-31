@@ -1,4 +1,4 @@
-import { cleanPixabayImageUrl, normalizePixabayPhotos } from "@/lib/pixabay-server";
+import { cleanPixabayImageUrl, normalizePixabayPhotos, normalizePixabayVideos } from "@/lib/pixabay-server";
 
 export const runtime = "nodejs";
 
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
   }
 
   if (body.action === "video-search") {
-    const query = String(body.query ?? "").replace(/\\s+/g, " ").trim().slice(0, 100);
+    const query = String(body.query ?? "").replace(/\s+/g, " ").trim().slice(0, 100);
     if (query.length < 2) return fail(400, "BAD_QUERY", "Masukkan minimal dua karakter untuk pencarian video.");
     const perPage = Math.min(20, Math.max(3, Math.round(Number(body.perPage) || 8)));
     const page = Math.min(5, Math.max(1, Math.round(Number(body.page) || 1)));
@@ -54,18 +54,8 @@ export async function POST(request: Request) {
       const upstream = await fetch(`${VIDEO_API}?${params}`, { next: { revalidate: 86_400 } });
       if (upstream.status === 429) return fail(429, "RATE_LIMIT", "Batas permintaan Pixabay tercapai. Tunggu sebelum mencoba lagi.");
       if (!upstream.ok) return fail(502, "UPSTREAM_ERROR", "Pencarian video Pixabay gagal.");
-      const data = await upstream.json() as { totalHits?: number; hits?: Array<{ id?: number; tags?: string; pageURL?: string; user?: string; duration?: number; videos?: Record<string, { url?: string; width?: number; height?: number; size?: number; thumbnail?: string }> }> };
-      const videos = (Array.isArray(data.hits) ? data.hits : []).flatMap(hit => {
-        const rendition = hit.videos?.medium?.url ? hit.videos.medium : hit.videos?.small;
-        const thumb = hit.videos?.medium?.thumbnail || hit.videos?.small?.thumbnail;
-        if (!hit.id || !rendition?.url || !thumb) return [];
-        try {
-          const videoUrl = new URL(rendition.url); const thumbUrl = new URL(thumb);
-          if (videoUrl.protocol !== "https:" || videoUrl.hostname !== "cdn.pixabay.com" || !videoUrl.pathname.startsWith("/video/") || thumbUrl.protocol !== "https:" || thumbUrl.hostname !== "cdn.pixabay.com" || !thumbUrl.pathname.startsWith("/video/")) return [];
-          return [{ id: hit.id, tags: String(hit.tags ?? "").slice(0, 120), photographer: String(hit.user ?? "Kontributor Pixabay").slice(0, 80), pageUrl: /^https:\\/\\/pixabay\\.com\\//.test(String(hit.pageURL)) ? hit.pageURL : "https://pixabay.com/", duration: Number(hit.duration) || 0, url: videoUrl.toString(), thumbnail: thumbUrl.toString(), width: rendition.width ?? 0, height: rendition.height ?? 0, size: rendition.size ?? 0 }];
-        } catch { return []; }
-      });
-      return Response.json({ videos, totalHits: Number(data.totalHits) || 0, remaining: Number(upstream.headers.get("x-ratelimit-remaining")) || null });
+      const data = await upstream.json();
+      return Response.json({ videos: normalizePixabayVideos(data), totalHits: Number((data as { totalHits?: unknown }).totalHits) || 0, remaining: Number(upstream.headers.get("x-ratelimit-remaining")) || null });
     } catch { return fail(502, "UPSTREAM_UNREACHABLE", "Tidak dapat menghubungi Pixabay dari server."); }
   }
 
