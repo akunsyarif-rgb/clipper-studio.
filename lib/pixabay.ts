@@ -57,3 +57,14 @@ export const pixabayCredit = (photo: Pick<PixabayPhoto, "photographer" | "pageUr
   text: `Gambar: ${photo.photographer} di Pixabay`,
   href: photo.pageUrl || "https://pixabay.com/",
 });
+
+
+export type PixabayVideo = { id: number; tags: string; photographer: string; pageUrl: string; duration: number; url: string; thumbnail: string; width: number; height: number; size: number };
+
+export async function searchPixabayVideos(query: string, options: { perPage?: number; page?: number; signal?: AbortSignal } = {}) {
+  const response = await request({ action: "video-search", query, perPage: options.perPage ?? 8, page: options.page ?? 1 }, options.signal);
+  const body = await response.json() as { videos?: PixabayVideo[]; totalHits?: number; remaining?: number | null };
+  return { videos: Array.isArray(body.videos) ? body.videos : [], totalHits: body.totalHits ?? 0, remaining: body.remaining ?? null };
+}
+
+export const pixabayVideoCredit = (video: Pick<PixabayVideo, "photographer" | "pageUrl">) => ({ text: `Video: ${video.photographer} di Pixabay`, href: video.pageUrl || "https://pixabay.com/" });
