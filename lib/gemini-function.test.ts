@@ -83,6 +83,15 @@ describe("the key", () => {
     expect(r.json).toMatchObject({ hasKey: true, provider: "google", model: "gemini-x" });
     expect(JSON.stringify(r.json)).not.toContain(KEY);
   });
+  it("defaults OpenRouter accounts to the free alias when no model is stored", async () => {
+    const row = { gemini_key: KEY, gemini_model: null, provider: "openai", base_url: "https://openrouter.ai/api/v1" };
+    const status = await run(world({ row }), { action: "status" });
+    expect(status.json).toMatchObject({ hasKey: true, provider: "openai", model: "openrouter/free" });
+    const savedWorld = world({ row: { gemini_key: null, gemini_model: null, provider: "google", base_url: null } });
+    const saved = await run(savedWorld, { action: "save-key", apiKey: KEY, provider: "openai", baseUrl: "https://openrouter.ai/api/v1" });
+    expect(saved.json).toMatchObject({ ok: true, model: "openrouter/free" });
+    expect(savedWorld.state.saved).toMatchObject({ gemini_model: "openrouter/free", provider: "openai" });
+  });
   it("saves a key, trimmed, with the service role, and never echoes it", async () => {
     const w = world();
     const r = await run(w, { action: "save-key", apiKey: `  ${KEY}\n`, model: "gemini-y" });
