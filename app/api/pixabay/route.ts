@@ -1,50 +1,7 @@
 export const runtime = "nodejs";
 
 const API = "https://pixabay.com/api/";
-const IMAGE_HOST = "cdn.pixabay.com";
-const PIXABAY_HOST = "pixabay.com";
-const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
-
-const fail = (status: number, code: string, message: string) =>
-  Response.json({ error: { code, message } }, { status });
-
-function cleanImageUrl(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  try {
-    const url = new URL(raw);
-    if (url.protocol !== "https:" || url.username || url.password || url.port) return null;
-    const cdnPhoto = url.hostname === IMAGE_HOST && url.pathname.startsWith("/photo/");
-    const pixabayDownload = url.hostname === PIXABAY_HOST && url.pathname.startsWith("/get/");
-    if (!cdnPhoto && !pixabayDownload) return null;
-    return url.toString();
-  } catch { return null; }
-}
-
-type RawHit = { id?: unknown; tags?: unknown; pageURL?: unknown; user?: unknown; previewURL?: unknown; webformatURL?: unknown; largeImageURL?: unknown };
-function pageUrl(raw: unknown): string {
-  try {
-    const url = new URL(String(raw));
-    return url.protocol === "https:" && url.hostname === "pixabay.com" ? url.toString() : "https://pixabay.com/";
-  } catch { return "https://pixabay.com/"; }
-}
-function normalizePhotos(payload: unknown) {
-  const hits = (payload as { hits?: unknown } | null)?.hits;
-  if (!Array.isArray(hits)) return [];
-  return (hits as RawHit[]).flatMap(hit => {
-    if (typeof hit?.id !== "number") return [];
-    const thumb = cleanImageUrl(hit.previewURL);
-    const image = cleanImageUrl(hit.largeImageURL) ?? cleanImageUrl(hit.webformatURL);
-    if (!thumb || !image) return [];
-    return [{
-      id: hit.id,
-      alt: String(hit.tags ?? "").replace(/\s+/g, " ").slice(0, 120),
-      photographer: String(hit.user ?? "Kontributor Pixabay").slice(0, 80),
-      pageUrl: pageUrl(hit.pageURL),
-      thumb,
-      image,
-    }];
-  });
-}
+import { cleanPixabayImageUrl, normalizePixabayPhotos } from "@/lib/pixabay-server";
 
 export async function POST(request: NextRequest) {
   const apiKey = process.env.PIXABAY_API_KEY?.trim();
@@ -70,7 +27,7 @@ export async function POST(request: NextRequest) {
       const data = await upstream.json();
       const remaining = Number(upstream.headers.get("x-ratelimit-remaining"));
       return Response.json({
-        photos: normalizePhotos(data),
+        photos: normalizePixabayPhotos(data),
         totalHits: Number((data as { totalHits?: unknown }).totalHits) || 0,
         remaining: Number.isFinite(remaining) && upstream.headers.has("x-ratelimit-remaining") ? remaining : null,
       });
@@ -80,7 +37,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (body.action === "image") {
-    const url = cleanImageUrl(body.url);
+    const url = cleanPixabayImageUrl(body.url);
     if (!url) return fail(400, "BAD_URL", "Alamat gambar Pixabay tidak valid.");
     try {
       // Fetch selected bytes through the server; never leave a permanent Pixabay CDN hotlink in the composition.
@@ -88,7 +45,7 @@ export async function POST(request: NextRequest) {
       if (upstream.status >= 300 && upstream.status < 400) {
         const location = upstream.headers.get("location");
         let redirected: string | null = null;
-        try { redirected = location ? cleanImageUrl(new URL(location, url).toString()) : null; } catch { redirected = null; }
+        try { redirected = location ? cleanPixabayImageUrl(new URL(location, url).toString()) : null; } catch { redirected = null; }
         if (!redirected) return fail(502, "IMAGE_REDIRECT", "Pixabay mengarahkan gambar ke alamat yang tidak diizinkan.");
         upstream = await fetch(redirected, { redirect: "error", cache: "no-store" });
       }
@@ -106,4 +63,3 @@ export async function POST(request: NextRequest) {
   return fail(400, "UNKNOWN_ACTION", "Aksi Pixabay tidak dikenal.");
 }
 
-export const __test__ = { cleanImageUrl, normalizePhotos };
