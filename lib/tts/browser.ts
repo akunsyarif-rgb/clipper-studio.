@@ -12,11 +12,24 @@ const SIZES: Record<string, number> = {
 };
 export const MODEL_BYTES = Object.values(SIZES).reduce((a, b) => a + b, 0);
 
-/** Voice styles in voice.bin order; gender measured from synthesized pitch (F0 ≈ 170–245 Hz vs 90–150 Hz). */
+/** Voice styles in voice.bin order; gender measured from synthesized pitch (F0 ≈ 160–200 Hz vs 85–140 Hz). */
 export const VOICES = [
-  { id: 0, label: "Wanita 1" }, { id: 1, label: "Wanita 2" }, { id: 2, label: "Wanita 3" }, { id: 3, label: "Wanita 4" }, { id: 4, label: "Wanita 5" },
-  { id: 5, label: "Pria 1" }, { id: 6, label: "Pria 2" }, { id: 7, label: "Pria 3" }, { id: 8, label: "Pria 4" }, { id: 9, label: "Pria 5" },
+  { id: 0, label: "Female Adult · 1" }, { id: 1, label: "Female Adult · 2" }, { id: 2, label: "Female Adult · 3" }, { id: 3, label: "Female Adult · 4" }, { id: 4, label: "Female Adult · 5" },
+  { id: 5, label: "Male Adult · 1" }, { id: 6, label: "Male Adult · 2" }, { id: 7, label: "Male Adult · 3" }, { id: 8, label: "Male Adult · 4" }, { id: 9, label: "Male Adult · 5" },
 ];
+
+/**
+ * The two MVP profiles (child profiles are postponed). `suggested` is a starting point chosen from MEASUREMENTS of the ten styles
+ * on the same two Indonesian lines (median pitch, pitch range over time, pace, loudness; npx vitest with VOICE_AUDIT=1, see
+ * lib/tts/voice-audit.test.ts): the style with the widest pitch range in a natural register for the profile. Nobody has LISTENED
+ * to them yet, so this says nothing about warmth or naturalness: pick by ear.
+ *   Female: style 2 (index 1): median 185-189 Hz, range 9.6-12.3 semitones (others 4.1-10.3).
+ *   Male:   style 1 (index 5): median 119-137 Hz, range 11.6-12.9 semitones (others 3.9-9.5).
+ */
+export const VOICE_PROFILES = [
+  { id: "female-adult", label: "Female Adult", ids: [0, 1, 2, 3, 4], suggested: 1 },
+  { id: "male-adult", label: "Male Adult", ids: [5, 6, 7, 8, 9], suggested: 5 },
+] as const;
 
 type Manifest = { files: Record<string, { size: number; sha256: string; parts: string[] }> };
 

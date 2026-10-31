@@ -177,3 +177,36 @@ button.scene-row{width:100%;text-align:left;color:inherit;font:inherit;backgroun
 .seo-panel .seo-checks{margin:6px 0 0;padding-left:0;list-style:none;font-size:13px}.seo-panel .seo-checks .bad{color:#ff9aa6}.seo-panel .seo-checks .ok{color:#9be8c0}
 .seo-panel .seo-platforms{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
 .scene-sticker{display:flex;align-items:center;gap:8px;font-size:12px;margin:6px 0}.scene-sticker select{flex:1;min-width:0}
+
+
+/* AI Voice Director: local, per-sentence narration guidance (collapsed rows; tempo and pause are the controls that change the sound) */
+.voice-director{display:flex;flex-direction:column;gap:6px;margin:14px 0;padding:13px;border:1px solid #8c80fa45;border-radius:11px;background:#8c80fa0b}
+.voice-director-heading{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.voice-director-heading>b{font-size:12px;color:#e8e5ff}
+.voice-director-heading>small,.voice-director>p,.voice-direction-reason{font-size:11px;color:var(--m-muted);line-height:1.55}
+.voice-director>p{margin:0 0 4px}
+.voice-director>p b{color:#e8e5ff;font-weight:600}
+.voice-direction-row{border-top:1px solid var(--m-line);padding:2px 0}
+.voice-direction-row>summary{list-style:none;display:flex;flex-direction:column;gap:6px;padding:10px 2px;cursor:pointer;min-height:44px}
+.voice-direction-row>summary::-webkit-details-marker{display:none}
+.voice-direction-row>summary::after{content:"Atur";position:absolute;right:2px;font-size:11px;color:#bdb3ff}
+.voice-direction-row{position:relative}
+.voice-direction-row[open]>summary::after{content:"Tutup"}
+.voice-direction-title{display:flex;flex-direction:column;gap:3px;padding-right:44px}
+.voice-direction-title>b{font-size:11px;color:#bdb3ff}
+.voice-direction-title>small{font-size:12px;line-height:1.5;color:#e5e7f4;overflow-wrap:anywhere}
+.voice-chips{display:flex;flex-wrap:wrap;gap:5px}
+.voice-chips i{font-style:normal;font-size:10px;padding:2px 7px;border-radius:20px;border:1px solid var(--m-line);color:var(--m-muted)}
+.voice-direction-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;padding:4px 0 8px}
+.voice-direction-controls label,.voice-emphasis{display:flex;flex-direction:column;gap:5px;min-width:0;font-size:11px;color:var(--m-muted)}
+.voice-direction-controls label>span,.voice-emphasis>span{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.voice-direction-controls select,.voice-emphasis input{width:100%;min-width:0;min-height:44px;padding:8px 9px!important;font-size:16px!important}
+.voice-tag{font-style:normal;font-size:9px;padding:1px 6px;border-radius:20px;white-space:nowrap}
+.voice-tag.live{background:#5ae2c218;color:#9be8d8;border:1px solid #5ae2c240}
+.voice-tag.guide{background:transparent;color:var(--m-muted);border:1px dashed var(--m-line)}
+.voice-emphasis{padding-bottom:6px}
+.voice-ignored{color:#ffb4a8;font-size:11px}
+.voice-direction-reason{display:block;padding:2px 0 6px}
+.voice-reset{align-self:flex-start;margin:2px 0 6px;min-height:40px;padding:0 12px;border:1px solid var(--m-line);border-radius:8px;background:transparent;color:#bdb3ff;font-size:12px;cursor:pointer}
+@media(max-width:520px){.voice-direction-controls{grid-template-columns:1fr}}
+.audio-previous{display:flex;flex-direction:column;gap:6px;margin-top:10px;padding:10px;border:1px dashed var(--m-line);border-radius:10px;opacity:.85}.audio-previous small{font-size:11px;color:var(--m-muted);line-height:1.5}.audio-previous audio{width:100%}
