@@ -65,19 +65,19 @@ try {
 
   await step("a change stays with its sentence when another sentence is added in front; it can be undone for that sentence", async () => {
     const tempo = await select(2, "Tempo");
-    await tempo.selectOption("slow");
+    await tempo.selectOption("fast"); // the recommendation for a reveal is slow, so this is a real change
     assert(/diubah/.test(await row(2).locator("summary").innerText()), "marked as changed");
     await page.getByTestId("script").fill("Kalimat baru di depan.\n" + SCRIPT);
     const idx = 3; // "Ternyata jawabannya sederhana." moved from 2 to 3
     assert(/Ternyata jawabannya/.test(await row(idx).locator("summary").innerText()), "the sentence moved down");
     assert(/diubah/.test(await row(idx).locator("summary").innerText()), "and kept its change");
-    assert(await (await select(idx, "Tempo")).inputValue() === "slow", "tempo still slow");
+    assert(await (await select(idx, "Tempo")).inputValue() === "fast", "tempo still fast");
     assert(!/diubah/.test(await row(2).locator("summary").innerText()), "the sentence now at its old position is untouched");
     await page.getByTestId(`voice-reset-${idx}`).click();
-    assert(await (await select(idx, "Tempo")).inputValue() !== "slow", "the segment's own reset restores the recommendation");
+    assert(await (await select(idx, "Tempo")).inputValue() === "slow", "the segment's own reset restores the recommendation (slow for a reveal)");
     assert((await page.getByTestId("voice-reset-all").count()) === 0, "no reset-all when nothing is changed");
-    await page.getByTestId("script").fill(SCRIPT);
   });
+  await page.getByTestId("script").fill(SCRIPT);
 
   await step("generate with the real model: segment durations follow the directions", async () => {
     await page.getByTestId("tts-lang").selectOption("id");
@@ -95,26 +95,32 @@ try {
     base = await sceneSeconds();
     await (await select(0, "Emosi")).selectOption("serious");
     await (await select(0, "Gaya")).selectOption("gentle");
-    await (await select(1, "Intonasi")).selectOption("steady");
+    await (await select(3, "Intonasi")).selectOption("steady"); // falling -> steady: neither ends in "?", the sound is the same
+    await (await select(2, "Intonasi")).selectOption("steady");
     assert(!(await page.getByTestId("blocker").isVisible().catch(() => false)), "still fresh after guidance-only changes");
+    // Rising -> steady drops the question mark the engine reads, so THAT is an audible change.
+    await (await select(1, "Intonasi")).selectOption("steady");
+    await page.getByTestId("blocker").filter({ hasText: "berubah" }).waitFor({ timeout: 3000 });
+    await (await select(1, "Intonasi")).selectOption("rising");
+    await page.getByTestId("blocker").waitFor({ state: "hidden", timeout: 3000 });
     await (await select(1, "Tempo")).selectOption("slow");
     await page.getByTestId("blocker").filter({ hasText: "berubah" }).waitFor({ timeout: 3000 });
-    assert(await page.getByTestId("ai-audio").count() === 1, "the old audio is kept while out of date");
+    assert(await page.getByTestId("ai-audio").count() === 0 && await page.getByTestId("ai-audio-previous").count() === 1, "the old audio is kept, labelled as the previous version, while out of date");
     await (await select(1, "Tempo")).selectOption("normal");
     await page.getByTestId("blocker").waitFor({ state: "hidden", timeout: 3000 });
     const again = await sceneSeconds();
     assert(again.every((x, i) => Math.abs(x - base[i]) < 0.001), "same audio and timing as before");
   });
 
-  await step("only the changed sentence is made again: a slower tempo lengthens that scene and nothing else", async () => {
-    await (await select(2, "Tempo")).selectOption("slow");
+  await step("only the changed sentence is made again: a faster tempo shortens that scene and nothing else", async () => {
+    await (await select(2, "Tempo")).selectOption("fast");
     const t0 = Date.now();
     await page.getByTestId("voice-generate").click();
     await page.getByTestId("voice-progress").waitFor({ timeout: 5000 });
     await page.getByTestId("voice-progress").waitFor({ state: "detached", timeout: 600000 });
     const secs = (Date.now() - t0) / 1000;
     const d = await sceneSeconds();
-    assert(d[2] > base[2] * 1.05, `scene 3 longer: ${base[2].toFixed(2)} -> ${d[2].toFixed(2)}`);
+    assert(d[2] < base[2] * 0.97, `scene 3 shorter: ${base[2].toFixed(2)} -> ${d[2].toFixed(2)}`);
     for (const i of [0, 1, 3]) assert(Math.abs(d[i] - base[i]) < 0.001, `scene ${i + 1} unchanged: ${base[i].toFixed(3)} vs ${d[i].toFixed(3)}`);
     return `${secs.toFixed(1)} s for one sentence out of four`;
   });
@@ -139,13 +145,13 @@ try {
   });
 
   await step("cancelling keeps the old audio and the progress made; the next run finishes", async () => {
-    await (await select(3, "Tempo")).selectOption("fast");
+    await page.getByTestId("tts-speed").selectOption("1.2"); // a new base speed re-makes every sentence: enough time to cancel
     await page.getByTestId("voice-generate").click();
     await page.getByTestId("voice-progress").waitFor({ timeout: 5000 });
-    await page.getByTestId("voice-progress").getByRole("button", { name: "Batal" }).click();
+    await page.getByTestId("voice-progress").getByRole("button", { name: "Batal" }).dispatchEvent("click");
     await page.getByTestId("voice-progress").waitFor({ state: "detached", timeout: 10000 });
     assert(/dibatalkan/.test(await page.getByTestId("status").innerText()), "says it was cancelled");
-    assert(await page.getByTestId("ai-audio").count() === 1, "the previous audio is still there");
+    assert(await page.getByTestId("ai-audio-previous").count() === 1, "the previous audio is still there");
     assert(await page.getByTestId("voice-generate").isEnabled(), "can start again at once");
     await page.getByTestId("voice-generate").click();
     await page.getByTestId("ai-audio").waitFor({ timeout: 600000 });

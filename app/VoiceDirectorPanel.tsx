@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   PAUSE_CHOICES, PAUSE_LABELS, paceToSpeed, parseEmphasis, VOICE_DELIVERY_LABELS, VOICE_EMOTION_LABELS, VOICE_INTONATION_LABELS, VOICE_PACE_LABELS,
   type DirectionOverride, type DirectionOverrides, type PauseAfter, type VoiceDelivery, type VoiceDirection, type VoiceEmotion, type VoiceIntonation, type VoicePace,
@@ -12,12 +12,16 @@ const CONFIDENCE: Record<string, string> = { high: "yakin", medium: "cukup yakin
 function EmphasisField({ index, text, value, disabled, onCommit }: { index: number; text: string; value: string[]; disabled: boolean; onCommit: (words: string[]) => void }) {
   const [draft, setDraft] = useState(value.join(", "));
   const [ignored, setIgnored] = useState<string[]>([]);
-  useEffect(() => { setDraft(value.join(", ")); setIgnored([]); }, [value.join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = value.join("|");
+  const mine = useRef(shown); // what this field last committed itself
+  // Follow changes that come from elsewhere (a reset, another sentence's edit moving things); never wipe our own hint.
+  useEffect(() => { if (shown !== mine.current) { mine.current = shown; setDraft(value.join(", ")); setIgnored([]); } }, [shown]); // eslint-disable-line react-hooks/exhaustive-deps
   function commit() {
     const parsed = parseEmphasis(draft, text);
     setIgnored(parsed.ignored);
     setDraft(parsed.words.join(", "));
-    if (parsed.words.join("|") !== value.join("|")) onCommit(parsed.words);
+    const next = parsed.words.join("|");
+    if (next !== shown) { mine.current = next; onCommit(parsed.words); }
   }
   return <label className="voice-emphasis">
     <span>Kata yang ditekankan <i className="voice-tag guide">panduan</i></span>

@@ -977,6 +977,10 @@ export default function MotionStudio() {
               <i><em style={{ width: Math.min(100, (voiceProgress.loaded / Math.max(1, voiceProgress.total)) * 100) + "%" }} /></i>
               <button className="motion-secondary" onClick={cancelVoice} disabled={voiceProgress.phase === "download"}>Batal</button>
             </div> : <button className="motion-primary" onClick={() => void generateVoice()} disabled={busy || !timeline.ok && !aiNarration} data-testid="voice-generate">{aiFresh ? "↻ Buat ulang suara" : "🤖 Buat suara otomatis"}</button>}
+            {!aiFresh && aiNarration && voiceMode === "ai" && <div className="audio-previous" data-testid="ai-previous">
+              <small>Versi sebelumnya (belum sesuai pengaturan sekarang; dipakai lagi bila perubahan dibatalkan, diganti setelah suara baru jadi)</small>
+              <audio src={aiNarration.narration.url} controls preload="none" data-testid="ai-audio-previous" />
+            </div>}
             {aiFresh && <>
               <audio src={aiFresh.narration.url} controls preload="metadata" data-testid="ai-audio" />
               <div className="audio-meta"><b>Suara otomatis · {TTS_LANGS.find(l => l.id === ttsLang)?.label} · {VOICES[ttsVoice]?.label}</b><small>{aiFresh.narration.seconds.toFixed(1)} dtk · durasi tiap scene mengikuti ucapannya</small></div>
