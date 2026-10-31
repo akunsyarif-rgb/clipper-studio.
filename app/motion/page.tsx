@@ -761,7 +761,7 @@ export default function MotionStudio() {
     }
     // A picture whose temporary URL is gone would render as an empty frame: say so before spending minutes rendering.
     const gone: string[] = [];
-    for (const sc of renderProps.scenes) { const mediaUrl = sc.videoSrc ?? sc.image; if (mediaUrl) { try { const response = await fetch(mediaUrl); if (!response.ok) throw new Error("media unavailable"); } catch { gone.push(stripMarks(sc.text).slice(0, 30)); } } }
+    for (const sc of renderProps.scenes) if (sc.image) { try { const response = await fetch(sc.image); if (!response.ok) throw new Error("image unavailable"); } catch { gone.push(stripMarks(sc.text).slice(0, 30)); } }
     if (gone.length) { setRenderError(`Gambar untuk scene "${gone.join('", "')}" tidak bisa dibaca lagi. Pilih ulang gambarnya lalu render.`); return; }
     // The speech model is no longer needed; its memory goes to the renderer.
     releaseAsr();
