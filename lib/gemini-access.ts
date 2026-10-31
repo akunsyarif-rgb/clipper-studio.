@@ -31,8 +31,10 @@ export const ROUTER_PRESETS = [
   { id: "other", label: "Lainnya (ketik alamat sendiri)", url: "", modelHint: "nama model dari layanan Anda" },
 ] as const;
 
-export const isOpenRouter = (baseUrl: string | null | undefined) => baseUrl?.replace(/\\/+$/, "") === OPENROUTER_URL;
-export const defaultModelFor = (provider: Provider, baseUrl?: string | null) => provider === "google" ? DEFAULT_GEMINI_MODEL : isOpenRouter(baseUrl) ? OPENROUTER_FREE_MODEL : "";\n\nconst serverTransport = (model: string): Transport => (payload, o) => cloud.fn("gemini", { action: "generate", model, body: payload }, o);
+export const isOpenRouter = (baseUrl: string | null | undefined) => baseUrl?.replace(/\/+$/, "") === OPENROUTER_URL;
+export const defaultModelFor = (provider: Provider, baseUrl?: string | null) => provider === "google" ? DEFAULT_GEMINI_MODEL : isOpenRouter(baseUrl) ? OPENROUTER_FREE_MODEL : "";
+
+const serverTransport = (model: string): Transport => (payload, o) => cloud.fn("gemini", { action: "generate", model, body: payload }, o);
 
 /** What is available right now: the server's key if signed in and one is saved there, else this device's key, else nothing. */
 export async function getAccess(): Promise<Access | null> {
