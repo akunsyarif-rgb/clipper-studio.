@@ -5,7 +5,7 @@ import {
   applyCleanup, changedLines, cleanKey, cleanupLines, clearGeminiSettings, DEFAULT_GEMINI_MODEL, GeminiError, maskKey, saveGeminiSettings, wavPart,
   type LineChange,
 } from "@/lib/gemini";
-import { chooseModel, forgetOnServer, getAccess, listAvailableModels, notifyAccessChanged, OPENROUTER_FREE_MODEL, OPENROUTER_URL, ROUTER_PRESETS, saveToServer, type Access, type Provider } from "@/lib/gemini-access";
+import { chooseModel, forgetOnServer, getAccess, getFeatureAccess, listAvailableModels, notifyAccessChanged, OPENROUTER_FREE_MODEL, OPENROUTER_URL, ROUTER_PRESETS, saveToServer, type Access, type Provider } from "@/lib/gemini-access";
 import { cloud } from "@/lib/cloud";
 import type { Transcript } from "@/lib/transcript";
 
@@ -145,7 +145,9 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
         starts = transcript.segments.map(s => s.start);
       }
       setStage(withAudio ? "Gemini mendengarkan…" : "");
-      const after = await cleanupLines(before, { apiKey: saved.apiKey, model: saved.model, language, signal: ctl.signal, audio, starts, transport: saved.transport, format: saved.format });
+      const featureAccess = await getFeatureAccess();
+      const active = featureAccess ?? saved;
+      const after = await cleanupLines(before, { apiKey: active.apiKey, model: active.model, language, signal: ctl.signal, audio, starts, transport: active.transport, format: active.format });
       const list = changedLines(before, after);
       setChanges(list);
       setAccepted(new Set(list.filter(c => !c.large).map(c => c.index)));
@@ -187,6 +189,7 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
       <button onClick={() => void save()} disabled={busy} data-testid="gemini-save">{signedIn ? "Simpan di akun (server)" : "Simpan di perangkat ini"}</button>
     </div> : <div className="gemini-ready">
       <p data-testid="gemini-where"><small>{saved.where === "server" ? "Kunci tersimpan di akun (server), tidak ada di browser" : `Kunci ${maskKey(saved.apiKey)} di perangkat ini`} · {saved.provider === "openai" ? `layanan ${saved.baseUrl ?? ""}` : "Google Gemini"} · model {saved.model || "(belum dipilih)"}</small></p>
+      <small data-testid="gemini-global-policy">Pengaturan model ini berlaku untuk seluruh fitur AI eksternal Clipper Studio: perapian transkrip, analisis klip, Sutradara AI, dan SEO. Pada OpenRouter, model berbayar hanya dipakai jika dipilih manual; tidak ada fallback otomatis ke model berbayar. Fitur AI lokal tetap berjalan lokal.</small>
       {saved.provider === "openai" && <><div className="range-tools">{saved.baseUrl === OPENROUTER_URL && <button type="button" onClick={() => void pickModel(OPENROUTER_FREE_MODEL)} disabled={busy || saved.model === OPENROUTER_FREE_MODEL} data-testid="gemini-use-free">Gunakan model gratis</button>}<input value={typedModel} onChange={e => setTypedModel(e.target.value)} placeholder={`nama model, mis. ${ROUTER_PRESETS.find(p => p.url === saved.baseUrl)?.modelHint ?? "nama dari layanan Anda"}`} autoCapitalize="none" autoCorrect="off" data-testid="gemini-model-manual" /><button onClick={() => void pickModel(typedModel.trim())} disabled={busy || !typedModel.trim()} data-testid="gemini-model-use">Pakai model ini</button></div>{saved.baseUrl === OPENROUTER_URL && <small>Model saat ini tidak otomatis diganti. Pilih model berbayar secara manual bila model gratis tidak tersedia atau kualitasnya tidak mencukupi. Peralihan berbayar hanya terjadi setelah Anda memilihnya.</small>}</>}
       {saved.where === "device" && signedIn && <div className="range-tools"><button onClick={() => void moveToServer()} disabled={busy} data-testid="gemini-move">Pindahkan kunci ke akun (server)</button></div>}
       <label className="gemini-consent"><input type="checkbox" checked={autoClean} onChange={e => toggleAuto(e.target.checked)} data-testid="gemini-auto" /> Rapikan otomatis setelah transkripsi selesai (hanya teks; hasilnya tetap ditinjau dulu, tidak diterapkan sendiri).</label>
