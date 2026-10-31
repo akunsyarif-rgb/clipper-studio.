@@ -56,8 +56,9 @@ import AffiliatePanel from "../AffiliatePanel";
 import { removeLine, scenesForProductPhoto, type AffiliateBrief } from "@/lib/affiliate";
 import ScenePhotoPicker from "../ScenePhotoPicker";
 import PixabayPhotoPicker from "../PixabayPhotoPicker";
-import type { PixabayPhoto } from "@/lib/pixabay";
-import { pixabayCredit } from "@/lib/pixabay";
+import PixabayVideoPicker from "../PixabayVideoPicker";
+import type { PixabayPhoto, PixabayVideo } from "@/lib/pixabay";
+import { pixabayCredit, pixabayVideoCredit } from "@/lib/pixabay";
 import { creditText, type PexelsPhoto } from "@/lib/pexels";
 import { planToOverrides, type DirectorPlan } from "@/lib/director";
 import CloudAccount from "../CloudAccount";
@@ -760,7 +761,7 @@ export default function MotionStudio() {
     }
     // A picture whose temporary URL is gone would render as an empty frame: say so before spending minutes rendering.
     const gone: string[] = [];
-    for (const sc of renderProps.scenes) if (sc.image) { try { await (await fetch(sc.image)).blob(); } catch { gone.push(stripMarks(sc.text).slice(0, 30)); } }
+    for (const sc of renderProps.scenes) { const mediaUrl = sc.videoSrc ?? sc.image; if (mediaUrl) { try { const response = await fetch(mediaUrl); if (!response.ok) throw new Error("media unavailable"); } catch { gone.push(stripMarks(sc.text).slice(0, 30)); } } }
     if (gone.length) { setRenderError(`Gambar untuk scene "${gone.join('", "')}" tidak bisa dibaca lagi. Pilih ulang gambarnya lalu render.`); return; }
     // The speech model is no longer needed; its memory goes to the renderer.
     releaseAsr();
