@@ -109,7 +109,7 @@ export function parseDirector(response: unknown, expected: number, videoEdit: bo
     const icon = typeof it.icon === "string" && (it.icon === "none" || it.icon in ICONS) ? it.icon : undefined;
     const cut = videoEdit && CUTS.includes(it.cut as Cut) ? it.cut as Cut : undefined;
     const sticker = !videoEdit && typeof it.sticker === "string" && (it.sticker === "none" || it.sticker in STICKER_BY_ID) ? it.sticker : undefined;
-    if (!template && !icon && !cut && !sticker) continue;
+    if (!template && !icon && !cut && !sticker && typeof it.importanceScore !== "number") continue;
     scenes[it.index] = { sticker, template, icon, cut, reason: clean(it.reason, 80), importanceScore: typeof it.importanceScore === "number" && Number.isFinite(it.importanceScore) ? Math.round(Math.min(1, Math.max(0, it.importanceScore)) * 100) / 100 : undefined, importanceReason: clean(it.importanceReason, 60) || undefined, imageIdea: clean(it.imageIdea, 60) || undefined, imageQuery: clean(it.imageQuery, 60) || undefined };
   }
   if (!scenes.some(Boolean)) throw new GeminiError("format", "AI tidak memberi susunan yang bisa dipakai. Coba lagi.");
