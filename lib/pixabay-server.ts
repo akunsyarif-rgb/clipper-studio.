@@ -56,7 +56,7 @@ export function normalizePixabayVideos(payload: unknown) {
     const rendition = hit.videos?.medium?.url ? hit.videos.medium : hit.videos?.small;
     const url = cleanPixabayVideoUrl(rendition?.url);
     if (!url) return [];
-    const thumbnail = typeof rendition?.thumbnail === "string" && rendition.thumbnail.startsWith("https://cdn.pixabay.com/video/") ? rendition.thumbnail : "";
-    return [{ id: hit.id, alt: String(hit.tags ?? "").replace(/\\s+/g, " ").slice(0, 120), photographer: String(hit.user ?? "Kontributor Pixabay").slice(0, 80), pageUrl: safePageUrl(hit.pageURL), url, thumbnail, duration: Math.max(0, Number(hit.duration) || 0), width: Number(rendition?.width) || 0, height: Number(rendition?.height) || 0, size: Number(rendition?.size) || 0 }];
+    let thumbnail = "";\n    try { const thumb = new URL(String(rendition?.thumbnail ?? "")); if (thumb.protocol === "https:" && thumb.hostname === VIDEO_HOST && thumb.pathname.startsWith("/video/")) thumbnail = thumb.toString(); } catch { /* invalid thumbnail */ }
+    return [{ id: hit.id, alt: String(hit.tags ?? "").replace(/\s+/g, " ").slice(0, 120), photographer: String(hit.user ?? "Kontributor Pixabay").slice(0, 80), pageUrl: safePageUrl(hit.pageURL), url, thumbnail, duration: Math.max(0, Number(hit.duration) || 0), width: Number(rendition?.width) || 0, height: Number(rendition?.height) || 0, size: Number(rendition?.size) || 0 }];
   });
 }
