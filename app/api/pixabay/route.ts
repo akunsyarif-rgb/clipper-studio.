@@ -1,3 +1,5 @@
+import { cleanPixabayImageUrl, normalizePixabayPhotos } from "@/lib/pixabay-server";
+
 export const runtime = "nodejs";
 
 const API = "https://pixabay.com/api/";
@@ -6,7 +8,6 @@ const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 function fail(status: number, code: string, message: string) {
   return Response.json({ error: { code, message } }, { status });
 }
-import { cleanPixabayImageUrl, normalizePixabayPhotos } from "@/lib/pixabay-server";
 
 export async function POST(request: Request) {
   const apiKey = process.env.PIXABAY_API_KEY?.trim();
