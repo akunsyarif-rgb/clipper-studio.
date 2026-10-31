@@ -8,7 +8,7 @@ type Provider = "google" | "openai";
 type Row = { gemini_key: string | null; gemini_model: string | null; provider: Provider | null; base_url: string | null };
 
 const GOOGLE = "https://generativelanguage.googleapis.com/v1beta/models";
-const DEFAULT_MODEL = "gemini-flash-latest";
+const DEFAULT_MODEL = "gemini-flash-latest";\nconst OPENROUTER = "https://openrouter.ai/api/v1";\nconst OPENROUTER_FREE = "openrouter/free";\nconst defaultModel = (provider: Provider, baseUrl: string | null) => provider === "google" ? DEFAULT_MODEL : baseUrl === OPENROUTER ? OPENROUTER_FREE : "";
 const MAX_BODY_BYTES = 24 * 1024 * 1024;
 const CORS: Record<string, string> = {
   "access-control-allow-origin": "*",
@@ -71,7 +71,7 @@ export async function handle(req: Request, env: Env, fetchImpl: typeof fetch = f
       const row = await load();
       if (!row) return fail(500, "DB_ERROR", "Penyimpanan kunci bermasalah.");
       const provider = providerOf(row.provider);
-      return reply(200, { hasKey: !!row.gemini_key, provider, baseUrl: row.base_url, model: row.gemini_model || (provider === "google" ? DEFAULT_MODEL : "") });
+      return reply(200, { hasKey: !!row.gemini_key, provider, baseUrl: row.base_url, model: row.gemini_model || defaultModel(provider, row.base_url) });
     }
 
     if (msg.action === "save-key") {
@@ -81,7 +81,7 @@ export async function handle(req: Request, env: Env, fetchImpl: typeof fetch = f
       const baseUrl = provider === "openai" ? cleanBaseUrl(msg.baseUrl) : null;
       if (provider === "openai" && !baseUrl) return fail(400, "BAD_BASE_URL", "Alamat dasar harus alamat https publik, mis. https://router.flatkey.ai/v1.");
       if (provider === "google" && key.length < 20) return fail(400, "BAD_KEY", "Kunci tidak valid.");
-      const model = validModel(msg.model, provider) ? msg.model : provider === "google" ? DEFAULT_MODEL : null;
+      const model = validModel(msg.model, provider) ? msg.model : defaultModel(provider, baseUrl);
       const res = await db("user_secrets?on_conflict=user_id", {
         method: "POST",
         headers: { prefer: "resolution=merge-duplicates,return=minimal" },
@@ -131,7 +131,7 @@ export async function handle(req: Request, env: Env, fetchImpl: typeof fetch = f
       if (!row) return fail(500, "DB_ERROR", "Penyimpanan kunci bermasalah.");
       if (!row.gemini_key) return fail(400, "NO_KEY", "Belum ada kunci di akun Anda.");
       const provider = providerOf(row.provider);
-      const model = validModel(msg.model, provider) ? msg.model : row.gemini_model || (provider === "google" ? DEFAULT_MODEL : "");
+      const model = validModel(msg.model, provider) ? msg.model : row.gemini_model || defaultModel(provider, row.base_url);
       if (!model) return fail(400, "NO_MODEL", "Pilih model dulu.");
       let upstream: Response;
       try {
