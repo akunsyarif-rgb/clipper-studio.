@@ -8,7 +8,10 @@ type Provider = "google" | "openai";
 type Row = { gemini_key: string | null; gemini_model: string | null; provider: Provider | null; base_url: string | null };
 
 const GOOGLE = "https://generativelanguage.googleapis.com/v1beta/models";
-const DEFAULT_MODEL = "gemini-flash-latest";\nconst OPENROUTER = "https://openrouter.ai/api/v1";\nconst OPENROUTER_FREE = "openrouter/free";\nconst defaultModel = (provider: Provider, baseUrl: string | null) => provider === "google" ? DEFAULT_MODEL : baseUrl === OPENROUTER ? OPENROUTER_FREE : "";
+const DEFAULT_MODEL = "gemini-flash-latest";
+const OPENROUTER = "https://openrouter.ai/api/v1";
+const OPENROUTER_FREE = "openrouter/free";
+const defaultModel = (provider: Provider, baseUrl: string | null) => provider === "google" ? DEFAULT_MODEL : baseUrl === OPENROUTER ? OPENROUTER_FREE : "";
 const MAX_BODY_BYTES = 24 * 1024 * 1024;
 const CORS: Record<string, string> = {
   "access-control-allow-origin": "*",
