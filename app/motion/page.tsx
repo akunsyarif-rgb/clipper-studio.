@@ -744,7 +744,11 @@ export default function MotionStudio() {
     return targets.length;
   }
   const putStockPhoto = (text: string, file: File, photo: PexelsPhoto) => putSceneImage(text, file, { text: creditText(photo), href: photo.pexelsUrl || photo.photographerUrl || "https://www.pexels.com" });
-  const putPixabayPhoto = (text: string, file: File, photo: PixabayPhoto) => putSceneImage(text, file, pixabayCredit(photo));\n  function putPixabayVideo(text: string, video: PixabayVideo) {\n    setImages(prev => { if (prev[text]?.url.startsWith("blob:")) URL.revokeObjectURL(prev[text].url); return { ...prev, [text]: { url: video.url, name: `pixabay-video-${video.id}.mp4`, mediaType: "video", credit: pixabayVideoCredit(video) } }; });\n    if (videoEdit && source) setCutOverrides(prev => prev[text] === "graphic" ? prev : { ...prev, [text]: "graphic" });\n  }
+  const putPixabayPhoto = (text: string, file: File, photo: PixabayPhoto) => putSceneImage(text, file, pixabayCredit(photo));
+  function putPixabayVideo(text: string, video: PixabayVideo) {
+    setImages(prev => { if (prev[text]?.url.startsWith("blob:")) URL.revokeObjectURL(prev[text].url); return { ...prev, [text]: { url: video.url, name: `pixabay-video-${video.id}.mp4`, mediaType: "video", credit: pixabayVideoCredit(video) } }; });
+    if (videoEdit && source) setCutOverrides(prev => prev[text] === "graphic" ? prev : { ...prev, [text]: "graphic" });
+  }
   function removeSceneImage(text: string) {
     setImages(prev => { if (!prev[text]) return prev; URL.revokeObjectURL(prev[text].url); const next = { ...prev }; delete next[text]; return next; });
   }
