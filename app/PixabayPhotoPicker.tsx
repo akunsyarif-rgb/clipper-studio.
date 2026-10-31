@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { downloadPixabayPhoto, PixabayError, searchPixabayPhotos, pixabayCredit, type PixabayPhoto } from "@/lib/pixabay";
+import { downloadPixabayPhoto, PixabayError, searchPixabayPhotos, pixabayCredit, type PixabayPhoto, type PixabayImageType } from "@/lib/pixabay";
 
 export default function PixabayPhotoPicker({ initialQuery, onChoose, onClose }: {
   initialQuery: string;
@@ -9,6 +9,7 @@ export default function PixabayPhotoPicker({ initialQuery, onChoose, onClose }: 
   onClose: () => void;
 }) {
   const [query, setQuery] = useState(initialQuery);
+  const [imageType, setImageType] = useState<PixabayImageType>("all");
   const [photos, setPhotos] = useState<PixabayPhoto[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [choosing, setChoosing] = useState<number | null>(null);
@@ -22,7 +23,7 @@ export default function PixabayPhotoPicker({ initialQuery, onChoose, onClose }: 
     const ctl = new AbortController(); abort.current = ctl;
     setBusy(true); setError("");
     try {
-      const result = await searchPixabayPhotos(q.trim(), { perPage: 8, signal: ctl.signal });
+      const result = await searchPixabayPhotos(q.trim(), { perPage: 8, imageType, signal: ctl.signal });
       setPhotos(result.photos);
       if (!result.photos.length) setError("Tidak ada gambar yang cocok. Coba kata kunci lain.");
     } catch (e) {
@@ -46,6 +47,7 @@ export default function PixabayPhotoPicker({ initialQuery, onChoose, onClose }: 
   return <div className="photo-picker" data-testid="pixabay-photo-picker">
     <form className="photo-search" onSubmit={e => { e.preventDefault(); void search(); }}>
       <input value={query} onChange={e => setQuery(e.target.value)} maxLength={100} placeholder="mis. city at night, old library" aria-label="Kata kunci Pixabay" data-testid="pixabay-query" />
+      <select value={imageType} onChange={e => setImageType(e.target.value as PixabayImageType)} aria-label="Jenis aset Pixabay" data-testid="pixabay-image-type"><option value="all">Semua gambar</option><option value="photo">Foto</option><option value="illustration">Ilustrasi</option><option value="vector">Vektor</option></select>
       <button type="submit" disabled={busy || choosing !== null} data-testid="pixabay-search">{busy ? "Mencari…" : "Cari"}</button>
       <button type="button" onClick={onClose} className="text-link">Tutup</button>
     </form>
@@ -62,6 +64,6 @@ export default function PixabayPhotoPicker({ initialQuery, onChoose, onClose }: 
         </div>
       ))}
     </div>}
-    <small className="photo-note">Gambar dari <a href="https://pixabay.com" target="_blank" rel="noreferrer noopener">Pixabay</a>. Gambar terpilih diunduh ke perangkat sebelum dipakai; hasil pencarian di-cache 24 jam sesuai ketentuan API.</small>
+    <small className="photo-note">Foto, ilustrasi, dan vektor dari <a href="https://pixabay.com" target="_blank" rel="noreferrer noopener">Pixabay</a>. Aset terpilih diunduh sebelum dipakai; hasil pencarian di-cache 24 jam sesuai ketentuan API.</small>
   </div>;
 }
