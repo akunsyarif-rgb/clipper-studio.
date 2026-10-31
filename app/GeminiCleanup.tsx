@@ -5,7 +5,7 @@ import {
   applyCleanup, changedLines, cleanKey, cleanupLines, clearGeminiSettings, DEFAULT_GEMINI_MODEL, GeminiError, maskKey, saveGeminiSettings, wavPart,
   type LineChange,
 } from "@/lib/gemini";
-import { chooseModel, forgetOnServer, getAccess, listAvailableModels, notifyAccessChanged, OPENROUTER_URL, ROUTER_PRESETS, saveToServer, type Access, type Provider } from "@/lib/gemini-access";
+import { chooseModel, forgetOnServer, getAccess, listAvailableModels, notifyAccessChanged, OPENROUTER_FREE_MODEL, OPENROUTER_URL, ROUTER_PRESETS, saveToServer, type Access, type Provider } from "@/lib/gemini-access";
 import { cloud } from "@/lib/cloud";
 import type { Transcript } from "@/lib/transcript";
 
@@ -93,9 +93,9 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
       setModels(list);
       if (saved) {
         if (!saved.model) setNote(`${list.length} model tersedia. Pilih salah satu di bawah.`);
-        else if (!list.includes(saved.model)) { await chooseModel(saved, list[0]); await syncSaved(); setNote(`Model diganti ke ${list[0]} karena ${saved.model} tidak tersedia untuk kunci ini. Coba lagi.`); }
+        else if (!list.includes(saved.model) && saved.model !== OPENROUTER_FREE_MODEL) { await chooseModel(saved, list[0]); await syncSaved(); setNote(`Model diganti ke ${list[0]} karena ${saved.model} tidak tersedia untuk kunci ini. Coba lagi.`); }
         else if (!auto) setNote(`Model ${saved.model} tersedia. ${list.length} model bisa dipilih.`);
-      } else if (!list.includes(model)) { setModel(list[0]); setNote(`Model diisi ${list[0]}.`); }
+      } else if (!list.includes(model) && model !== OPENROUTER_FREE_MODEL) { setModel(list[0]); setNote(`Model diisi ${list[0]}.`); }
     } catch (e) { if (!auto) setError(e instanceof GeminiError ? e.message : "Daftar model gagal diambil."); }
     finally { setBusy(false); }
   }
@@ -168,26 +168,26 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
     {!saved ? <div className="gemini-setup">
       <p><small>Secara bawaan hanya teks transkrip yang dikirim ke Google; audio dikirim hanya jika Anda memilih opsi &quot;dengarkan audio&quot; di bawah, dan video tidak pernah. {signedIn ? "Kunci disimpan di server akun Anda, bukan di browser, jadi berlaku di semua perangkat." : "Kunci disimpan di browser perangkat ini saja; masuk ke akun untuk menyimpannya di server."} Gunakan kunci yang dibatasi/berkuota rendah, dan jangan menempelkannya di obrolan.</small></p>
       {signedIn && <label>Layanan
-        <select value={provider} onChange={e => { const p = e.target.value as Provider; setProvider(p); setModels(null); setModel(p === "openai" ? "" : DEFAULT_GEMINI_MODEL); }} data-testid="gemini-provider">
+        <select value={provider} onChange={e => { const p = e.target.value as Provider; setProvider(p); setModels(null); setModel(p === "openai" ? (preset === "openrouter" ? OPENROUTER_FREE_MODEL : "") : DEFAULT_GEMINI_MODEL); }} data-testid="gemini-provider">
           <option value="google">Google Gemini (kunci dari Google AI Studio)</option>
           <option value="openai">Router berformat OpenAI (OpenRouter, Flatkey, dll.)</option>
         </select></label>}
       {signedIn && provider === "openai" && <>
         <label>Router
-          <select value={preset} onChange={e => { setPreset(e.target.value); const p = ROUTER_PRESETS.find(x => x.id === e.target.value); if (p?.url) setBaseUrl(p.url); setModels(null); }} data-testid="gemini-preset">
+          <select value={preset} onChange={e => { setPreset(e.target.value); const p = ROUTER_PRESETS.find(x => x.id === e.target.value); if (p?.url) setBaseUrl(p.url); if (e.target.value === "openrouter") setModel(OPENROUTER_FREE_MODEL); else if (p?.id === "flatkey") setModel(""); setModels(null); }} data-testid="gemini-preset">
             {ROUTER_PRESETS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
           </select></label>
         <label>Alamat dasar API<input value={baseUrl} onChange={e => { setBaseUrl(e.target.value); setPreset(ROUTER_PRESETS.find(x => x.url === e.target.value.trim())?.id ?? "other"); }} placeholder={OPENROUTER_URL} autoCapitalize="none" autoCorrect="off" data-testid="gemini-baseurl" /><small>Lihat di dokumentasi layanan Anda. Harus alamat https publik.</small></label>
       </>}
       <label>Kunci API<input type="password" autoComplete="off" value={keyInput} onChange={e => setKeyInput(e.target.value)} data-testid="gemini-key" /></label>
-      <label>Model<input value={model} onChange={e => setModel(e.target.value)} data-testid="gemini-model" list="gemini-models" /></label>
+      <label>Model<input value={model} onChange={e => setModel(e.target.value)} data-testid="gemini-model" list="gemini-models" />{provider === "openai" && baseUrl === OPENROUTER_URL && <small>Default gratis: <b>{OPENROUTER_FREE_MODEL}</b>. Jika model gratis tidak tersedia atau hasilnya kurang baik, Anda dapat memilih model berbayar secara manual. Tidak ada perpindahan otomatis ke model berbayar.</small>}</label>
       {models && <datalist id="gemini-models">{models.map(m => <option key={m} value={m} />)}</datalist>}
       <button type="button" onClick={() => void findModels()} disabled={busy || !cleanKey(keyInput)} data-testid="gemini-find">Cari model yang tersedia untuk kunci ini</button>
       <label className="gemini-consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} data-testid="gemini-consent" /> Saya setuju teks transkrip dikirim ke layanan AI ini ({provider === "openai" ? "lewat router pilihan Anda, lalu ke model di baliknya" : "Google Gemini"}).</label>
       <button onClick={() => void save()} disabled={busy} data-testid="gemini-save">{signedIn ? "Simpan di akun (server)" : "Simpan di perangkat ini"}</button>
     </div> : <div className="gemini-ready">
       <p data-testid="gemini-where"><small>{saved.where === "server" ? "Kunci tersimpan di akun (server), tidak ada di browser" : `Kunci ${maskKey(saved.apiKey)} di perangkat ini`} · {saved.provider === "openai" ? `layanan ${saved.baseUrl ?? ""}` : "Google Gemini"} · model {saved.model || "(belum dipilih)"}</small></p>
-      {saved.provider === "openai" && <div className="range-tools"><input value={typedModel} onChange={e => setTypedModel(e.target.value)} placeholder={`nama model, mis. ${ROUTER_PRESETS.find(p => p.url === saved.baseUrl)?.modelHint ?? "nama dari layanan Anda"}`} autoCapitalize="none" autoCorrect="off" data-testid="gemini-model-manual" /><button onClick={() => void pickModel(typedModel.trim())} disabled={busy || !typedModel.trim()} data-testid="gemini-model-use">Pakai model ini</button></div>}
+      {saved.provider === "openai" && <><div className="range-tools">{saved.baseUrl === OPENROUTER_URL && <button type="button" onClick={() => void pickModel(OPENROUTER_FREE_MODEL)} disabled={busy || saved.model === OPENROUTER_FREE_MODEL} data-testid="gemini-use-free">Gunakan model gratis</button>}<input value={typedModel} onChange={e => setTypedModel(e.target.value)} placeholder={`nama model, mis. ${ROUTER_PRESETS.find(p => p.url === saved.baseUrl)?.modelHint ?? "nama dari layanan Anda"}`} autoCapitalize="none" autoCorrect="off" data-testid="gemini-model-manual" /><button onClick={() => void pickModel(typedModel.trim())} disabled={busy || !typedModel.trim()} data-testid="gemini-model-use">Pakai model ini</button></div>{saved.baseUrl === OPENROUTER_URL && <small>Model saat ini tidak otomatis diganti. Pilih model berbayar secara manual bila model gratis tidak tersedia atau kualitasnya tidak mencukupi. Peralihan berbayar hanya terjadi setelah Anda memilihnya.</small>}</>}
       {saved.where === "device" && signedIn && <div className="range-tools"><button onClick={() => void moveToServer()} disabled={busy} data-testid="gemini-move">Pindahkan kunci ke akun (server)</button></div>}
       <label className="gemini-consent"><input type="checkbox" checked={autoClean} onChange={e => toggleAuto(e.target.checked)} data-testid="gemini-auto" /> Rapikan otomatis setelah transkripsi selesai (hanya teks; hasilnya tetap ditinjau dulu, tidak diterapkan sendiri).</label>
       {getAudio && <label className="gemini-consent"><input type="checkbox" checked={audioOk} onChange={e => setAudioOk(e.target.checked)} data-testid="gemini-audio-consent" /> Izinkan AI mendengarkan audio bagian ini (audio dikirim ke layanan AI; maksimal 6 menit; tidak semua router mendukung audio). Lebih akurat untuk nama, istilah, dan angka.</label>}

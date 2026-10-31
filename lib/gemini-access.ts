@@ -21,10 +21,12 @@ export type Access = {
 export type Setup = { key: string; provider: Provider; baseUrl: string };
 
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1";
+/** OpenRouter routes this alias to an available free model; it never escalates to a paid model automatically. */
+export const OPENROUTER_FREE_MODEL = "openrouter/free";
 export const FLATKEY_URL = "https://router.flatkey.ai/v1";
 /** Ready-made addresses for OpenAI-format routers; "other" lets the creator type one. */
 export const ROUTER_PRESETS = [
-  { id: "openrouter", label: "OpenRouter (openrouter.ai)", url: OPENROUTER_URL, modelHint: "google/gemini-2.5-flash-lite" },
+  { id: "openrouter", label: "OpenRouter (openrouter.ai)", url: OPENROUTER_URL, modelHint: OPENROUTER_FREE_MODEL },
   { id: "flatkey", label: "Flatkey", url: FLATKEY_URL, modelHint: "google/gemini-…" },
   { id: "other", label: "Lainnya (ketik alamat sendiri)", url: "", modelHint: "nama model dari layanan Anda" },
 ] as const;

@@ -33,7 +33,7 @@ export type DirectorInput = {
   scope?: number[];
 };
 
-export type DirectorScene = { /** Sticker id, or "none" to give this scene no sticker. */ sticker?: string; template?: Template; icon?: string; cut?: Cut; reason: string; /** What kind of photo fits, in Indonesian, for the creator to read. */ imageIdea?: string; /** The same as a search phrase in English, for the stock-photo search. */ imageQuery?: string };
+export type DirectorScene = { /** Sticker id, or "none" to give this scene no sticker. */ sticker?: string; template?: Template; icon?: string; cut?: Cut; reason: string; /** Importance for animation selection, blended with deterministic local scoring. */ importanceScore?: number; importanceReason?: string; /** What kind of photo fits, in Indonesian, for the creator to read. */ imageIdea?: string; /** The same as a search phrase in English, for the stock-photo search. */ imageQuery?: string };
 export type DirectorPlan = { style?: StyleId; palette?: PaletteId; /** Type pack, background and grain, and (over a source video) the subtitle style: whole-video looks, never per scene. */ typography?: TypePackId; backdrop?: "plain" | "mesh"; grain?: boolean; captionStyle?: CaptionStyleId; /** Sound effects and whether stickers are used at all: whole-video looks. */ sfx?: SfxMode; stickers?: "off" | "auto"; scenes: (DirectorScene | undefined)[]; note: string };
 
 /**
@@ -85,8 +85,9 @@ export function directorPrompt(i: DirectorInput): string {
     ...(i.scope ? [`REVISI TERBATAS: ubah HANYA scene dengan index ${i.scope.join(", ")}. Jangan mengubah style, palette, typography, backdrop, grain, captionStyle, atau scene lain; jangan sertakan scene lain dalam jawaban. Teks naskah tidak boleh berubah.`] : []),
     `Sekarang: style=${i.style}, palette=${i.palette}.`,
     i.feedback ? `Masukan pembuat video tentang hasil sebelumnya (utamakan ini): "${i.feedback.replace(/\s+/g, " ").trim().slice(0, 400)}"` : "Belum ada masukan; susun yang terbaik menurut panduan.",
-    "Beri alasan (reason) singkat dalam bahasa Indonesia, maksimal 10 kata, yang menjelaskan PILIHAN itu kepada pembuat video. Beri juga \"note\": satu kalimat ringkasan arah keseluruhan (maks. 25 kata).",
-    "Balas hanya JSON: {\"style\":\"...\",\"palette\":\"...\",\"typography\":\"...\",\"backdrop\":\"...\",\"grain\":false,\"captionStyle\":\"...\",\"sfx\":\"...\",\"stickers\":\"...\",\"note\":\"...\",\"scenes\":[{\"index\":n,\"template\":\"...\",\"icon\":\"...\",\"cut\":\"...\",\"reason\":\"...\",\"sticker\":\"...\",\"imageIdea\":\"...\",\"imageQuery\":\"...\"}]} untuk setiap kalimat.",
+    "Untuk setiap scene, nilai juga importanceScore 0..1: seberapa layak kalimat diberi animasi di atas pembicara. Nilai tinggi untuk angka/uang, istilah penting, perbandingan, CTA, dan poin kunci; rendah untuk basa-basi, transisi, pengulangan. Beri importanceReason singkat maksimal 6 kata dalam bahasa Indonesia. Jangan menilai berdasarkan panjang kalimat saja.",
+    "Beri alasan visual (reason) singkat maksimal 10 kata dan note satu kalimat ringkasan arah keseluruhan (maks. 25 kata).",
+    "Balas hanya JSON: {\"style\":\"...\",\"palette\":\"...\",\"typography\":\"...\",\"backdrop\":\"...\",\"grain\":false,\"captionStyle\":\"...\",\"sfx\":\"...\",\"stickers\":\"...\",\"note\":\"...\",\"scenes\":[{\"index\":n,\"template\":\"...\",\"icon\":\"...\",\"cut\":\"...\",\"reason\":\"...\",\"importanceScore\":0.0,\"importanceReason\":\"...\",\"sticker\":\"...\",\"imageIdea\":\"...\",\"imageQuery\":\"...\"}]} untuk setiap kalimat.",
     "",
     "Kalimat (JSON):",
     JSON.stringify(i.scenes.map((s, index) => ({ index, text: s.text.replace(/\*/g, ""), seconds: Math.round(s.seconds * 10) / 10, ...(i.current?.[index] ? { sekarang: i.current[index] } : {}) }))),
@@ -108,8 +109,8 @@ export function parseDirector(response: unknown, expected: number, videoEdit: bo
     const icon = typeof it.icon === "string" && (it.icon === "none" || it.icon in ICONS) ? it.icon : undefined;
     const cut = videoEdit && CUTS.includes(it.cut as Cut) ? it.cut as Cut : undefined;
     const sticker = !videoEdit && typeof it.sticker === "string" && (it.sticker === "none" || it.sticker in STICKER_BY_ID) ? it.sticker : undefined;
-    if (!template && !icon && !cut && !sticker) continue;
-    scenes[it.index] = { sticker, template, icon, cut, reason: clean(it.reason, 80), imageIdea: clean(it.imageIdea, 60) || undefined, imageQuery: clean(it.imageQuery, 60) || undefined };
+    if (!template && !icon && !cut && !sticker && typeof it.importanceScore !== "number") continue;
+    scenes[it.index] = { sticker, template, icon, cut, reason: clean(it.reason, 80), importanceScore: typeof it.importanceScore === "number" && Number.isFinite(it.importanceScore) ? Math.round(Math.min(1, Math.max(0, it.importanceScore)) * 100) / 100 : undefined, importanceReason: clean(it.importanceReason, 60) || undefined, imageIdea: clean(it.imageIdea, 60) || undefined, imageQuery: clean(it.imageQuery, 60) || undefined };
   }
   if (!scenes.some(Boolean)) throw new GeminiError("format", "AI tidak memberi susunan yang bisa dipakai. Coba lagi.");
   return {
@@ -156,7 +157,7 @@ export function planToOverrides(plan: DirectorPlan, texts: string[]): { override
 /** Asks the model to arrange the video. Only the sentences' text (and the creator's feedback) is sent. */
 export async function directVideo(input: DirectorInput, o: CleanupOptions): Promise<DirectorPlan> {
   if (input.scenes.length === 0) throw new GeminiError("format", "Belum ada scene untuk disusun.");
-  const sceneSchema = { type: "OBJECT", properties: { sticker: { type: "STRING" }, index: { type: "INTEGER" }, template: { type: "STRING" }, icon: { type: "STRING" }, cut: { type: "STRING" }, reason: { type: "STRING" }, imageIdea: { type: "STRING" }, imageQuery: { type: "STRING" } }, required: ["index", "template", "reason"] };
+  const sceneSchema = { type: "OBJECT", properties: { sticker: { type: "STRING" }, index: { type: "INTEGER" }, template: { type: "STRING" }, icon: { type: "STRING" }, cut: { type: "STRING" }, reason: { type: "STRING" }, importanceScore: { type: "NUMBER" }, importanceReason: { type: "STRING" }, imageIdea: { type: "STRING" }, imageQuery: { type: "STRING" } }, required: ["index", "template", "reason", "importanceScore", "importanceReason"] };
   const schema = { type: "OBJECT", properties: { style: { type: "STRING" }, palette: { type: "STRING" }, typography: { type: "STRING" }, backdrop: { type: "STRING" }, grain: { type: "BOOLEAN" }, captionStyle: { type: "STRING" }, sfx: { type: "STRING" }, stickers: { type: "STRING" }, note: { type: "STRING" }, scenes: { type: "ARRAY", items: sceneSchema } }, required: ["style", "palette", "note", "scenes"] };
   return ask(o, [{ text: directorPrompt(input) }], schema, json => parseDirector(json, input.scenes.length, input.videoEdit));
 }
