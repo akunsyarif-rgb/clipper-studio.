@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   const apiKey = process.env.PIXABAY_API_KEY?.trim();
   if (!apiKey) return fail(503, "MISSING_KEY", "PIXABAY_API_KEY belum tersedia pada environment deployment ini.");
 
-  let body: { action?: unknown; query?: unknown; perPage?: unknown; page?: unknown; url?: unknown };
+  let body: { action?: unknown; query?: unknown; imageType?: unknown; perPage?: unknown; page?: unknown; url?: unknown };
   try { body = await request.json(); } catch { return fail(400, "BAD_REQUEST", "Permintaan tidak valid."); }
 
   if (body.action === "search") {
@@ -21,8 +21,9 @@ export async function POST(request: Request) {
     if (query.length < 2) return fail(400, "BAD_QUERY", "Masukkan minimal dua karakter untuk pencarian.");
     const perPage = Math.min(20, Math.max(3, Math.round(Number(body.perPage) || 6)));
     const page = Math.min(5, Math.max(1, Math.round(Number(body.page) || 1)));
+    const imageType = ["all", "photo", "illustration", "vector"].includes(String(body.imageType)) ? String(body.imageType) : "all";
     const params = new URLSearchParams({
-      key: apiKey, q: query, lang: "en", image_type: "all", orientation: "vertical",
+      key: apiKey, q: query, lang: "en", image_type: imageType, orientation: "vertical",
       safesearch: "true", order: "popular", per_page: String(perPage), page: String(page),
     });
     try {
