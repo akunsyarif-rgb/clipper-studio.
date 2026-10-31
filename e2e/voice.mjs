@@ -128,17 +128,15 @@ try {
   await step("a pause adds silence to that scene only, and is not added twice on top of a [jeda] tag", async () => {
     const before = await sceneSeconds();
     await (await select(0, "Jeda")).selectOption("0.8");
-    await page.getByTestId("voice-generate").click();
-    await page.getByTestId("voice-progress").waitFor({ timeout: 5000 });
-    await page.getByTestId("voice-progress").waitFor({ state: "detached", timeout: 600000 });
+    await page.getByTestId("voice-generate").click(); // every clip is cached, so this is instant: wait for the new audio, not for progress
+    await page.getByTestId("ai-audio").waitFor({ timeout: 600000 });
     const after = await sceneSeconds();
     assert(Math.abs(after[0] - before[0] - 0.8) < 0.08, `scene 1 +0.8 s: ${before[0].toFixed(2)} -> ${after[0].toFixed(2)}`);
     for (const i of [1, 2, 3]) assert(Math.abs(after[i] - before[i]) < 0.001, `scene ${i + 1} unchanged`);
     // The same pause given by the script's own tag is not stacked on the direction's.
     await page.getByTestId("script").fill(SCRIPT.replace("selamat datang.", "selamat datang. [jeda 1s]"));
-    await page.getByTestId("voice-generate").click();
-    await page.getByTestId("voice-progress").waitFor({ timeout: 5000 });
-    await page.getByTestId("voice-progress").waitFor({ state: "detached", timeout: 600000 });
+    await page.getByTestId("voice-generate").click(); // every clip is cached, so this is instant: wait for the new audio, not for progress
+    await page.getByTestId("ai-audio").waitFor({ timeout: 600000 });
     const tagged = await sceneSeconds();
     assert(Math.abs(tagged[0] - (before[0] + 1)) < 0.08, `scene 1 has the 1 s tag, not 1.8 s: ${before[0].toFixed(2)} -> ${tagged[0].toFixed(2)}`);
     await page.getByTestId("script").fill(SCRIPT);
