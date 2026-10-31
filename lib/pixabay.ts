@@ -1,4 +1,6 @@
 // Pixabay stock-photo search. The API key is read only by this server route; it never reaches the browser.
+export type PixabayImageType = "all" | "photo" | "illustration" | "vector";
+
 export type PixabayPhoto = {
   id: number;
   alt: string;
@@ -38,8 +40,8 @@ async function request(body: Record<string, unknown>, signal?: AbortSignal): Pro
   return response;
 }
 
-export async function searchPixabayPhotos(query: string, options: { perPage?: number; page?: number; signal?: AbortSignal } = {}) {
-  const response = await request({ action: "search", query, perPage: options.perPage ?? 6, page: options.page ?? 1 }, options.signal);
+export async function searchPixabayPhotos(query: string, options: { perPage?: number; page?: number; imageType?: PixabayImageType; signal?: AbortSignal } = {}) {
+  const response = await request({ action: "search", query, imageType: options.imageType ?? "all", perPage: options.perPage ?? 6, page: options.page ?? 1 }, options.signal);
   const body = await response.json() as { photos?: PixabayPhoto[]; totalHits?: number; remaining?: number | null };
   return { photos: Array.isArray(body.photos) ? body.photos : [], totalHits: body.totalHits ?? 0, remaining: body.remaining ?? null };
 }
