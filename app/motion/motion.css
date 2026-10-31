@@ -215,3 +215,4 @@ button.scene-row{width:100%;text-align:left;color:inherit;font:inherit;backgroun
 /* Pixabay photo picker touch targets. */
 .photo-picker [data-testid="pixabay-photo-grid"]{margin-top:2px}
 .photo-picker [data-testid="pixabay-photo-choice"]{touch-action:manipulation}
+\n.scene-video-note{display:block;font-size:10px;color:var(--m-muted);line-height:1.5}\n
