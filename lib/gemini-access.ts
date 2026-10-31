@@ -55,6 +55,21 @@ export async function getAccess(): Promise<Access | null> {
   return local ? { where: "device", provider: "google", baseUrl: null, model: local.model, apiKey: local.apiKey, format: "gemini" } : null;
 }
 
+/**
+ * One shared access policy for all external AI features. OpenRouter's free alias is used when no model was saved;
+ * a paid model remains active only after the creator explicitly selects it in shared AI settings.
+ * This resolver never retries or escalates to a paid model automatically.
+ */
+export async function getFeatureAccess(): Promise<Access | null> {
+  const access = await getAccess();
+  if (!access || access.provider !== "openai" || !isOpenRouter(access.baseUrl) || access.model) return access;
+  return {
+    ...access,
+    model: OPENROUTER_FREE_MODEL,
+    transport: access.where === "server" ? serverTransport(OPENROUTER_FREE_MODEL) : access.transport,
+  };
+}
+
 /** Tells every screen that shows AI features that the key (or the chosen model) changed, so they look again. */
 export const ACCESS_EVENT = "clipper:ai-access";
 export function notifyAccessChanged() { try { window.dispatchEvent(new Event(ACCESS_EVENT)); } catch { /* no window (tests) */ } }
