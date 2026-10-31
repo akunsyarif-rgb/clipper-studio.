@@ -26,7 +26,6 @@ import { clearSession, deleteSource, loadSession, loadSource, saveSession, saveS
 import { scenesToSrt } from "@/lib/srt";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
 import TranscriptPanel from "../TranscriptPanel";
-import GeminiJudge from "../GeminiJudge";
 import AiDirector from "../AiDirector";
 import SeoPanel, { type SeoSeed } from "../SeoPanel";
 import TrendStart from "../TrendStart";
@@ -237,7 +236,7 @@ export default function MotionStudio() {
   useEffect(() => { try { if (localStorage.getItem(MODE_KEY) === "affiliate") setContentMode("affiliate"); } catch { /* storage blocked: starts as ordinary content */ } }, []);
   function chooseMode(m: Mode) { setContentMode(m); try { localStorage.setItem(MODE_KEY, m); } catch { /* not remembered */ } }
   const [directorNote, setDirectorNote] = useState("");
-  type DirectorSnap = { stickerMode: StickerMode; stickerOverrides: Record<string, string>; sfxMode: SfxMode; typography: TypePackId; backdrop: "plain" | "mesh"; grain: boolean; captionStyle: CaptionStyleId; style: StyleId; palette: PaletteId; contentPreset: ContentPresetId | "custom"; overrides: Record<string, VisualOverride>; cutOverrides: Record<string, Cut>; info: Record<string, { reason: string; imageIdea?: string; imageQuery?: string }>; note: string };
+  type DirectorSnap = { stickerMode: StickerMode; stickerOverrides: Record<string, string>; sfxMode: SfxMode; typography: TypePackId; backdrop: "plain" | "mesh"; grain: boolean; captionStyle: CaptionStyleId; style: StyleId; palette: PaletteId; contentPreset: ContentPresetId | "custom"; overrides: Record<string, VisualOverride>; cutOverrides: Record<string, Cut>; info: Record<string, { reason: string; imageIdea?: string; imageQuery?: string }>; aiScores: Record<string, SceneScore>; note: string };
   const [guide, setGuide] = useState(false);
   // Watermark: remembered for this editing session, so it is back for every re-render (and shared with the clipper).
   const [watermark, setWatermarkState] = useState<Watermark>(DEFAULT_WATERMARK);
@@ -646,11 +645,11 @@ export default function MotionStudio() {
     }
   }
 
-  const directorSnap = (): DirectorSnap => ({ stickerMode, stickerOverrides, sfxMode, typography, backdrop, grain, captionStyle, style, palette, contentPreset, overrides, cutOverrides, info: directorInfo, note: directorNote });
+  const directorSnap = (): DirectorSnap => ({ stickerMode, stickerOverrides, sfxMode, typography, backdrop, grain, captionStyle, style, palette, contentPreset, overrides, cutOverrides, info: directorInfo, aiScores, note: directorNote });
   function restoreDirector(v: DirectorSnap) {
     setStyle(v.style); setPalette(v.palette); setContentPreset(v.contentPreset); setStickerMode(v.stickerMode); setStickerOverrides(v.stickerOverrides); setSfxMode(v.sfxMode); setTypography(v.typography); setBackdrop(v.backdrop); setGrain(v.grain); setCaptionStyle(v.captionStyle);
     setOverrides(v.overrides); setCutOverrides(v.cutOverrides);
-    setDirectorInfo(v.info); setDirectorNote(v.note);
+    setDirectorInfo(v.info); setAiScores(v.aiScores); setDirectorNote(v.note);
   }
   /** Applies one revision of the AI director as ordinary choices; the state before it is kept as a version so it can be undone and redone. */
   function applyDirector(plan: DirectorPlan, label: string) {
@@ -673,6 +672,9 @@ export default function MotionStudio() {
     const info: Record<string, { reason: string; imageIdea?: string; imageQuery?: string }> = { ...directorInfo };
     plan.scenes.forEach((s, i) => { if (s) info[texts[i]] = { reason: s.reason, imageIdea: s.imageIdea, imageQuery: s.imageQuery }; });
     setDirectorInfo(info);
+    const scores: Record<string, SceneScore> = { ...aiScores };
+    plan.scenes.forEach((scene, i) => { if (scene?.importanceScore !== undefined) scores[texts[i]] = { score: scene.importanceScore, reason: scene.importanceReason ?? "" }; });
+    setAiScores(scores);
     setDirectorNote(plan.note);
   }
   function undoDirector() {
@@ -866,8 +868,7 @@ export default function MotionStudio() {
               {DENSITIES.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
             </select>
           </label>}
-          {videoEdit && timeline.ok && <GeminiJudge scenes={timeline.scenes.map(sc => ({ text: sc.text, seconds: sc.durationInFrames / FPS }))} language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"}
-            active={timeline.scenes.filter(sc => aiScores[sc.text]).length} onScores={setAiScores} onClear={() => setAiScores({})} />}
+          {videoEdit && <small className="field-hint" data-testid="unified-importance-note">Penilaian kepentingan scene kini dilakukan bersamaan dengan Sutradara AI, lalu digabung dengan aturan lokal. Tidak ada permintaan Gemini Judge terpisah.</small>}
           {videoEdit && <label className="field-label" htmlFor="brand-motion">Gaya animasi istilah populer <span className="field-hint">sederhana = ikon dan nama dengan satu denyut halus; lengkap = adegan kecil khas tiap layanan</span>
             <select id="brand-motion" value={brandMotion} onChange={e => setBrandMotion(e.target.value as BrandMotion)} data-testid="brand-motion">
               <option value="simple">Sederhana (elegan)</option>
