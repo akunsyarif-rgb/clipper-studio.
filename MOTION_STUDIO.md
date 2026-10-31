@@ -90,6 +90,32 @@ Every scene gets a visual that matches its text. Detection is automatic and work
 - **Bandwidth**: every new device downloads ~145 MB from the site. On Vercel Hobby (100 GB/month) that is roughly 700 first-time devices per month.
 - **Voices**: the order in `voice.bin` was mapped to genders by measuring pitch: voices 0–4 are about 170–245 Hz, voices 5–9 about 90–150 Hz.
 
+### AI Voice Director (local, no API)
+
+`lib/voice-director.ts` reads every sentence of the script and recommends an emotion, delivery, intonation, tempo, pause and words to stress, with a confidence and a reason. It runs on the device, is deterministic, and costs nothing. The creator can change every field per sentence; the changes follow the sentence (keyed by its text and occurrence), not its position, so adding a sentence in front keeps them.
+
+**What reaches the audio, and what does not** (this is the honest part; the panel says the same next to every control):
+
+| Field | Effect on the sound | Evidence |
+|---|---|---|
+| Tempo (pace) | **Yes.** It becomes the synthesis speed (x0.9 / x1 / x1.1 of the chosen speed). | Measured: duration x speed stayed 5.98 s from 0.81x to 1.32x. |
+| Pause after the sentence | **Yes.** Extra silence beyond the 0.5 s every scene already has; it overlaps a `[jeda]` tag (the longer wins), and the last sentence never gets one. | Unit and browser tests on the scene lengths. |
+| Intonation rising / falling | **Partly.** Applied through the final mark the engine reads: a rising sentence is spoken with a "?", any other without. Steady and suspense have no control. | Measured: with "?" the pitch at the end was higher in 8 of 9 line/voice pairs (F0, not listened to). |
+| Emotion, delivery, emphasis | **No.** Guidance for the creator; the engine has no control for them. | None exists in Supertonic 3. |
+
+A generated narration goes out of date only when something audible changes (sentences, language, voice, speed, tempo, pause, rising or not). Changing emotion or style never makes it stale, and undoing a tempo change makes the old narration current again with no new synthesis. Regenerating makes only the sentences that changed (clips are cached by text, language, voice and speed; the cache is bounded, least recently used first). A cancel or a failure keeps the clips already made, and the previous narration stays until the new one is complete.
+
+**Voices.** The ten styles are shown as two MVP profiles, Female Adult and Male Adult (child profiles are postponed). The suggested start (marked with a star) is chosen from measurements only: the widest pitch range in a natural register for the profile. No one has listened to them; pick by ear. Re-measure with `VOICE_AUDIT=1 npx vitest run lib/tts/voice-audit.test.ts`.
+
+Measured on two Indonesian lines, steps 8, speed 1.05 (median pitch Hz / pitch range in semitones, story line / cheerful line):
+
+| Style | Median F0 | Range |
+|---|---|---|
+| Female 1-5 (0-4) | 185/189, 189/185, 170/163, 191/199, 165/162 | 8.0/8.1, 12.3/9.6, 9.8/10.3, 5.4/4.1, 7.7/5.0 |
+| Male 1-5 (5-9) | 137/119, 92/93, 101/100, 120/124, 86/90 | 12.9/11.6, 9.0/7.1, 6.5/3.9, 8.9/7.3, 9.3/9.5 |
+
+Also measured: loudness is similar across styles (about -25 dBFS RMS, peaks 0.26-0.57), each clip starts and ends at silence (no clicks where clips are joined), and at the app's 8 steps nothing clips; at 4 steps the raw output can pass full scale, so the step count must not be lowered. Peak normalisation (target 0.9, at most 3x) is applied once to the whole track.
+
 ## Render with the CLI (fallback / batch)
 
 ```sh
