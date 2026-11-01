@@ -222,14 +222,30 @@ function splitScriptText(script: string): string[] {
       const sentence = raw.trim();
       if (!sentence) continue;
       if (sentence.length <= MAX_SCENE_CHARS) { out.push(sentence); continue; }
+      const chunks: string[] = [];
       let chunk = "";
       for (const part of sentence.split(/(?<=[,;:])\s+/)) {
         for (const w of words(part)) {
-          if ((chunk + " " + w).trim().length > MAX_SCENE_CHARS && chunk) { out.push(chunk.trim()); chunk = ""; }
+          if ((chunk + " " + w).trim().length > MAX_SCENE_CHARS && chunk) {
+            chunks.push(chunk.trim());
+            chunk = "";
+          }
           chunk += " " + w;
         }
       }
-      if (chunk.trim()) out.push(chunk.trim());
+      if (chunk.trim()) chunks.push(chunk.trim());
+
+      // Never leave a single trailing word as its own scene. Rebalance the
+      // boundary by moving the previous chunk's last word into the final chunk.
+      if (chunks.length > 1 && words(chunks[chunks.length - 1]).length === 1) {
+        const previousWords = words(chunks[chunks.length - 2]);
+        if (previousWords.length > 1) {
+          const finalWord = previousWords.pop()!;
+          chunks[chunks.length - 2] = previousWords.join(" ");
+          chunks[chunks.length - 1] = `${finalWord} ${chunks[chunks.length - 1]}`;
+        }
+      }
+      out.push(...chunks);
     }
   }
   // Merge one-word fragments into the previous scene so nothing flashes by unreadably.
