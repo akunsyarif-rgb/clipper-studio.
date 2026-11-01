@@ -14,6 +14,14 @@ describe("splitScript", () => {
   it("merges tiny fragments into the previous scene", () => {
     expect(splitScript("Ini kalimat pertama yang cukup panjang. Ya. Benar.")).toEqual(["Ini kalimat pertama yang cukup panjang. Ya. Benar."]);
   });
+  it("does not isolate the final word of a long narration sentence", () => {
+    const script = "Pada pulpen BIC Cristal, perubahan desain ini diterapkan pada 1991 untuk mengikuti standar keselamatan di Inggris. Standar internasional ISO 11540 kemudian juga mengatur persyaratan keselamatan tutup alat tulis. Jadi, lubang kecil yang selama ini kita anggap tidak penting ternyata punya tujuan besar: mengurangi risiko kecelakaan yang bisa mengancam nyawa.";
+    const parts = splitScript(script);
+    expect(parts.at(-1)).not.toBe("nyawa.");
+    expect(parts.join(" ")).toBe(script);
+    expect(parts.every(part => part.split(/\\s+/).length > 1)).toBe(true);
+  });
+
   it("breaks very long sentences into readable chunks", () => {
     const long = Array.from({ length: 60 }, (_, i) => `kata${i}`).join(" ") + ".";
     const parts = splitScript(long);
