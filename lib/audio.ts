@@ -108,7 +108,7 @@ const PROGRESSIONS: Record<Mood, string[][]> = {
   // i – VI – III – VII in D minor, open voicing
   sinematik: [["D3", "A3", "D4", "F4"], ["Bb2", "F3", "Bb3", "D4"], ["F3", "C4", "F4", "A4"], ["C3", "G3", "C4", "E4"]],
 };
-const BPM: Record<Mood, number> = { tenang: 76, semangat: 104, sinematik: 60 };
+export const BPM: Record<Mood, number> = { tenang: 76, semangat: 104, sinematik: 60 };
 
 /** Small deterministic PRNG so the same seed always gives the same track. */
 function rng(seed: number) {

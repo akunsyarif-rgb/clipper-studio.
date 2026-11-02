@@ -1,5 +1,6 @@
 // What the motion studio remembers on this device between visits (pure types, validation and keys).
 // Stored in the browser's own storage by session-store.ts; nothing is sent anywhere.
+import { isFx, TONES, type SavedCine } from "./cinematic";
 import { CAPTION_STYLES, CONTENT_PRESETS, PALETTES, STYLES, type CaptionStyleId, type ContentPresetId, type PaletteId, type StyleId } from "./script";
 import { TYPE_PACK_IDS, type TypePackId } from "./fonts";
 import { SFX_MODES, type SfxMode } from "./sfx";
@@ -42,6 +43,8 @@ export type SessionData = {
   sfx?: SfxMode;
   backdrop?: "plain" | "mesh";
   grain?: boolean;
+  /** Cinematic Studio: motion preset per scene text, and the beat-aligned scene lengths (seconds) of the script they belong to. */
+  cine?: SavedCine;
   imported: Transcript | null;
   /** "manual" (a recording that is not kept) is stored as "none". */
   voiceMode: "ai" | "none";
@@ -75,6 +78,7 @@ export function isSession(v: unknown): v is SessionData {
     && (v.typography === undefined || TYPE_PACK_IDS.includes(v.typography as TypePackId))
     && (v.backdrop === undefined || v.backdrop === "plain" || v.backdrop === "mesh")
     && (v.grain === undefined || typeof v.grain === "boolean")
+    && (v.cine === undefined || (isObject(v.cine) && isObject(v.cine.fx) && Object.values(v.cine.fx).every(x => isFx(x)) && typeof v.cine.script === "string" && Array.isArray(v.cine.seconds) && v.cine.seconds.every(n => typeof n === "number" && Number.isFinite(n) && n > 0) && typeof v.cine.bpm === "number" && v.cine.bpm > 0 && TONES.some(t => t.id === (v.cine as {tone?: unknown}).tone)))
     && (v.stickerMode === undefined || v.stickerMode === "off" || v.stickerMode === "auto")
     && (v.stickerOverrides === undefined || (isObject(v.stickerOverrides) && Object.values(v.stickerOverrides).every(x => typeof x === "string")))
     && (v.sfx === undefined || SFX_MODES.includes(v.sfx as SfxMode))

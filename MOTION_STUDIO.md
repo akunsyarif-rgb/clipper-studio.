@@ -684,3 +684,14 @@ The AI clip flow listens to the video in parts (`lib/ai-transcribe.ts`). Parts a
 - **Sound effects** (`lib/sfx.ts`, `lib/sfx-synth.ts`): whoosh into each new scene (a few frames early, softer for calm scenes, firmer for impact), a pop when a sticker appears, a bell on the call to action or closing resolution, and in "Tegas" a low thud under an impact hook. They are synthesised on the device from plain maths (seeded noise, sine sweeps, a bell): no audio files, nothing to license, identical everywhere, one small mono WAV that plays in the preview and goes into the MP4 under the narration (volume 0.55). Over a source video only full-screen cutaways get a whoosh. Off by default.
 - The Sutradara AI can choose the effect level, switch stickers on, and pick a sticker (or none) per scene; scoped revisions cannot change the whole-video settings.
 - Not added: Lottie animations. They need a player dependency (lottie-web) and the browser MP4 renderer, which paints the page itself, has not been shown to draw them; each animation also has its own licence. The stickers use the same frame-driven approach as the rest of the studio instead.
+
+## Cinematic Studio (film peluncuran produk)
+
+Panel "Cinematic Studio" di Motion Studio. Alur: **brief → konsep → beat map → storyboard → pratinjau → edit → ekspor MP4**, memakai timeline, Remotion, backsound, dan AI routing yang sudah ada (tidak ada mesin render baru).
+
+- `lib/cinematic.ts` (murni, deterministik, jalan di perangkat): brief → konsep (gaya, palet, huruf, latar, sfx, mood dari suasana: keynote/mewah/energik/hangat) → beat map (BPM mood backsound; panjang adegan dibulatkan ke ketukan utuh) → storyboard (hook, masalah, pengungkapan, fitur, bukti, ajakan) dengan satu preset gerak per adegan.
+- Preset gerak (`fxFrame`, dipakai `remotion/ScriptVideo.tsx` lewat `Scene.fx`): keynote-reveal, morph, liquid-glass, parallax-push, light-sweep, blur-rise, hold-cut. Tiap preset pure per frame, jadi pratinjau = MP4. Kaca memakai gradien tembus pandang (tanpa `backdrop-filter`, aman di Safari/WebCodecs).
+- Validasi (`validateCinematic`): struktur (hook di awal, ajakan di akhir, pengungkapan), kontinuitas gerak (preset kembar, morph di adegan pertama, tiga kaca berturut), panjang adegan minimum, meleset dari ketukan, ada/tidaknya musik.
+- AI hanya opsional dan hanya memoles kalimat (`polishCinematic`): jumlah/urutan adegan, preset, dan panjang tidak berubah; hasil divalidasi, dicache, dibatasi lewat `ask()` (model OpenRouter gratis dulu, tidak pernah pindah ke berbayar diam-diam).
+- Disimpan di sesi (`SessionData.cine`) dan kembali setelah refresh. "Lepas mode sinematik" mengembalikan penjadwalan adegan biasa; naskah tetap.
+- Dipakai di tab `Cinematic Studio` pada `/motion`; uji: `lib/cinematic.test.ts`, `e2e/cinematic.mjs`.
