@@ -234,18 +234,45 @@ export async function polishCinematic(plan: CinePlan, o: CleanupOptions): Promis
 
 // ---- saving and restoring an applied plan ---------------------------------------------------------------------------------------
 
-export type SavedCine = { fx: Record<string, string>; script: string; seconds: number[]; bpm: number; tone: Tone };
-export const saveCine = (c: { plan: CinePlan; fx: Record<string, string> }): SavedCine => ({ fx: c.fx, script: c.plan.script, seconds: c.plan.scenes.map(s => s.seconds), bpm: c.plan.map.bpm, tone: c.plan.brief.tone });
+export type SavedCine = {
+  fx: Record<string, string>;
+  script: string;
+  seconds: number[];
+  bpm: number;
+  tone: Tone;
+  /** Added without changing the session version; absent in existing saved sessions. */
+  brief?: Brief;
+  /** Act role aligned by index with the script's split scenes; absent in legacy sessions. */
+  acts?: Act[];
+};
+export const saveCine = (c: { plan: CinePlan; fx: Record<string, string> }): SavedCine => ({
+  fx: c.fx,
+  script: c.plan.script,
+  seconds: c.plan.scenes.map(s => s.seconds),
+  bpm: c.plan.map.bpm,
+  tone: c.plan.brief.tone,
+  brief: { ...c.plan.brief, features: [...c.plan.brief.features] },
+  acts: c.plan.scenes.map(s => s.act),
+});
 
 /** Rebuilds the applied plan from what a session stored; null when it no longer fits its own script. */
 export function restoreCine(saved: SavedCine): { plan: CinePlan; fx: Record<string, string> } | null {
+  if (!saved || typeof saved.script !== "string" || !Array.isArray(saved.seconds) || !Number.isFinite(saved.bpm) || saved.bpm <= 0 || !TONES.some(t => t.id === saved.tone)) return null;
   const texts = splitScript(saved.script);
-  if (texts.length === 0 || texts.length !== saved.seconds.length) return null;
+  if (texts.length === 0 || texts.length !== saved.seconds.length || (saved.acts && saved.acts.length !== texts.length)) return null;
+  if (saved.acts && saved.acts.some(act => !["hook", "problem", "reveal", "feature", "proof", "cta"].includes(act))) return null;
+  if (saved.brief && saved.brief.tone !== saved.tone) return null;
   const concept = conceptFor(saved.tone);
   const beat = 60 / saved.bpm;
-  const scenes: CineScene[] = texts.map((text, i) => ({ act: i === 0 ? "hook" : i === texts.length - 1 ? "cta" : "feature", text, fx: isFx(saved.fx[text]) ? saved.fx[text] as FxId : "blur-rise", seconds: saved.seconds[i] }));
   const total = saved.seconds.reduce((a, b) => a + b, 0);
-  const brief = normalizeBrief({ tone: saved.tone, seconds: total });
+  if (!Number.isFinite(total) || saved.seconds.some(n => !Number.isFinite(n) || n <= 0)) return null;
+  const brief = normalizeBrief(saved.brief ?? { tone: saved.tone, seconds: total });
+  const scenes: CineScene[] = texts.map((text, i) => ({
+    act: saved.acts?.[i] ?? (i === 0 ? "hook" : i === texts.length - 1 ? "cta" : "feature"),
+    text,
+    fx: isFx(saved.fx?.[text]) ? saved.fx[text] as FxId : "blur-rise",
+    seconds: saved.seconds[i],
+  }));
   const plan: CinePlan = { brief, concept, map: { bpm: saved.bpm, beat, bar: beat * 4, beats: Math.floor(total / beat) }, scenes, script: saved.script, fxByText: Object.fromEntries(scenes.map(x => [x.text, x.fx])) };
   return { plan, fx: plan.fxByText };
 }

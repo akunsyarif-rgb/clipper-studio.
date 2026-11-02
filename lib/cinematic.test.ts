@@ -98,6 +98,18 @@ describe("saving a plan with the session", () => {
     expect(back).not.toBeNull();
     expect(back.plan.scenes.map(s => [s.text, s.fx, s.seconds])).toEqual(p.scenes.map(s => [s.text, s.fx, s.seconds]));
     expect(back.plan.map.bpm).toBe(p.map.bpm);
+    expect(back.plan.brief).toEqual(p.brief);
+    expect(back.plan.scenes.map(s => s.act)).toEqual(p.scenes.map(s => s.act));
+  });
+  it("restores legacy sessions that predate full brief and act persistence", async () => {
+    const { restoreCine, saveCine } = await import("./cinematic");
+    const p = buildCinematic(brief);
+    const legacy = saveCine({ plan: p, fx: p.fxByText });
+    delete legacy.brief;
+    delete legacy.acts;
+    const back = restoreCine(JSON.parse(JSON.stringify(legacy)))!;
+    expect(back.plan.brief.product).toBe("");
+    expect(back.plan.scenes.map(s => s.act)).toEqual(p.scenes.map((s, i) => i === 0 ? "hook" : i === p.scenes.length - 1 ? "cta" : "feature"));
   });
   it("refuses a saved plan that no longer fits its script", async () => {
     const { restoreCine, saveCine } = await import("./cinematic");

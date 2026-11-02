@@ -33,6 +33,14 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
 
+  // Restore the editable brief alongside the applied plan so a reload does not leave the form blank.
+  const activePlan = active?.plan;
+  useEffect(() => {
+    if (!activePlan) return;
+    setBrief(activePlan.brief);
+    setFeaturesText(activePlan.brief.features.join("\n"));
+  }, [activePlan]);
+
   const input = useMemo(() => ({ ...brief, features: featuresText.split("\n") }), [brief, featuresText]);
   // A newly built or polished draft must take precedence over the applied plan; otherwise active mode hides every edit.
   const shown = draft ?? active?.plan ?? null;

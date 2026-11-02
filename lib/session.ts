@@ -65,6 +65,38 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 const isTranscript = (v: unknown): v is Transcript =>
   isObject(v) && Array.isArray(v.segments) && typeof v.duration === "number" && v.segments.every(s => isObject(s) && typeof s.text === "string" && Array.isArray(s.words));
 
+/** Validate persisted Cinematic data without relying on a narrowing of a nested unknown property. */
+function isSavedCine(value: unknown): value is SavedCine {
+  if (!isObject(value)) return false;
+  const cine = value;
+  if (!isObject(cine.fx) || !Object.values(cine.fx).every(isFx)
+    || typeof cine.script !== "string" || cine.script.length > 20000
+    || !Array.isArray(cine.seconds) || cine.seconds.length === 0 || cine.seconds.length > 100
+    || !cine.seconds.every(n => typeof n === "number" && Number.isFinite(n) && n > 0 && n <= 60)
+    || typeof cine.bpm !== "number" || !Number.isFinite(cine.bpm) || cine.bpm < 30 || cine.bpm > 240
+    || !TONES.some(t => t.id === cine.tone)) return false;
+
+  if (cine.brief !== undefined) {
+    const brief = cine.brief;
+    if (!isObject(brief)
+      || typeof brief.product !== "string" || brief.product.length > 60
+      || typeof brief.tagline !== "string" || brief.tagline.length > 100
+      || typeof brief.problem !== "string" || brief.problem.length > 120
+      || !Array.isArray(brief.features) || brief.features.length > 4
+      || !brief.features.every(f => typeof f === "string" && f.length <= 100)
+      || typeof brief.proof !== "string" || brief.proof.length > 120
+      || typeof brief.cta !== "string" || brief.cta.length > 80
+      || !TONES.some(t => t.id === brief.tone) || brief.tone !== cine.tone
+      || typeof brief.seconds !== "number" || !Number.isFinite(brief.seconds) || brief.seconds < 12 || brief.seconds > 60
+      || (brief.language !== undefined && brief.language !== "id" && brief.language !== "en")) return false;
+  }
+
+  if (cine.acts !== undefined
+    && (!Array.isArray(cine.acts) || cine.acts.length !== cine.seconds.length
+      || !cine.acts.every(a => ["hook", "problem", "reveal", "feature", "proof", "cta"].includes(String(a))))) return false;
+  return true;
+}
+
 /** Accepts only data this version wrote: anything else (older format, corruption, edits) is ignored, never half-applied. */
 export function isSession(v: unknown): v is SessionData {
   if (!isObject(v) || v.v !== SESSION_VERSION) return false;
@@ -87,7 +119,7 @@ export function isSession(v: unknown): v is SessionData {
       && i.node.every(n => Array.isArray(n) && typeof n[0] === "string" && ["path", "circle", "ellipse", "line", "polyline", "polygon", "rect"].includes(n[0]) && isObject(n[1]) && Object.values(n[1]).every(x => typeof x === "string" && /^[\d\s.,eE+\-a-zA-Z]*$/.test(x)))
       )))
     && (v.iconMotion === undefined || isEntrance(v.iconMotion))
-    && (v.cine === undefined || (isObject(v.cine) && isObject(v.cine.fx) && Object.values(v.cine.fx).every(x => isFx(x)) && typeof v.cine.script === "string" && Array.isArray(v.cine.seconds) && v.cine.seconds.every(n => typeof n === "number" && Number.isFinite(n) && n > 0) && typeof v.cine.bpm === "number" && v.cine.bpm > 0 && TONES.some(t => t.id === (v.cine as {tone?: unknown}).tone)))
+    && (v.cine === undefined || isSavedCine(v.cine))
     && (v.stickerMode === undefined || v.stickerMode === "off" || v.stickerMode === "auto")
     && (v.stickerOverrides === undefined || (isObject(v.stickerOverrides) && Object.values(v.stickerOverrides).every(x => typeof x === "string")))
     && (v.sfx === undefined || SFX_MODES.includes(v.sfx as SfxMode))
