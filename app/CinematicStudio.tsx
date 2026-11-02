@@ -37,7 +37,7 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
   useEffect(() => {
     if (!active) return;
     setBrief(active.plan.brief);
-    setFeaturesText(active.plan.brief.features.join("\\n"));
+    setFeaturesText(active.plan.brief.features.join("\n"));
   }, [active?.plan]);
 
   const input = useMemo(() => ({ ...brief, features: featuresText.split("\n") }), [brief, featuresText]);
