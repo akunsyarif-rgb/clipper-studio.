@@ -81,7 +81,7 @@ export function VideoOverlay({ scene, visual, colors, position, length, offset, 
 
   const tile = icon ? (
     <div data-visual={"icon-" + visual.icon} style={{ width: TILE, height: TILE, flexShrink: 0, borderRadius: 34, border: `3px solid ${oc.accent}`, background: "#00000055", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <LineIcon node={icon.icon} size={84} color={oc.accent} delay={4} strokeWidth={1.9} />
+      <LineIcon node={icon.icon} entrance={icon.entrance} size={84} color={oc.accent} delay={4} strokeWidth={1.9} />
     </div>
   ) : null;
   const keywordText = (maxWidth: number) => keyword ? (

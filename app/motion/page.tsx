@@ -32,6 +32,10 @@ import { ScriptVideo } from "@/remotion/ScriptVideo";
 import TranscriptPanel from "../TranscriptPanel";
 import AiDirector from "../AiDirector";
 import CinematicStudio from "../CinematicStudio";
+import IconifyPanel from "../IconifyPanel";
+import { registerIcon, setCustomIconEntrance } from "@/lib/visuals";
+import type { Entrance } from "@/lib/icon-motion";
+import type { LoadedIcon } from "@/lib/iconify";
 import { conceptFor, restoreCine, saveCine, type CinePlan, type FxId } from "@/lib/cinematic";
 import SeoPanel, { type SeoSeed } from "../SeoPanel";
 import TrendStart from "../TrendStart";
@@ -231,6 +235,10 @@ export default function MotionStudio() {
   const [backdrop, setBackdrop] = useState<"plain" | "mesh">("plain");
   const [grain, setGrain] = useState(false);
   // Cinematic Studio: the applied plan (motion preset per scene text + beat-aligned lengths); it stays valid only while the script is unchanged.
+  // Icons from Iconify used by scenes (also stored in the session, so they return without the network).
+  const [iconEntrance, setIconEntranceState] = useState<Entrance>("pop");
+  const chooseEntrance = (e: Entrance) => { setCustomIconEntrance(e); setIconEntranceState(e); };
+  const [customIcons, setCustomIcons] = useState<Record<string, { label: string; node: [string, Record<string, string>][] }>>({});
   const [cine, setCine] = useState<{ plan: CinePlan; fx: Record<string, string> } | null>(null);
   const [captionStyle, setCaptionStyle] = useState<CaptionStyleId>("classic");
   const [typography, setTypography] = useState<TypePackId>(DEFAULT_TYPE_PACK);
@@ -423,10 +431,11 @@ export default function MotionStudio() {
     title: title.trim(), scenes: sceneList, style, palette, audioSrc: narration?.url ?? null, captions, video: videoEdit && source ? { src: source.url, seconds: source.seconds, ...(trim ? { trimStart: trim.start } : {}), ...(isAudioFile(source.file) ? { audioOnly: true } : {}) } : null, ...(renderEdits.length ? { edits: renderEdits } : {}), ...(renderEmphasis.length ? { captionEmphasis: renderEmphasis } : {}), overlay: overlayPos, brandMotion,
     music, speech: narration?.speech ?? null, ...(isWatermarkActive(watermark) ? { watermark } : {}), ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}), ...(sfxSrc ? { sfx: { src: sfxSrc, volume: SFX_VOLUME } } : {}),
   } : null;
+  const usedIcons = (() => { const ids = new Set(Object.values(overrides).map(o => o.icon).filter((x): x is string => !!x && x in customIcons)); return ids.size ? { icons: Object.fromEntries([...ids].map(id => [id, customIcons[id]])) } : {}; })();
   const snapshot = useMemo<SessionData>(() => ({
-    v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlay: overlayPos, density, brandMotion, ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(trim ? { trim } : {}), ...(editProfile !== "standard" ? { edit: { profile: editProfile, edits, emphasis, sfx: comedySfx } } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}), ...(cine ? { cine: saveCine(cine) } : {}), ...(stickerMode !== "off" ? { stickerMode } : {}), ...(Object.keys(stickerOverrides).length ? { stickerOverrides } : {}), ...(sfxMode !== "off" ? { sfx: sfxMode } : {}), imported,
+    v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlay: overlayPos, density, brandMotion, ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(trim ? { trim } : {}), ...(editProfile !== "standard" ? { edit: { profile: editProfile, edits, emphasis, sfx: comedySfx } } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}), ...(cine ? { cine: saveCine(cine) } : {}), ...usedIcons, ...(iconEntrance !== "pop" ? { iconMotion: iconEntrance } : {}), ...(stickerMode !== "off" ? { stickerMode } : {}), ...(Object.keys(stickerOverrides).length ? { stickerOverrides } : {}), ...(sfxMode !== "off" ? { sfx: sfxMode } : {}), imported,
     voiceMode: voiceMode === "ai" ? "ai" : "none", ttsLang, ttsVoice, ttsSpeed,
-  }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlayPos, density, brandMotion, storyVisuals, typography, captionStyle, backdrop, grain, stickerMode, stickerOverrides, sfxMode, cine, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed, trim, editProfile, edits, emphasis, comedySfx]);
+  }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlayPos, density, brandMotion, storyVisuals, typography, captionStyle, backdrop, grain, stickerMode, stickerOverrides, sfxMode, cine, customIcons, iconEntrance, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed, trim, editProfile, edits, emphasis, comedySfx]);
   useEffect(() => {
     if (!autosave || isPristine(snapshot, SAMPLE, !!source)) return;
     const t = setTimeout(() => { const s = { ...snapshot, savedAt: Date.now() }; void saveSession(s); void cloud.pushSession(s); }, 1000);
@@ -454,6 +463,9 @@ export default function MotionStudio() {
     const s = saved;
     if (!s) return;
     setScript(s.script); setTitle(s.title); setStyle(s.style); setPalette(s.palette); setContentPreset(s.contentPreset); setTarget(s.target); setCaptions(s.captions);
+    chooseEntrance(s.iconMotion ?? "pop");
+    for (const [id, i] of Object.entries(s.icons ?? {})) registerIcon(id, i.label, i.node as never);
+    setCustomIcons(s.icons ?? {});
     setOverrides(s.overrides); setCutOverrides(s.cutOverrides); setClipStarts(s.clipStarts); setCaptionOffset(s.captionOffset); setOverlayPos(s.overlay ?? "top"); setDensity(s.density ?? "balanced"); setBrandMotion(s.brandMotion ?? "simple"); setStoryVisuals(s.storyVisuals !== false); setTypography(s.typography ?? DEFAULT_TYPE_PACK); setCaptionStyle(s.captionStyle ?? "classic"); setBackdrop(s.backdrop ?? "plain"); setGrain(s.grain === true); setStickerMode(s.stickerMode ?? "off"); setStickerOverrides(s.stickerOverrides ?? {}); setSfxMode(s.sfx ?? "off"); setCine(s.cine ? restoreCine(s.cine) : null); setImported(s.imported);
     if (s.cine) { setMoodTouched(true); setMood(conceptFor(s.cine.tone).mood); setMusicMode("auto"); }
     setVoiceMode(s.voiceMode); setTtsLang(s.ttsLang); setTtsVoice(s.ttsVoice); setTtsSpeed(s.ttsSpeed);
@@ -674,6 +686,11 @@ export default function MotionStudio() {
     }
   }
 
+  function applyIcon(text: string, icon: LoadedIcon) {
+    registerIcon(icon.id, icon.label, icon.node);
+    setCustomIcons(prev => ({ ...prev, [icon.id]: { label: icon.label, node: icon.node as [string, Record<string, string>][] } }));
+    setOverrides(prev => ({ ...prev, [text]: { ...prev[text], icon: icon.id } }));
+  }
   function applyCinematic(plan: CinePlan) {
     const c = plan.concept;
     setScript(plan.script); setTitle(plan.brief.product.slice(0, 60)); setContentPreset("custom");
@@ -1143,6 +1160,8 @@ export default function MotionStudio() {
           {timeline.ok && <AiDirector language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"} active={Object.keys(directorInfo).length > 0} note={directorNote} onPlan={applyDirector} onUndo={undoDirector} onRedo={redoDirector} canRedo={directorHistory.future.length > 0} versions={directorHistory.past.length}
             input={{ scenes: timeline.scenes.map(sc => ({ text: sc.text, seconds: sc.durationInFrames / FPS })), videoEdit: !!(videoEdit && source), style, palette, affiliate: activeMode === "affiliate" && affiliateBrief ? { product: affiliateBrief.product } : undefined,
               current: timeline.scenes.map(sc => ({ template: overrides[sc.text]?.template, icon: overrides[sc.text]?.icon, cut: cutOverrides[sc.text] })) }} />}
+          {timeline.ok && <IconifyPanel entrance={iconEntrance} onEntrance={chooseEntrance} disabled={rendering} accent={PALETTES[palette].accent} onApply={applyIcon}
+            scenes={timeline.scenes.map((sc, i) => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery, hasIcon: !!sceneVisuals[i]?.icon || overrides[sc.text]?.icon === "none" }))} />}
           {timeline.ok && <PexelsPanel disabled={rendering} onApply={putStockPhoto}
             // Over a source video a picture only appears in a full-screen cutaway, so automatic filling covers just those scenes.
             scenes={timeline.scenes.map((sc, i) => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery, hasImage: !!images[sc.text] || (!!(videoEdit && source) && sceneList[i]?.cut !== "graphic") }))} />}

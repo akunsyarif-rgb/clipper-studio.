@@ -1,3 +1,4 @@
+import { iconEntrance, type Entrance } from "../lib/icon-motion";
 import React from "react";
 import { Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import type { IconNode } from "lucide";
@@ -11,19 +12,21 @@ const HEAVY = "'Arial Black', 'Helvetica Neue', Arial, sans-serif";
  * Lucide line icon drawn stroke by stroke (pathLength + dashoffset), then gently floating.
  * Attributes are set directly on the SVG elements so the browser renderer's SVG snapshot keeps them.
  */
-export function LineIcon({ node, size, color, delay = 0, strokeWidth = 1.6 }: { node: IconNode; size: number; color: string; delay?: number; strokeWidth?: number }) {
+export function LineIcon({ node, size, color, delay = 0, strokeWidth = 1.6, entrance = "draw" }: { node: IconNode; size: number; color: string; delay?: number; strokeWidth?: number; entrance?: Entrance }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const n = node.length;
   const float = Math.sin((frame - delay) / 14) * 6;
   const pop = spring({ frame: frame - delay, fps, config: { damping: 10, stiffness: 140 } });
+  // "pop" and "slide-up" move the whole icon (all parts visible at once); "draw" keeps the line-by-line drawing below.
+  const e = entrance === "draw" ? null : iconEntrance(entrance, frame, delay);
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"
-      style={{ transform: `translateY(${float}px) scale(${0.7 + 0.3 * pop})`, overflow: "visible", flexShrink: 0 }}>
+      style={{ transform: e ? `translateY(${float * 0.5 + e.y}px) scale(${e.scale})` : `translateY(${float}px) scale(${0.7 + 0.3 * pop})`, opacity: e ? e.opacity : undefined, overflow: "visible", flexShrink: 0 }}>
       {node.map(([tag, attrs], i) => {
         // Each part starts a little after the previous one; the whole icon is drawn in ~0.7 s.
         const start = delay + (i * 12) / Math.max(1, n);
-        const p = interpolate(frame, [start, start + 16], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+        const p = e ? 1 : interpolate(frame, [start, start + 16], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
         // Hidden until it starts drawing; otherwise round line caps show up as stray dots.
         return React.createElement(tag, { ...(attrs as Record<string, string>), key: i, pathLength: 1, strokeDasharray: 1, strokeDashoffset: 1 - p, strokeOpacity: p > 0 ? 1 : 0 });
       })}
@@ -145,7 +148,7 @@ export function BottomVisual({ visual, colors }: { visual: SceneVisual; colors: 
   return (
     <div style={{ marginTop: 60, display: "flex", alignItems: "center", gap: 28 }} data-visual={"icon-" + visual.icon}>
       <div style={{ width: 210, height: 210, borderRadius: 52, border: `3px solid ${colors.accent}66`, background: `${colors.accent}14`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 0 60px ${colors.accent}22` }}>
-        <LineIcon node={icon.icon} size={140} color={colors.accent} delay={8} />
+        <LineIcon node={icon.icon} entrance={icon.entrance} size={140} color={colors.accent} delay={8} />
       </div>
     </div>
   );
