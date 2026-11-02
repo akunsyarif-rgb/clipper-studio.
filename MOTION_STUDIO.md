@@ -695,3 +695,7 @@ Panel "Cinematic Studio" di Motion Studio. Alur: **brief → konsep → beat map
 - AI hanya opsional dan hanya memoles kalimat (`polishCinematic`): jumlah/urutan adegan, preset, dan panjang tidak berubah; hasil divalidasi, dicache, dibatasi lewat `ask()` (model OpenRouter gratis dulu, tidak pernah pindah ke berbayar diam-diam).
 - Disimpan di sesi (`SessionData.cine`) dan kembali setelah refresh. "Lepas mode sinematik" mengembalikan penjadwalan adegan biasa; naskah tetap.
 - Dipakai di tab `Cinematic Studio` pada `/motion`; uji: `lib/cinematic.test.ts`, `e2e/cinematic.mjs`.
+
+## Ikon otomatis (Iconify)
+
+Panel "Ikon otomatis" di `/motion` (`app/IconifyPanel.tsx`, `lib/iconify.ts`). Mencari ikon dari `api.iconify.design` (gratis, tanpa kunci) hanya dari set garis berlisensi bebas tanpa kredit (Lucide, Tabler, Feather, Iconoir). Ikon yang dipilih diubah menjadi path vektor dan didaftarkan sebagai ikon adegan biasa (`iconify:prefix:nama`, `registerIcon`), jadi pratinjau dan MP4 tidak memuat gambar jaringan sama sekali (tidak ada canvas tercemar di Safari/iPad); thumbnail pencarian memakai `getSvgDirectUrl` dengan `crossOrigin="anonymous"`. "Isi otomatis" hanya berjalan saat tombol ditekan, satu permintaan sekali, maks. 12 adegan tanpa ikon; hasil dan pencarian di-cache dan di-dedup. Ikon tersimpan di sesi agar kembali tanpa jaringan. Uji: `lib/iconify.test.ts`, `e2e/iconify.mjs`.

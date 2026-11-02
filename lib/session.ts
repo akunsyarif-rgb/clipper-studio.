@@ -45,6 +45,8 @@ export type SessionData = {
   grain?: boolean;
   /** Cinematic Studio: motion preset per scene text, and the beat-aligned scene lengths (seconds) of the script they belong to. */
   cine?: SavedCine;
+  /** Icons from Iconify used by scenes (id -> label and drawing), so they come back without the network. */
+  icons?: Record<string, { label: string; node: [string, Record<string, string>][] }>;
   imported: Transcript | null;
   /** "manual" (a recording that is not kept) is stored as "none". */
   voiceMode: "ai" | "none";
@@ -78,6 +80,9 @@ export function isSession(v: unknown): v is SessionData {
     && (v.typography === undefined || TYPE_PACK_IDS.includes(v.typography as TypePackId))
     && (v.backdrop === undefined || v.backdrop === "plain" || v.backdrop === "mesh")
     && (v.grain === undefined || typeof v.grain === "boolean")
+    && (v.icons === undefined || (isObject(v.icons) && Object.entries(v.icons).every(([k, i]) => k.startsWith("iconify:") && isObject(i) && typeof i.label === "string" && Array.isArray(i.node) && i.node.length > 0 && i.node.length < 40
+      && i.node.every(n => Array.isArray(n) && typeof n[0] === "string" && ["path", "circle", "ellipse", "line", "polyline", "polygon", "rect"].includes(n[0]) && isObject(n[1]) && Object.values(n[1]).every(x => typeof x === "string" && /^[\d\s.,eE+\-a-zA-Z]*$/.test(x)))
+      )))
     && (v.cine === undefined || (isObject(v.cine) && isObject(v.cine.fx) && Object.values(v.cine.fx).every(x => isFx(x)) && typeof v.cine.script === "string" && Array.isArray(v.cine.seconds) && v.cine.seconds.every(n => typeof n === "number" && Number.isFinite(n) && n > 0) && typeof v.cine.bpm === "number" && v.cine.bpm > 0 && TONES.some(t => t.id === (v.cine as {tone?: unknown}).tone)))
     && (v.stickerMode === undefined || v.stickerMode === "off" || v.stickerMode === "auto")
     && (v.stickerOverrides === undefined || (isObject(v.stickerOverrides) && Object.values(v.stickerOverrides).every(x => typeof x === "string")))

@@ -137,6 +137,11 @@ export const ICONS: Record<string, { label: string; icon: IconNode }> = Object.f
   ["quote", { label: "Tanda kutip", icon: Quote }],
 ]);
 
+/** Adds an icon found at run time (Iconify) so scenes can use it like a built-in one. The id must start with "iconify:". */
+export function registerIcon(id: string, label: string, icon: IconNode) {
+  if (id.startsWith("iconify:") && !(id in ICONS)) ICONS[id] = { label, icon };
+}
+
 /** `year`: a plain four-digit year such as 1945, shown without a thousands separator and without counting up. */
 export type NumberInfo = { value: number; decimals: number; prefix: string; suffix: string; label: string; raw: string; year: boolean };
 export type CompareInfo = { bad: string; good: string; neutral: boolean };

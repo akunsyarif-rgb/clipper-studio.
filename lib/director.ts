@@ -56,7 +56,7 @@ export const PLAYBOOK = [
   "Ide gambar: untuk setiap scene beri \"imageIdea\" (2-4 kata bahasa Indonesia untuk dibaca pembuat video) dan \"imageQuery\" (2-4 kata bahasa INGGRIS untuk mencari foto vertikal di situs foto stok): benda atau situasi nyata yang mudah dicari, bukan konsep abstrak; hindari orang tertentu, teks, dan logo.",
 ];
 
-const iconList = () => Object.keys(ICONS).sort().join(", ");
+const iconList = () => Object.keys(ICONS).filter(k => !k.startsWith("iconify:")).sort().join(", ");
 
 export function directorPrompt(i: DirectorInput): string {
   const lang = i.language === "en" ? "bahasa Inggris" : "bahasa Indonesia";
