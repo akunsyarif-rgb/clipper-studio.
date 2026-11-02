@@ -1,5 +1,6 @@
 "use client";
 
+import AppNav from "../AppNav";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { downloadPixabayPhoto, PixabayError, searchPixabayPhotos, pixabayCredit, type PixabayPhoto } from "@/lib/pixabay";
@@ -81,6 +82,7 @@ export default function AssetManagerPage() {
       </div>
       <Link href="/motion" style={{ padding: "10px 14px", border: "1px solid currentColor", borderRadius: 12, textDecoration: "none", whiteSpace: "nowrap" }}>Ke Motion Studio</Link>
     </header>
+    <AppNav current="assets" />
 
     <nav aria-label="Jenis aset" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12 }}>
       {tabs.map(item => <button key={item.id} onClick={() => { setTab(item.id); setError(""); }} aria-pressed={tab === item.id} style={{ border: "1px solid #9aa69d", borderRadius: 999, padding: "10px 16px", background: tab === item.id ? "#1d4935" : "transparent", color: tab === item.id ? "#fff" : "inherit", whiteSpace: "nowrap" }}>{item.label}</button>)}

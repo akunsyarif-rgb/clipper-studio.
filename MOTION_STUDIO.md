@@ -705,3 +705,8 @@ Animasi ikon (`lib/icon-motion.ts`): `pop` (membal dengan overshoot), `slide-up`
 ## Motion Library (pustaka preset)
 
 Di panel Cinematic Studio: pilih preset bawaan (4 suasana + 7 template konten) atau preset sendiri, lalu "Pasang pada storyboard" (jadi draft; tekan Perbarui/Pakai untuk menerapkannya). "Simpan tampilan ini sebagai preset" menyimpan look (gaya, palet, huruf, latar, sfx, mood) dan gerak tiap bagian (hook, masalah, …) di perangkat ini saja (`localStorage`, maks. 20, divalidasi saat dibaca). Logika di `lib/motion-library.ts`; tidak ada mesin animasi baru (hanya mengedit `CinePlan`). Morph tidak pernah dipasang di adegan pertama.
+
+## Menu bersama dan anggaran AI
+
+- Menu empat tempat di semua halaman (`app/AppNav.tsx`): **Potong video** (`/`), **Studio kreatif** (`/motion`), **Aset** (`/assets`), **Library** (`/hub`), tiap item dengan keterangan singkat dan halaman aktif ditandai.
+- Anggaran AI harian di perangkat (`lib/ai-budget.ts`, tampil di panel pengaturan AI lewat `app/AiUsage.tsx`): token dan permintaan hari ini, batas harian (default 200.000 token, 0 = tanpa batas). Setelah batas tercapai permintaan AI baru ditolak dengan pesan jelas (hasil yang sudah ada di cache tetap dilayani; fitur lokal tetap jalan). Model yang bukan gratis diberi peringatan; aplikasi tidak memilih model berbayar sendiri. Biaya dalam rupiah tidak dihitung karena harga per model tidak diketahui; yang dihitung token (dilaporkan layanan, atau diperkirakan ±4 karakter/token).

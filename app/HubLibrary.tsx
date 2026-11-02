@@ -1,5 +1,6 @@
 "use client";
 
+import AppNav from "./AppNav";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { cloud } from "@/lib/cloud";
@@ -118,7 +119,8 @@ export default function HubLibrary() {
       <Link className="brand" href="/"><span className="logo">c</span><span>clipper<span className="light">studio</span></span></Link>
       <span><Link className="text-link" href="/">Clipper</Link> · <Link className="text-link" href="/motion">Motion</Link></span>
     </header>
-    <h1>Content Hub</h1>
+    <AppNav current="library" />
+    <h1>Library (Content Hub)</h1>
     <p className="hub-note">Video yang Anda simpan sendiri dari Clipper Studio atau Motion Studio disimpan di penyimpanan cloud privat; tidak ada yang diunggah otomatis. Catatan produksi (naskah, paket SEO, riwayat render) ada di tab sebelahnya.</p>
     <CloudAccount />
     <div className="hub-tabs" role="tablist" aria-label="Bagian">

@@ -2,6 +2,7 @@
 // kept in this browser only, and used to call Google directly from the page (there is no server). Only the transcript
 // text is sent, never audio or video. The key is never put into an error message, a log, a project or an export.
 import { alignWords, spreadWords, type Transcript, type Word } from "./transcript";
+import { budgetExceeded, estimateTokens, recordUsage, resetToday } from "./ai-budget";
 
 export const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 /** A sensible starting model; the creator can change it because model names come and go. */
@@ -124,7 +125,7 @@ const inflight = new Map<string, Promise<unknown>>();
 let callTimes: number[] = [];
 /** Running totals for this session: model requests sent, answers reused, tokens reported by the service. */
 export const aiUsage = { requests: 0, cacheHits: 0, tokens: 0 };
-export function resetAiGuards() { answers.clear(); inflight.clear(); callTimes = []; aiUsage.requests = aiUsage.cacheHits = aiUsage.tokens = 0; }
+export function resetAiGuards() { resetToday(); answers.clear(); inflight.clear(); callTimes = []; aiUsage.requests = aiUsage.cacheHits = aiUsage.tokens = 0; }
 const hash = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36) + s.length; };
 const tokensOf = (json: unknown) => { const j = json as { usageMetadata?: { totalTokenCount?: number }; usage?: { total_tokens?: number } } | null; return Number(j?.usageMetadata?.totalTokenCount ?? j?.usage?.total_tokens ?? 0) || 0; };
 
@@ -135,6 +136,7 @@ export async function ask<T>(o: CleanupOptions, parts: unknown[], schema: object
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) { aiUsage.cacheHits++; return structuredClone(hit.value) as T; }
   const running = inflight.get(key);
   if (running) { aiUsage.cacheHits++; return structuredClone(await running) as T; }
+  if (budgetExceeded()) throw new GeminiError("quota", "Batas pemakaian AI hari ini tercapai. Naikkan batas di pengaturan AI atau lanjut besok; fitur lokal tetap jalan.");
   const now = Date.now();
   callTimes = callTimes.filter(t => now - t < RATE_WINDOW_MS);
   if (callTimes.length >= RATE_MAX) throw new GeminiError("quota", "Terlalu banyak permintaan AI dalam semenit. Tunggu sebentar lalu coba lagi.");
@@ -168,7 +170,8 @@ async function askUncached<T>(o: CleanupOptions, parts: unknown[], schema: objec
       let json: unknown = null;
       try { json = await res.json(); } catch { /* an error page without JSON */ }
       if (!res.ok) throw explain(res.status, json);
-      aiUsage.requests++; aiUsage.tokens += tokensOf(json);
+      const used = tokensOf(json) || estimateTokens(body);
+      aiUsage.requests++; aiUsage.tokens += used; recordUsage(used);
       return parse(json);
     } catch (e) {
       if (e instanceof GeminiError) throw e;
