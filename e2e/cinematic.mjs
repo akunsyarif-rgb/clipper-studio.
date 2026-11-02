@@ -67,6 +67,19 @@ try {
     return fxs.join(",");
   });
 
+  await step("a new storyboard can replace an already active cinematic plan", async () => {
+    await page.getByTestId("cine-product").fill("Nova Studio");
+    await page.getByTestId("cine-tagline").fill("Kreasi tanpa batas.");
+    await page.getByTestId("cine-build").click();
+    assert((await page.getByTestId("cine-list").innerText()).includes("Kreasi tanpa batas."), "new draft is visible while cinematic mode is active");
+    const apply = page.getByTestId("cine-apply");
+    assert(await apply.isVisible(), "update action is available");
+    assert((await apply.innerText()).includes("Perbarui"), "action is labelled as an update");
+    await apply.click();
+    assert((await page.getByTestId("script").inputValue()).startsWith("Kreasi tanpa batas."), "new plan replaces the active script");
+    return "active plan updated without clearing cinematic mode";
+  });
+
   await step("the plan survives a reload (offered back with the session)", async () => {
     await page.waitForTimeout(2500); // autosave is debounced
     await page.reload(); await openFolds(page);
