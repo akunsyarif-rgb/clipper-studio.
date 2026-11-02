@@ -1,6 +1,6 @@
 // What the motion studio remembers on this device between visits (pure types, validation and keys).
 // Stored in the browser's own storage by session-store.ts; nothing is sent anywhere.
-import { isFx, TONES, type Act, type SavedCine } from "./cinematic";
+import { isFx, TONES, type SavedCine } from "./cinematic";
 import { CAPTION_STYLES, CONTENT_PRESETS, PALETTES, STYLES, type CaptionStyleId, type ContentPresetId, type PaletteId, type StyleId } from "./script";
 import { TYPE_PACK_IDS, type TypePackId } from "./fonts";
 import { SFX_MODES, type SfxMode } from "./sfx";
