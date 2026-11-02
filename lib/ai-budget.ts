@@ -25,6 +25,8 @@ export function setDailyLimit(limit: number) { write({ ...read(), limit: Math.ma
 export function recordUsage(tokens: number) { const b = read(); write({ ...b, tokens: b.tokens + Math.max(0, Math.round(tokens)), requests: b.requests + 1 }); }
 /** True once today's use has reached the limit; the next request is then refused (the one that crossed it was already paid for). */
 export const budgetExceeded = (): boolean => { const b = read(); return b.limit > 0 && b.tokens >= b.limit; };
+/** Internal test reset only; there is deliberately no user-facing reset control. */
+export const resetToday = () => write({ ...read(), tokens: 0, requests: 0 });
 /** Rough token estimate (about 4 characters per token) for services that report no usage. */
 export const estimateTokens = (text: string) => Math.ceil(text.length / 4);
 /** Models that cost nothing: OpenRouter's free alias and ":free" variants. Anything else may be billed by the provider. */
