@@ -1,6 +1,6 @@
 // What the motion studio remembers on this device between visits (pure types, validation and keys).
 // Stored in the browser's own storage by session-store.ts; nothing is sent anywhere.
-import { isFx, TONES, type SavedCine } from "./cinematic";
+import { isFx, TONES, type Act, type SavedCine } from "./cinematic";
 import { CAPTION_STYLES, CONTENT_PRESETS, PALETTES, STYLES, type CaptionStyleId, type ContentPresetId, type PaletteId, type StyleId } from "./script";
 import { TYPE_PACK_IDS, type TypePackId } from "./fonts";
 import { SFX_MODES, type SfxMode } from "./sfx";
@@ -78,7 +78,9 @@ export function isSession(v: unknown): v is SessionData {
     && (v.typography === undefined || TYPE_PACK_IDS.includes(v.typography as TypePackId))
     && (v.backdrop === undefined || v.backdrop === "plain" || v.backdrop === "mesh")
     && (v.grain === undefined || typeof v.grain === "boolean")
-    && (v.cine === undefined || (isObject(v.cine) && isObject(v.cine.fx) && Object.values(v.cine.fx).every(x => isFx(x)) && typeof v.cine.script === "string" && Array.isArray(v.cine.seconds) && v.cine.seconds.every(n => typeof n === "number" && Number.isFinite(n) && n > 0) && typeof v.cine.bpm === "number" && v.cine.bpm > 0 && TONES.some(t => t.id === (v.cine as {tone?: unknown}).tone)))
+    && (v.cine === undefined || (isObject(v.cine) && isObject(v.cine.fx) && Object.values(v.cine.fx).every(x => isFx(x)) && typeof v.cine.script === "string" && v.cine.script.length <= 20000 && Array.isArray(v.cine.seconds) && v.cine.seconds.length > 0 && v.cine.seconds.length <= 100 && v.cine.seconds.every(n => typeof n === "number" && Number.isFinite(n) && n > 0 && n <= 60) && typeof v.cine.bpm === "number" && Number.isFinite(v.cine.bpm) && v.cine.bpm >= 30 && v.cine.bpm <= 240 && TONES.some(t => t.id === (v.cine as {tone?: unknown}).tone)
+      && (v.cine.brief === undefined || (isObject(v.cine.brief) && typeof v.cine.brief.product === "string" && v.cine.brief.product.length <= 60 && typeof v.cine.brief.tagline === "string" && v.cine.brief.tagline.length <= 100 && typeof v.cine.brief.problem === "string" && v.cine.brief.problem.length <= 120 && Array.isArray(v.cine.brief.features) && v.cine.brief.features.length <= 4 && v.cine.brief.features.every(f => typeof f === "string" && f.length <= 100) && typeof v.cine.brief.proof === "string" && v.cine.brief.proof.length <= 120 && typeof v.cine.brief.cta === "string" && v.cine.brief.cta.length <= 80 && TONES.some(t => t.id === v.cine.brief!.tone) && v.cine.brief.tone === v.cine.tone && typeof v.cine.brief.seconds === "number" && Number.isFinite(v.cine.brief.seconds) && v.cine.brief.seconds >= 12 && v.cine.brief.seconds <= 60 && (v.cine.brief.language === undefined || v.cine.brief.language === "id" || v.cine.brief.language === "en")))
+      && (v.cine.acts === undefined || (Array.isArray(v.cine.acts) && v.cine.acts.length === v.cine.seconds.length && v.cine.acts.every(a => ["hook", "problem", "reveal", "feature", "proof", "cta"].includes(String(a)))))))
     && (v.stickerMode === undefined || v.stickerMode === "off" || v.stickerMode === "auto")
     && (v.stickerOverrides === undefined || (isObject(v.stickerOverrides) && Object.values(v.stickerOverrides).every(x => typeof x === "string")))
     && (v.sfx === undefined || SFX_MODES.includes(v.sfx as SfxMode))
