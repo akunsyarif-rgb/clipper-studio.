@@ -389,8 +389,8 @@ try {
     await p.getByTestId("gemini-provider").selectOption("openai");
     assert((await p.getByTestId("gemini-baseurl").inputValue()) === "https://openrouter.ai/api/v1", "OpenRouter is suggested first");
     await p.getByTestId("gemini-key").fill("sk-router-key-0123456789abcdef");
-    await p.getByTestId("gemini-save").click();
-    await p.getByTestId("gemini-error").waitFor({ timeout: 3000 }); // a model name is needed for a router
+    // Free first: OpenRouter comes with its free alias already filled in, so no model name has to be typed (and no paid model is picked for the creator).
+    assert((await p.getByTestId("gemini-model").inputValue()) === "openrouter/free", "OpenRouter defaults to the free model");
     await p.getByTestId("gemini-model").fill("google/gemini-x");
     await p.getByTestId("gemini-save").click();
     await p.getByTestId("gemini-run").waitFor({ timeout: 5000 });
