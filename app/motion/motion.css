@@ -227,3 +227,20 @@ button.scene-row{width:100%;text-align:left;color:inherit;font:inherit;backgroun
 .icon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:8px;margin:8px 0}
 .icon-choice{display:flex;align-items:center;justify-content:center;aspect-ratio:1;padding:6px;border-radius:10px;border:1px solid #ffffff22;background:#ffffff0d}
 .icon-choice img{width:32px;height:32px}
+
+/* Cinematic Studio and Ikon otomatis panels (they sit in the preview column, outside .studio-panel, so they carry their own form look). */
+.fold-body{display:flex;flex-direction:column;gap:12px;padding:6px 2px 10px}
+.fold-body>p{margin:0}
+.fold-body .field-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.fold-body label{display:flex;flex-direction:column;gap:6px;min-width:0;font-size:11px;font-weight:700;color:#d6dbeb}
+.fold-body input:not([type=checkbox]),.fold-body select,.fold-body textarea{display:block;width:100%;min-width:0;border:1px solid #343750;background:#171a31;color:#f0f2ff;border-radius:9px;padding:11px 12px;font:13px/1.5 'DM Sans',system-ui,sans-serif;outline:none}
+.fold-body textarea{resize:vertical;min-height:84px}
+.fold-body input:focus,.fold-body select:focus,.fold-body textarea:focus{border-color:#8c80fa;box-shadow:0 0 0 3px #8c80fa1b}
+.fold-body .button-row{display:flex;flex-wrap:wrap;gap:8px}
+.fold-body button{min-height:44px;padding:0 14px;border-radius:9px;border:1px solid #44465f;background:#1d2040;color:#dce0f2;font-size:12px;font-weight:700;cursor:pointer}
+.fold-body button:disabled{opacity:.6;cursor:not-allowed;color:#b4bbd0}
+.fold-body button[data-testid=cine-build],.fold-body button[data-testid=cine-apply],.fold-body button[data-testid=icon-auto]{border:0;background:linear-gradient(100deg,#9d8aff,#62e8d9);color:#17152c}
+.fold-body button[data-testid=cine-build]:disabled,.fold-body button[data-testid=cine-apply]:disabled,.fold-body button[data-testid=icon-auto]:disabled{background:#2a2d4a;color:#b4bbd0}
+.fold-body .cine-list select{width:auto;min-width:150px;padding:8px 10px;font-size:12px}
+.fold-body .icon-grid .icon-choice{min-height:0;padding:6px}
+.fold-body details>summary{cursor:pointer;color:#9ca4ba}

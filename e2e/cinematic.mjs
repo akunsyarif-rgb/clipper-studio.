@@ -88,8 +88,8 @@ try {
     await page.getByTestId("fold-cinematic").evaluate(d => { d.open = true; });
     await page.getByTestId("cine-clear").waitFor({ timeout: 10000 });
     assert((await page.getByTestId("cine-list").locator("li").count()) === planned, "same storyboard after reload");
-    assert((await page.getByTestId("cine-product").inputValue()) === "Nova", "product brief restored");
-    assert((await page.getByTestId("cine-tagline").inputValue()) === "Satu ketukan untuk semuanya.", "tagline restored");
+    assert((await page.getByTestId("cine-product").inputValue()) === "Nova Studio", "product brief restored");
+    assert((await page.getByTestId("cine-tagline").inputValue()) === "Kreasi tanpa batas.", "tagline restored");
     assert((await page.getByTestId("cine-problem").inputValue()) === "Terlalu banyak aplikasi.", "problem restored");
     assert((await page.getByTestId("cine-features").inputValue()).includes("Cepat dan responsif."), "features restored");
     assert((await page.getByTestId("cine-proof").inputValue()) === "Dipakai 10.000 tim.", "proof restored");
@@ -117,7 +117,7 @@ try {
   await step("clearing the mode keeps the script", async () => {
     await page.getByTestId("cine-clear").click();
     await page.getByTestId("cine-apply").waitFor({ timeout: 3000 });
-    assert((await page.getByTestId("script").inputValue()).startsWith("Satu ketukan"), "script kept");
+    assert((await page.getByTestId("script").inputValue()).startsWith("Kreasi tanpa batas."), "script kept");
   });
 
   await step("no horizontal scroll on iPhone-size viewport", async () => {

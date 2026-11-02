@@ -34,12 +34,14 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
   useEffect(() => () => abort.current?.abort(), []);
 
   // Restore the editable brief alongside the applied plan so a reload does not leave the form blank.
+  // Only when the applied script changes (apply, restore): changing a scene's motion preset must not overwrite what is being typed.
   const activePlan = active?.plan;
+  const activeScript = activePlan?.script;
   useEffect(() => {
     if (!activePlan) return;
     setBrief(activePlan.brief);
     setFeaturesText(activePlan.brief.features.join("\n"));
-  }, [activePlan]);
+  }, [activeScript]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const input = useMemo(() => ({ ...brief, features: featuresText.split("\n") }), [brief, featuresText]);
   // A newly built or polished draft must take precedence over the applied plan; otherwise active mode hides every edit.
