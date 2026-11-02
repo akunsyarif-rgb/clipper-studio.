@@ -34,8 +34,9 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
   useEffect(() => () => abort.current?.abort(), []);
 
   const input = useMemo(() => ({ ...brief, features: featuresText.split("\n") }), [brief, featuresText]);
-  const shown = active?.plan ?? draft;
-  const issues = useMemo(() => shown ? validateCinematic(shown, { hasMusic, frames: active ? frames : undefined, fps: FPS }) : [], [shown, hasMusic, frames, active]);
+  // A newly built or polished draft must take precedence over the applied plan; otherwise active mode hides every edit.
+  const shown = draft ?? active?.plan ?? null;
+  const issues = useMemo(() => shown ? validateCinematic(shown, { hasMusic, frames: active && !draft ? frames : undefined, fps: FPS }) : [], [shown, hasMusic, frames, active, draft]);
   const set = <K extends keyof Brief>(k: K, v: Brief[K]) => { setBrief(b => ({ ...b, [k]: v })); setDraft(null); };
 
   function build() {
@@ -87,13 +88,13 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
             <div>{s.text}</div>
             <select value={s.fx} aria-label={`Gerak adegan ${i + 1}`} data-testid="cine-fx" onChange={e => {
               const fx = e.target.value; if (!isFx(fx)) return;
-              if (active) onFx(s.text, fx); else setDraft(d => d ? { ...d, scenes: d.scenes.map((x, k) => k === i ? { ...x, fx } : x), fxByText: { ...d.fxByText, [s.text]: fx } } : d);
+              if (active && !draft) onFx(s.text, fx); else setDraft(d => d ? { ...d, scenes: d.scenes.map((x, k) => k === i ? { ...x, fx } : x), fxByText: { ...d.fxByText, [s.text]: fx } } : d);
             }}>{FX.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}</select>
           </li>)}
         </ol>
         {issues.length > 0 && <ul className="cine-issues" data-testid="cine-issues">{issues.map((m, i) => <li key={i} data-level={m.level}>{m.level === "error" ? "⛔" : "⚠️"} {m.message}</li>)}</ul>}
         <div className="button-row">
-          {!active && <button type="button" onClick={() => draft && onApply(draft)} disabled={!draft || issues.some(x => x.level === "error")} data-testid="cine-apply">Pakai di Motion Studio</button>}
+          {draft && <button type="button" onClick={() => onApply(draft)} disabled={issues.some(x => x.level === "error")} data-testid="cine-apply">{active ? "Perbarui di Motion Studio" : "Pakai di Motion Studio"}</button>}
           {active && <button type="button" onClick={() => { setDraft(active.plan); onClear(); }} data-testid="cine-clear">Lepas mode sinematik</button>}
         </div>
         {active && <p className="preview-disclaimer">Mode aktif: panjang adegan mengikuti ketukan {bpm} BPM dan backsound sinematik otomatis. Mengubah naskah di atas melepas panjang adegan sinematik (gerak tiap adegan tetap bila kalimatnya sama).</p>}
