@@ -117,8 +117,39 @@ export function parseLines(response: unknown, expected: number): string[] {
   return lines as string[];
 }
 
-/** One call to the model. The key travels in a header, never in the address. One automatic retry if the answer is malformed. */
+// ---- cost guards: identical requests are answered once, and calls are rate-limited ----------------------------------------
+const CACHE_MAX = 30, CACHE_TTL_MS = 10 * 60_000, RATE_MAX = 40, RATE_WINDOW_MS = 60_000;
+const answers = new Map<string, { at: number; value: unknown }>();
+const inflight = new Map<string, Promise<unknown>>();
+let callTimes: number[] = [];
+/** Running totals for this session: model requests sent, answers reused, tokens reported by the service. */
+export const aiUsage = { requests: 0, cacheHits: 0, tokens: 0 };
+export function resetAiGuards() { answers.clear(); inflight.clear(); callTimes = []; aiUsage.requests = aiUsage.cacheHits = aiUsage.tokens = 0; }
+const hash = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36) + s.length; };
+const tokensOf = (json: unknown) => { const j = json as { usageMetadata?: { totalTokenCount?: number }; usage?: { total_tokens?: number } } | null; return Number(j?.usageMetadata?.totalTokenCount ?? j?.usage?.total_tokens ?? 0) || 0; };
+
+/** One call to the model, deduplicated (same request in flight or answered within 10 min is not sent again) and rate-limited. */
 export async function ask<T>(o: CleanupOptions, parts: unknown[], schema: object, parse: (json: unknown) => T): Promise<T> {
+  const key = hash(`${o.model}|${o.format ?? ""}|${JSON.stringify(parts)}|${JSON.stringify(schema)}`);
+  const hit = answers.get(key);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) { aiUsage.cacheHits++; return structuredClone(hit.value) as T; }
+  const running = inflight.get(key);
+  if (running) { aiUsage.cacheHits++; return structuredClone(await running) as T; }
+  const now = Date.now();
+  callTimes = callTimes.filter(t => now - t < RATE_WINDOW_MS);
+  if (callTimes.length >= RATE_MAX) throw new GeminiError("quota", "Terlalu banyak permintaan AI dalam semenit. Tunggu sebentar lalu coba lagi.");
+  callTimes.push(now);
+  const p = askUncached(o, parts, schema, parse);
+  inflight.set(key, p);
+  try {
+    const value = await p;
+    answers.set(key, { at: Date.now(), value: structuredClone(value) });
+    if (answers.size > CACHE_MAX) answers.delete(answers.keys().next().value as string);
+    return value;
+  } finally { inflight.delete(key); }
+}
+
+async function askUncached<T>(o: CleanupOptions, parts: unknown[], schema: object, parse: (json: unknown) => T): Promise<T> {
   const fetchImpl = o.fetchImpl ?? fetch;
   if (o.format === "openai" && !o.transport) throw new GeminiError("key", "Layanan berformat OpenAI hanya bisa dipakai setelah masuk ke akun (kunci disimpan di server).");
   const payload = o.format === "openai" ? openAiPayload(parts) : { contents: [{ role: "user", parts }], generationConfig: { temperature: 0.2, responseMimeType: "application/json", responseSchema: schema } };
@@ -137,6 +168,7 @@ export async function ask<T>(o: CleanupOptions, parts: unknown[], schema: object
       let json: unknown = null;
       try { json = await res.json(); } catch { /* an error page without JSON */ }
       if (!res.ok) throw explain(res.status, json);
+      aiUsage.requests++; aiUsage.tokens += tokensOf(json);
       return parse(json);
     } catch (e) {
       if (e instanceof GeminiError) throw e;
@@ -146,7 +178,7 @@ export async function ask<T>(o: CleanupOptions, parts: unknown[], schema: object
     } finally { clearTimeout(timer); o.signal?.removeEventListener("abort", onAbort); }
   };
   // A malformed answer gets one more try; a busy or failing service (5xx) gets the retries below, after a short wait.
-  const delays = o.retryDelaysMs ?? [1500, 4000];
+  const delays = o.retryDelaysMs ?? [2500];
   let formatRetried = false, waited = 0;
   for (;;) {
     try { return await once(); }

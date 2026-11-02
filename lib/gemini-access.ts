@@ -31,9 +31,12 @@ export const ROUTER_PRESETS = [
   { id: "other", label: "Lainnya (ketik alamat sendiri)", url: "", modelHint: "nama model dari layanan Anda" },
 ] as const;
 
+export const isOpenRouter = (baseUrl: string | null | undefined) => baseUrl?.replace(/\/+$/, "") === OPENROUTER_URL;
+export const defaultModelFor = (provider: Provider, baseUrl?: string | null) => provider === "google" ? DEFAULT_GEMINI_MODEL : isOpenRouter(baseUrl) ? OPENROUTER_FREE_MODEL : "";
+
 const serverTransport = (model: string): Transport => (payload, o) => cloud.fn("gemini", { action: "generate", model, body: payload }, o);
 
-/** What is available right now: the server's key if signed in and one is saved there, else this device's key, else nothing. */
+/** What is available right now (OpenRouter without a saved model gets the free alias; a paid model is only used when chosen explicitly; nothing retries or escalates by itself): the server's key if signed in and one is saved there, else this device's key, else nothing. */
 export async function getAccess(): Promise<Access | null> {
   if (cloud.user()) {
     try {
@@ -42,7 +45,7 @@ export async function getAccess(): Promise<Access | null> {
         const s = (await res.json()) as { hasKey?: boolean; model?: string; provider?: Provider; baseUrl?: string | null };
         if (s.hasKey) {
           const provider: Provider = s.provider === "openai" ? "openai" : "google";
-          const model = s.model || (provider === "google" ? DEFAULT_GEMINI_MODEL : "");
+          const model = s.model || defaultModelFor(provider, s.baseUrl);
           return { where: "server", provider, baseUrl: s.baseUrl ?? null, model, apiKey: "", format: provider === "openai" ? "openai" : "gemini", transport: serverTransport(model) };
         }
       }
@@ -70,7 +73,7 @@ async function ok(res: Response | null, what: string) {
 export async function saveToServer(rawKey: string, model: string, provider: Provider = "google", baseUrl = ""): Promise<void> {
   const apiKey = cleanKey(rawKey);
   if (!apiKey) throw new GeminiError("key", "Kunci tidak valid. Tempel seluruh kunci API (tanpa spasi).");
-  const name = model.trim() || (provider === "google" ? DEFAULT_GEMINI_MODEL : "");
+  const name = model.trim() || defaultModelFor(provider, baseUrl);
   await ok(await cloud.fn("gemini", { action: "save-key", apiKey, model: name, provider, baseUrl: provider === "openai" ? baseUrl.trim() : undefined }, { timeoutMs: 20_000 }), "Menyimpan kunci");
 }
 
