@@ -75,6 +75,14 @@ try {
     await page.getByTestId("fold-cinematic").evaluate(d => { d.open = true; });
     await page.getByTestId("cine-clear").waitFor({ timeout: 10000 });
     assert((await page.getByTestId("cine-list").locator("li").count()) === planned, "same storyboard after reload");
+    assert((await page.getByTestId("cine-product").inputValue()) === "Nova", "product brief restored");
+    assert((await page.getByTestId("cine-tagline").inputValue()) === "Satu ketukan untuk semuanya.", "tagline restored");
+    assert((await page.getByTestId("cine-problem").inputValue()) === "Terlalu banyak aplikasi.", "problem restored");
+    assert((await page.getByTestId("cine-features").inputValue()).includes("Cepat dan responsif."), "features restored");
+    assert((await page.getByTestId("cine-proof").inputValue()) === "Dipakai 10.000 tim.", "proof restored");
+    assert((await page.getByTestId("cine-cta").inputValue()) === "Coba gratis hari ini.", "CTA restored");
+    const acts = await page.getByTestId("cine-list").locator("li").evaluateAll(els => els.map(el => el.getAttribute("data-act")));
+    assert(acts.join(",") === "hook,problem,reveal,feature,feature,proof,cta", "scene act roles restored: " + acts.join(","));
   });
 
   await step("renders an MP4 as long as the beat plan, with the automatic cinematic backsound", async () => {
