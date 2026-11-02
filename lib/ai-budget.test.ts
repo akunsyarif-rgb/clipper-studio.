@@ -48,3 +48,13 @@ describe("daily AI budget", () => {
     expect(isFreeModel("google/gemini-2.5-pro")).toBe(false);
   });
 });
+
+describe("estimate with attached audio", () => {
+  it("does not count base64 audio as text: a long audio request without reported usage stays small", async () => {
+    resetAiGuards();
+    const { ask } = await import("./gemini");
+    const audio = "A".repeat(2_000_000);
+    await ask(opts(async () => reply(["B"])), [{ inlineData: { mimeType: "audio/wav", data: audio } }, { text: "dengarkan" }], {}, () => 1);
+    expect(getBudget().tokens).toBeLessThan(1000);
+  });
+});
