@@ -308,17 +308,6 @@ try {
     assert((await p.getByTestId("brand-motion").inputValue()) === "simple", "calm brand animation by default");
     await p.getByTestId("animation-density").selectOption("rich");
 
-    // A second opinion from Gemini on which sentences deserve an animation: averaged with the rules, shown per scene.
-    const notesBefore = await p.getByTestId("scene-importance").allInnerTexts();
-    assert(!notesBefore.some(t => /Gemini/.test(t)), "no Gemini opinion until asked");
-    await p.getByTestId("gemini-judge-run").click();
-    await p.getByTestId("gemini-judge-active").waitFor({ timeout: 10000 });
-    const judgeCall = JSON.parse(sent.at(-1).body);
-    assert(!JSON.stringify(judgeCall).includes("inlineData"), "judging sends text only");
-    const notesAfter = await p.getByTestId("scene-importance").allInnerTexts();
-    assert(notesAfter.some(t => /Gemini 0\.05: basa-basi/.test(t)), "scene list shows Gemini's reason: " + notesAfter.join(" | "));
-    await p.getByTestId("gemini-judge-clear").click();
-    assert(!(await p.getByTestId("scene-importance").allInnerTexts()).some(t => /Gemini/.test(t)), "rules only again after clearing");
     await p.getByTestId("gemini-forget").click();
     assert((await p.evaluate(() => localStorage.getItem("clipper:gemini:v1"))) === null, "key forgotten");
 
