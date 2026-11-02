@@ -60,10 +60,13 @@ try {
 
   await step("automatic fill covers only scenes without an icon, and only on request", async () => {
     const before = calls.length;
-    await page.getByTestId("script").fill("Roket meluncur cepat.\nMeja kayu besar.");
+    await page.getByTestId("script").fill("Roket meluncur cepat.\nLaptop kami lagi.");
     await page.getByTestId("icon-auto").click();
     await page.getByTestId("icon-note").filter({ hasText: /diberi ikon/ }).waitFor({ timeout: 15000 });
     assert(calls.length > before, "it asked the icon service only after the button");
+    const fresh = calls.slice(before);
+    assert(fresh.some(c => c.includes("icons=laptop")) && !fresh.some(c => c.startsWith("/search")), "the dictionary (laptop -> laptop) fetched the icon directly, no search: " + fresh.join(","));
+    await page.getByTestId("icon-entrance").selectOption("slide-up");
   });
 
   await step("an icon service failure is explained and nothing breaks", async () => {

@@ -1,6 +1,7 @@
 // Picks a visual for each scene from its text (Indonesian + English): a layout template, a line icon
 // (Lucide, ISC licence) and words to emphasise. Pure and deterministic; used by the UI, the Remotion
 // composition and unit tests. Users can override template and icon per scene.
+import type { Entrance } from "./icon-motion";
 import {
   Anchor, ArrowRight, Baby, BatteryLow, Bell, BookOpen, Bookmark, Brain, Briefcase, Building, CalendarDays, Camera, Car, ChartColumn,
   CircleCheck, CircleQuestionMark, CircleX, Clock, Code, Coffee, Coins, Compass, Cpu, Crown, Droplets, Dumbbell, Ear, EighthNotes, Eye,
@@ -129,7 +130,7 @@ export const CONCEPTS: Concept[] = [
   { id: "next", label: "Panah kanan", icon: ArrowRight, words: ["lanjut", "berikutnya", "selanjutnya", "next", "continue"] },
 ];
 
-export const ICONS: Record<string, { label: string; icon: IconNode }> = Object.fromEntries([
+export const ICONS: Record<string, { label: string; icon: IconNode; /** Runtime (Iconify) icons only: how they come in. */ entrance?: Entrance }> = Object.fromEntries([
   ...CONCEPTS.map(c => [c.id, { label: c.label, icon: c.icon }] as const),
   ...BRANDS.map(b => [b.id, { label: b.label, icon: b.icon }] as const),
   ["question", { label: "Tanda tanya", icon: CircleQuestionMark }],
@@ -138,8 +139,14 @@ export const ICONS: Record<string, { label: string; icon: IconNode }> = Object.f
 ]);
 
 /** Adds an icon found at run time (Iconify) so scenes can use it like a built-in one. The id must start with "iconify:". */
-export function registerIcon(id: string, label: string, icon: IconNode) {
-  if (id.startsWith("iconify:") && !(id in ICONS)) ICONS[id] = { label, icon };
+export function registerIcon(id: string, label: string, icon: IconNode, entrance: Entrance = customEntrance) {
+  if (id.startsWith("iconify:") && !(id in ICONS)) ICONS[id] = { label, icon, entrance };
+}
+let customEntrance: Entrance = "pop";
+/** One entrance animation for every Iconify icon (pop, fade + slide up, or drawn); applies to icons already registered too. */
+export function setCustomIconEntrance(entrance: Entrance) {
+  customEntrance = entrance;
+  for (const [id, v] of Object.entries(ICONS)) if (id.startsWith("iconify:")) v.entrance = entrance;
 }
 
 /** `year`: a plain four-digit year such as 1945, shown without a thousands separator and without counting up. */

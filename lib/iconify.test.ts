@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { bodyToNode, fetchIcon, getSvgDirectUrl, iconQueryFor, parseIconName, resetIconifyCache, searchSvgIcons } from "./iconify";
+import { bodyToNode, fetchIcon, getSvgDirectUrl, parseIconName, resetIconifyCache, resolveSceneIcon, searchSvgIcons } from "./iconify";
 
 const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status });
 beforeEach(() => resetIconifyCache());
@@ -61,9 +61,22 @@ describe("fetching an icon", () => {
   });
 });
 
-describe("scene query", () => {
-  it("prefers the director's English query, else the longest words", () => {
-    expect(iconQueryFor("Naskah apa saja", "rocket launch pad")).toBe("rocket launch");
-    expect(iconQueryFor("Fast secure payments, daily!")).toBe("payments secure");
+describe("resolving a scene icon", () => {
+  const body = { icons: { "trending-up": { body: '<path d="M1 1h4"/>' }, rocket: { body: '<path d="M2 2h4"/>' } }, width: 24, height: 24 };
+  it("fetches the dictionary's exact icon without any search", async () => {
+    const fn = vi.fn(async () => json(body));
+    const icon = await resolveSceneIcon({ exact: ["lucide:trending-up"], query: "profit" }, { fetchImpl: fn as unknown as typeof fetch });
+    expect(icon?.id).toBe("iconify:lucide:trending-up");
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect((fn.mock.calls[0] as unknown as [string])[0]).toContain("lucide.json");
+  });
+  it("falls back to the search when the exact name does not exist, and to null when nothing fits", async () => {
+    const fn = vi.fn(async (url: string) => url.includes("/search") ? json({ icons: ["lucide:rocket"] }) : json(url.includes("icons=rocket") ? body : { icons: {}, width: 24, height: 24 }));
+    expect((await resolveSceneIcon({ exact: ["lucide:nope"], query: "launch" }, { fetchImpl: fn as unknown as typeof fetch }))?.id).toBe("iconify:lucide:rocket");
+    resetIconifyCache();
+    expect(await resolveSceneIcon({ exact: [], query: "" }, { fetchImpl: fn as unknown as typeof fetch })).toBeNull();
+  });
+  it("a dead network is thrown (so a batch stops), not swallowed", async () => {
+    await expect(resolveSceneIcon({ exact: ["lucide:clock"], query: "" }, { fetchImpl: (async () => { throw new TypeError("x"); }) as unknown as typeof fetch })).rejects.toMatchObject({ kind: "network" });
   });
 });

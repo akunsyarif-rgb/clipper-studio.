@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { fetchIcon, getSvgDirectUrl, ICON_SETS, iconQueryFor, IconifyError, searchSvgIcons, type LoadedIcon } from "@/lib/iconify";
+import { fetchIcon, getSvgDirectUrl, ICON_SETS, IconifyError, resolveSceneIcon, searchSvgIcons, type LoadedIcon } from "@/lib/iconify";
+import { iconLookupFor } from "@/lib/icon-keywords";
+import { ENTRANCES, isEntrance, type Entrance } from "@/lib/icon-motion";
 
 const MAX_AUTO = 12;
 
@@ -10,7 +12,9 @@ const MAX_AUTO = 12;
  * creator presses a button, one request at a time, at most 12 scenes per press. The result is an ordinary scene icon (editable and
  * removable like the built-in ones), drawn as vector paths, so nothing is fetched while rendering.
  */
-export default function IconifyPanel({ scenes, accent, disabled, onApply }: {
+export default function IconifyPanel({ scenes, accent, disabled, entrance, onEntrance, onApply }: {
+  entrance: Entrance;
+  onEntrance: (e: Entrance) => void;
   scenes: { text: string; query?: string; hasIcon: boolean }[];
   accent: string;
   disabled: boolean;
@@ -51,12 +55,12 @@ export default function IconifyPanel({ scenes, accent, disabled, onApply }: {
     try {
       for (const s of scenes.filter(x => !x.hasIcon).slice(0, MAX_AUTO)) {
         if (ctl.signal.aborted) break;
-        const q = iconQueryFor(s.text, s.query);
-        if (!q) { missed++; continue; }
+        const lookup = iconLookupFor(s.text, s.query);
+        if (!lookup.exact.length && !lookup.query) { missed++; continue; }
         try {
-          const [top] = await searchSvgIcons(q, 3, { signal: ctl.signal });
-          if (!top) { missed++; continue; }
-          onApply(s.text, await fetchIcon(top, { signal: ctl.signal })); done++;
+          const icon = await resolveSceneIcon(lookup, { signal: ctl.signal });
+          if (!icon) { missed++; continue; }
+          onApply(s.text, icon); done++;
         } catch (e) { if (e instanceof IconifyError && (e.kind === "network" || e.kind === "timeout")) throw e; missed++; }
       }
       setNote(`${done} adegan diberi ikon${missed ? `, ${missed} dilewati (tidak ada ikon yang cocok)` : ""}. Ganti atau hapus per adegan bila kurang pas.`);
@@ -69,11 +73,12 @@ export default function IconifyPanel({ scenes, accent, disabled, onApply }: {
   return <details className="fold iconify-panel" data-testid="fold-iconify">
     <summary><b>Ikon otomatis</b> <small>Iconify · gratis, tanpa kunci</small></summary>
     <div className="fold-body">
-      <p className="preview-disclaimer">Mencari ikon garis dari {Object.values(ICON_SETS).map(s => `${s.name} (${s.license})`).join(", ")} — bebas dipakai tanpa kredit. Kata kunci pencarian dikirim ke api.iconify.design; naskah dan video tidak dikirim. Hanya berjalan saat Anda menekan tombol.</p>
+      <p className="preview-disclaimer">Mencari ikon garis dari {Object.values(ICON_SETS).map(s => `${s.name} (${s.license})`).join(", ")} — bebas dipakai tanpa kredit. Kata kunci pencarian dikirim ke api.iconify.design; naskah dan video tidak dikirim. Kata dalam naskah dipetakan ke nama ikon (mis. “untung” → trending-up, “waktu” → clock) sebelum mencari. Hanya berjalan saat Anda menekan tombol.</p>
       <div className="button-row">
         <button type="button" onClick={() => void fillAll()} disabled={disabled || busy || free === 0} data-testid="icon-auto">{busy ? "Mencari…" : `Isi otomatis (${Math.min(free, MAX_AUTO)} adegan tanpa ikon)`}</button>
         {busy && <button type="button" onClick={() => abort.current?.abort()} data-testid="icon-cancel">Batal</button>}
       </div>
+      <label>Animasi masuk ikon<select value={entrance} onChange={e => { if (isEntrance(e.target.value)) onEntrance(e.target.value); }} data-testid="icon-entrance">{ENTRANCES.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}</select></label>
       <div className="field-grid">
         <label>Adegan<select value={target} onChange={e => setTarget(Number(e.target.value))} data-testid="icon-target">{scenes.map((s, i) => <option key={i} value={i}>{i + 1}. {s.text.slice(0, 40)}</option>)}</select></label>
         <label>Kata kunci (Inggris)<input value={keyword} onChange={e => setKeyword(e.target.value)} onKeyDown={e => { if (e.key === "Enter") void search(); }} maxLength={60} data-testid="icon-keyword" /></label>

@@ -152,7 +152,7 @@ export function DownArrow({ color }: { color: string }) {
 function PinnedIcon({ visual, colors }: { visual: SceneVisual; colors: Colors }) {
   const icon = visual.iconPinned && visual.icon ? ICONS[visual.icon] : null;
   if (!icon) return null;
-  return <div data-visual={"icon-" + visual.icon}><LineIcon node={icon.icon} size={96} color={colors.accent} delay={6} strokeWidth={1.8} /></div>;
+  return <div data-visual={"icon-" + visual.icon}><LineIcon node={icon.icon} entrance={icon.entrance} size={96} color={colors.accent} delay={6} strokeWidth={1.8} /></div>;
 }
 
 export type FamilyProps = {
@@ -200,7 +200,7 @@ function EditorialOffset({ scene, visual, colors, box }: FamilyProps) {
   const head = useAppear(0);
   return (
     <div data-layout="quiet-offset" style={{ height: box.height, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "flex-start", gap: 44, borderLeft: `3px solid ${colors.accent}66`, paddingLeft: 40, marginLeft: -43, boxSizing: "border-box" }}>
-      {icon ? <div data-visual={"icon-" + visual.icon} style={{ opacity: head }}><LineIcon node={icon.icon} size={84} color={colors.accent} delay={4} strokeWidth={1.8} /></div> : null}
+      {icon ? <div data-visual={"icon-" + visual.icon} style={{ opacity: head }}><LineIcon node={icon.icon} entrance={icon.entrance} size={84} color={colors.accent} delay={4} strokeWidth={1.8} /></div> : null}
       <Headline text={stripMarks(scene.text)} width={box.width - 43} height={box.height * 0.5} maxSize={80} minSize={46} lineHeight={1.12} weight={800}
         align="left" colors={colors} focus={focusSet(visual, 1)} reveal="lines" scene={scene} delay={6} />
     </div>
@@ -251,7 +251,7 @@ function Explainer({ scene, visual, role, colors, box }: FamilyProps) {
   const HEADER = 128;
   const marker = visual.template === "list" && visual.listIndex != null
     ? <div data-visual="list" style={{ width: HEADER, height: HEADER, borderRadius: "50%", border: `4px solid ${colors.accent}`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: TYPE.display, fontSize: 64, color: colors.accent }}>{visual.listIndex}</div>
-    : icon ? <div data-visual={"icon-" + visual.icon} style={{ width: HEADER, height: HEADER, borderRadius: 32, border: `3px solid ${colors.accent}66`, display: "flex", alignItems: "center", justifyContent: "center" }}><LineIcon node={icon.icon} size={76} color={colors.accent} delay={6} strokeWidth={1.8} /></div>
+    : icon ? <div data-visual={"icon-" + visual.icon} style={{ width: HEADER, height: HEADER, borderRadius: 32, border: `3px solid ${colors.accent}66`, display: "flex", alignItems: "center", justifyContent: "center" }}><LineIcon node={icon.icon} entrance={icon.entrance} size={76} color={colors.accent} delay={6} strokeWidth={1.8} /></div>
     : null;
   const rest = box.height - (marker ? HEADER : 30) - 48;
   // The effect block appears when the narration reaches the connecting word.
@@ -408,7 +408,7 @@ function Metaphor({ scene, visual, colors, box }: FamilyProps) {
     <div data-visual="metaphor" style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 34, width: "100%" }}>
       <div style={{ width: 250, height: 250, borderRadius: "50%", border: `2px solid ${colors.accent}77`, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", opacity: p, transform: `scale(${0.9 + 0.1 * p})`, boxShadow: `0 0 0 22px ${colors.accent}0b` }}>
         <div style={{ position: "absolute", inset: 18, border: `1px solid ${colors.accent}33`, borderRadius: "50%" }} />
-        {icon ? <LineIcon node={icon.icon} size={112} color={colors.accent} delay={4} strokeWidth={1.5} /> : <div style={{ fontFamily: TYPE.serif, fontSize: 150, color: colors.accent, lineHeight: 1 }}>“</div>}
+        {icon ? <LineIcon node={icon.icon} entrance={icon.entrance} size={112} color={colors.accent} delay={4} strokeWidth={1.5} /> : <div style={{ fontFamily: TYPE.serif, fontSize: 150, color: colors.accent, lineHeight: 1 }}>“</div>}
       </div>
       <Headline text={text} width={box.width} height={box.height - 340} maxSize={88} minSize={44} align="center" colors={colors} focus={focusSet(visual, 1)} font={TYPE.serif} weight={700} letterSpacing={0} lineHeight={1.14} reveal="lines" scene={scene} delay={8} />
     </div>

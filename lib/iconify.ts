@@ -113,11 +113,21 @@ export async function fetchIcon(iconFullName: string, o: { fetchImpl?: Fetch; si
   return { id: ICON_PREFIX + iconFullName, label: `${p.name} (${ICON_SETS[p.prefix].name})`, node };
 }
 
-/** A search phrase for a scene: the director's English `imageQuery` when there is one, else the scene's longest words. */
-export function iconQueryFor(text: string, imageQuery?: string): string {
-  const q = (imageQuery ?? "").replace(/\s+/g, " ").trim();
-  if (q) return q.split(" ").slice(0, 2).join(" ");
-  return text.replace(/[^\p{L}\s]/gu, " ").split(/\s+/).filter(w => w.length >= 4).sort((a, b) => b.length - a.length).slice(0, 2).join(" ");
+/**
+ * The icon for one scene: the dictionary's exact names first (one request each, no search), then the search's best result.
+ * Returns null when nothing fits; network and timeout errors are thrown so the caller can stop.
+ */
+export async function resolveSceneIcon(lookup: { exact: string[]; query: string }, o: { fetchImpl?: Fetch; signal?: AbortSignal } = {}): Promise<LoadedIcon | null> {
+  for (const name of lookup.exact) {
+    try { return await fetchIcon(name, o); }
+    catch (e) { if (e instanceof IconifyError && (e.kind === "network" || e.kind === "timeout")) throw e; }
+  }
+  if (!lookup.query.trim()) return null;
+  for (const name of (await searchSvgIcons(lookup.query, 3, o)).slice(0, 2)) {
+    try { return await fetchIcon(name, o); }
+    catch (e) { if (e instanceof IconifyError && (e.kind === "network" || e.kind === "timeout")) throw e; }
+  }
+  return null;
 }
 
 export const isCustomIcon = (id: string) => id.startsWith(ICON_PREFIX);
