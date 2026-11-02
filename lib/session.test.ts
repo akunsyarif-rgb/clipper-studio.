@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildCinematic, saveCine } from "./cinematic";
 import { ASR_CACHE_LIMIT, ASR_PIPELINE_VERSION, asrCacheKey, isPristine, isSession, SESSION_VERSION, sourceMatches, touchCache, type SessionData } from "./session";
 
 const base: SessionData = {
@@ -19,6 +20,19 @@ describe("isSession", () => {
     expect(isSession(stored({ ...base, overlay: "lower" }))).toBe(true);
     expect(isSession(stored({ ...base, overlay: "top", cutOverrides: { a: "overlay" } }))).toBe(true);
     expect(isSession(stored({ ...base, overlay: "middle" }))).toBe(false);
+  });
+
+  it("accepts complete cinematic briefs and act roles while retaining legacy session support", () => {
+    const plan = buildCinematic({ product: "Nova", tagline: "Satu ketukan.", problem: "Terlalu banyak aplikasi.", features: ["Cepat.", "Aman."], proof: "Dipakai luas.", cta: "Mulai sekarang.", tone: "warm", seconds: 30, language: "en" });
+    const cine = saveCine({ plan, fx: plan.fxByText });
+    expect(isSession(stored({ ...base, cine }))).toBe(true);
+    const legacy = { ...cine };
+    delete legacy.brief;
+    delete legacy.acts;
+    expect(isSession(stored({ ...base, cine: legacy }))).toBe(true);
+    expect(isSession(stored({ ...base, cine: { ...cine, acts: ["hook"] } }))).toBe(false);
+    expect(isSession(stored({ ...base, cine: { ...cine, brief: { ...cine.brief, features: "not-an-array" } } }))).toBe(false);
+    expect(isSession(stored({ ...base, cine: { ...cine, brief: { ...cine.brief, product: "x".repeat(61) } } }))).toBe(false);
   });
 
   it("accepts the animation settings, and refuses unknown ones", () => {
