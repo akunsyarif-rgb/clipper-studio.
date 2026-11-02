@@ -4,7 +4,11 @@ const KEY = "clipper:ai-budget:v1";
 export const DEFAULT_DAILY_TOKENS = 200_000;
 export type Budget = { day: string; tokens: number; requests: number; limit: number };
 
-const today = () => new Date().toISOString().slice(0, 10);
+/** Use the device's local calendar day (not UTC), so the budget rolls over at local midnight. */
+export const localDayKey = (date = new Date()) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+const today = () => localDayKey();
+
 let memory: Budget | null = null;
 
 function read(): Budget {
@@ -21,7 +25,6 @@ export function setDailyLimit(limit: number) { write({ ...read(), limit: Math.ma
 export function recordUsage(tokens: number) { const b = read(); write({ ...b, tokens: b.tokens + Math.max(0, Math.round(tokens)), requests: b.requests + 1 }); }
 /** True once today's use has reached the limit; the next request is then refused (the one that crossed it was already paid for). */
 export const budgetExceeded = (): boolean => { const b = read(); return b.limit > 0 && b.tokens >= b.limit; };
-export const resetToday = () => write({ ...read(), tokens: 0, requests: 0 });
 /** Rough token estimate (about 4 characters per token) for services that report no usage. */
 export const estimateTokens = (text: string) => Math.ceil(text.length / 4);
 /** Models that cost nothing: OpenRouter's free alias and ":free" variants. Anything else may be billed by the provider. */
