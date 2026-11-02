@@ -80,6 +80,18 @@ try {
     return "active plan updated without clearing cinematic mode";
   });
 
+  await step("the motion library applies a built-in look to the active storyboard and keeps the creator's own preset", async () => {
+    await page.getByTestId("preset-select").selectOption("content:education");
+    await page.getByTestId("preset-apply").click();
+    await page.getByTestId("cine-apply").click();
+    assert((await page.getByTestId("palette").inputValue()) === "pearl" && (await page.getByTestId("style").inputValue()) === "hybrid", "the template's look is applied");
+    await page.getByTestId("preset-name").fill("Gaya uji");
+    await page.getByTestId("preset-save").click();
+    await page.getByTestId("cine-note").waitFor({ timeout: 3000 });
+    const opts = await page.getByTestId("preset-select").locator("option").allInnerTexts();
+    assert(opts.includes("Gaya uji"), "own preset listed: " + opts.join(","));
+  });
+
   await step("the plan survives a reload (offered back with the session)", async () => {
     await page.waitForTimeout(2500); // autosave is debounced
     await page.reload(); await openFolds(page);
@@ -88,6 +100,7 @@ try {
     await page.getByTestId("fold-cinematic").evaluate(d => { d.open = true; });
     await page.getByTestId("cine-clear").waitFor({ timeout: 10000 });
     assert((await page.getByTestId("cine-list").locator("li").count()) === planned, "same storyboard after reload");
+    assert((await page.getByTestId("preset-select").locator("option").allInnerTexts()).includes("Gaya uji"), "own preset still there after reload");
     assert((await page.getByTestId("cine-product").inputValue()) === "Nova Studio", "product brief restored");
     assert((await page.getByTestId("cine-tagline").inputValue()) === "Kreasi tanpa batas.", "tagline restored");
     assert((await page.getByTestId("cine-problem").inputValue()) === "Terlalu banyak aplikasi.", "problem restored");
