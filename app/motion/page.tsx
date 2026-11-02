@@ -31,6 +31,8 @@ import { scenesToSrt } from "@/lib/srt";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
 import TranscriptPanel from "../TranscriptPanel";
 import AiDirector from "../AiDirector";
+import CinematicStudio from "../CinematicStudio";
+import { conceptFor, restoreCine, saveCine, type CinePlan, type FxId } from "@/lib/cinematic";
 import SeoPanel, { type SeoSeed } from "../SeoPanel";
 import TrendStart from "../TrendStart";
 import TrimPanel from "../TrimPanel";
@@ -228,6 +230,8 @@ export default function MotionStudio() {
   const [sfxMode, setSfxMode] = useState<SfxMode>("off");
   const [backdrop, setBackdrop] = useState<"plain" | "mesh">("plain");
   const [grain, setGrain] = useState(false);
+  // Cinematic Studio: the applied plan (motion preset per scene text + beat-aligned lengths); it stays valid only while the script is unchanged.
+  const [cine, setCine] = useState<{ plan: CinePlan; fx: Record<string, string> } | null>(null);
   const [captionStyle, setCaptionStyle] = useState<CaptionStyleId>("classic");
   const [typography, setTypography] = useState<TypePackId>(DEFAULT_TYPE_PACK);
   // Fonts of the chosen pack are fetched as soon as it is chosen, so the preview never shows a fallback face for long.
@@ -366,14 +370,16 @@ export default function MotionStudio() {
   // Transcript timing applies while the script still matches the transcript words and the narration is the original audio.
   const timings = useMemo(() => imported ? sceneTimings(splitScript(script), shiftWords(allWords(imported), captionOffset), FPS, imported.duration) : null, [imported, script, captionOffset]);
   const timed = voiceMode !== "ai" && timings && (!narration || Math.abs(narration.seconds - imported!.duration) <= 1) ? timings : null;
+  const cineActive = !!cine && cine.plan.script === script && !aiFresh && !narration && !(videoEdit && source);
   const mode: DurationMode = aiFresh ? { kind: "scenes", seconds: aiFresh.sceneSeconds }
+    : cineActive ? { kind: "scenes", seconds: cine!.plan.scenes.map(x => x.seconds), exact: true }
     : timed ? { kind: "scenes", seconds: timed.seconds, exact: true }
     : narration ? { kind: "audio", seconds: narration.seconds }
     // Editing over a video whose captions have no usable timing: the scenes still span exactly the video, never more or less.
     : videoEdit && source && splitScript(script).length * MIN_SCENE_SECONDS <= trimSeconds(trim, source.seconds) ? { kind: "target", seconds: trimSeconds(trim, source.seconds) }
     : target === "auto" || voiceMode === "ai" ? { kind: "auto" } : { kind: "target", seconds: Number(target) };
   const voiceBusy = voiceProgress !== null;
-  const timeline = useMemo(() => buildTimeline(script, mode, FPS), [script, mode.kind, mode.kind === "target" ? mode.seconds : null, aiFresh, narration?.seconds, target, timed]); // eslint-disable-line react-hooks/exhaustive-deps
+  const timeline = useMemo(() => buildTimeline(script, mode, FPS), [script, mode.kind, mode.kind === "target" ? mode.seconds : null, cineActive, cine?.plan, aiFresh, narration?.seconds, target, timed]); // eslint-disable-line react-hooks/exhaustive-deps
   const videoSeconds = timeline.ok ? timeline.seconds : 0;
   const titleError = validateTitle(title);
   const recording = recordingSeconds !== null;
@@ -396,6 +402,7 @@ export default function MotionStudio() {
     ...(videoEdit && source ? { cut: cutOverrides[sc.text] ?? planned[i], ...(cutOverrides[sc.text] === "clip" ? { clipFrom: clipStarts[sc.text] ?? (trim?.start ?? 0) } : {}) } : {}),
     ...(images[sc.text]?.mediaType === "video" ? { videoSrc: images[sc.text].url } : images[sc.text] ? { image: images[sc.text].url } : {}),
     ...(stickerPlan[i] ? { sticker: stickerPlan[i]! } : {}),
+    ...(cine?.fx[sc.text] && !(videoEdit && source) ? { fx: cine.fx[sc.text] } : {}),
   })) : [];
   // Sound effects: planned from the scenes, synthesised on the device into one small WAV that plays in the preview and the MP4.
   const outLength = timeline.ok ? totalFrames(sceneList) / FPS : 0;
@@ -417,9 +424,9 @@ export default function MotionStudio() {
     music, speech: narration?.speech ?? null, ...(isWatermarkActive(watermark) ? { watermark } : {}), ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}), ...(sfxSrc ? { sfx: { src: sfxSrc, volume: SFX_VOLUME } } : {}),
   } : null;
   const snapshot = useMemo<SessionData>(() => ({
-    v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlay: overlayPos, density, brandMotion, ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(trim ? { trim } : {}), ...(editProfile !== "standard" ? { edit: { profile: editProfile, edits, emphasis, sfx: comedySfx } } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}), ...(stickerMode !== "off" ? { stickerMode } : {}), ...(Object.keys(stickerOverrides).length ? { stickerOverrides } : {}), ...(sfxMode !== "off" ? { sfx: sfxMode } : {}), imported,
+    v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlay: overlayPos, density, brandMotion, ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(trim ? { trim } : {}), ...(editProfile !== "standard" ? { edit: { profile: editProfile, edits, emphasis, sfx: comedySfx } } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}), ...(cine ? { cine: saveCine(cine) } : {}), ...(stickerMode !== "off" ? { stickerMode } : {}), ...(Object.keys(stickerOverrides).length ? { stickerOverrides } : {}), ...(sfxMode !== "off" ? { sfx: sfxMode } : {}), imported,
     voiceMode: voiceMode === "ai" ? "ai" : "none", ttsLang, ttsVoice, ttsSpeed,
-  }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlayPos, density, brandMotion, storyVisuals, typography, captionStyle, backdrop, grain, stickerMode, stickerOverrides, sfxMode, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed, trim, editProfile, edits, emphasis, comedySfx]);
+  }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlayPos, density, brandMotion, storyVisuals, typography, captionStyle, backdrop, grain, stickerMode, stickerOverrides, sfxMode, cine, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed, trim, editProfile, edits, emphasis, comedySfx]);
   useEffect(() => {
     if (!autosave || isPristine(snapshot, SAMPLE, !!source)) return;
     const t = setTimeout(() => { const s = { ...snapshot, savedAt: Date.now() }; void saveSession(s); void cloud.pushSession(s); }, 1000);
@@ -447,7 +454,8 @@ export default function MotionStudio() {
     const s = saved;
     if (!s) return;
     setScript(s.script); setTitle(s.title); setStyle(s.style); setPalette(s.palette); setContentPreset(s.contentPreset); setTarget(s.target); setCaptions(s.captions);
-    setOverrides(s.overrides); setCutOverrides(s.cutOverrides); setClipStarts(s.clipStarts); setCaptionOffset(s.captionOffset); setOverlayPos(s.overlay ?? "top"); setDensity(s.density ?? "balanced"); setBrandMotion(s.brandMotion ?? "simple"); setStoryVisuals(s.storyVisuals !== false); setTypography(s.typography ?? DEFAULT_TYPE_PACK); setCaptionStyle(s.captionStyle ?? "classic"); setBackdrop(s.backdrop ?? "plain"); setGrain(s.grain === true); setStickerMode(s.stickerMode ?? "off"); setStickerOverrides(s.stickerOverrides ?? {}); setSfxMode(s.sfx ?? "off"); setImported(s.imported);
+    setOverrides(s.overrides); setCutOverrides(s.cutOverrides); setClipStarts(s.clipStarts); setCaptionOffset(s.captionOffset); setOverlayPos(s.overlay ?? "top"); setDensity(s.density ?? "balanced"); setBrandMotion(s.brandMotion ?? "simple"); setStoryVisuals(s.storyVisuals !== false); setTypography(s.typography ?? DEFAULT_TYPE_PACK); setCaptionStyle(s.captionStyle ?? "classic"); setBackdrop(s.backdrop ?? "plain"); setGrain(s.grain === true); setStickerMode(s.stickerMode ?? "off"); setStickerOverrides(s.stickerOverrides ?? {}); setSfxMode(s.sfx ?? "off"); setCine(s.cine ? restoreCine(s.cine) : null); setImported(s.imported);
+    if (s.cine) { setMoodTouched(true); setMood(conceptFor(s.cine.tone).mood); setMusicMode("auto"); }
     setVoiceMode(s.voiceMode); setTtsLang(s.ttsLang); setTtsVoice(s.ttsVoice); setTtsSpeed(s.ttsSpeed);
     const rec = savedSource ? await loadSource() : null;
     if (rec) {
@@ -666,6 +674,14 @@ export default function MotionStudio() {
     }
   }
 
+  function applyCinematic(plan: CinePlan) {
+    const c = plan.concept;
+    setScript(plan.script); setTitle(plan.brief.product.slice(0, 60)); setContentPreset("custom");
+    setStyle(c.style); setPalette(c.palette); setTypography(c.typography); setBackdrop(c.backdrop); setGrain(c.grain); setSfxMode(c.sfx);
+    setMoodTouched(true); setMood(c.mood); setMusicMode("auto"); setCaptions(false); setVoiceMode("none"); setNarration(null);
+    setOverrides({}); setCutOverrides({}); setStickerMode("off");
+    setCine({ plan, fx: plan.fxByText });
+  }
   const directorSnap = (): DirectorSnap => ({ stickerMode, stickerOverrides, sfxMode, typography, backdrop, grain, captionStyle, style, palette, contentPreset, overrides, cutOverrides, info: directorInfo, aiScores, note: directorNote });
   function restoreDirector(v: DirectorSnap) {
     setStyle(v.style); setPalette(v.palette); setContentPreset(v.contentPreset); setStickerMode(v.stickerMode); setStickerOverrides(v.stickerOverrides); setSfxMode(v.sfxMode); setTypography(v.typography); setBackdrop(v.backdrop); setGrain(v.grain); setCaptionStyle(v.captionStyle);
@@ -1122,6 +1138,8 @@ export default function MotionStudio() {
           <label className="check-row" data-testid="safe-guide-toggle"><input type="checkbox" checked={guide} onChange={e => setGuide(e.target.checked)} /> Tampilkan panduan area aman (hanya di pratinjau, tidak ikut ke MP4)</label>
           {guide ? <p className="preview-disclaimer" data-testid="safe-guide-legend">Merah: tertutup tampilan aplikasi (tab, deskripsi, tombol kanan). Putus-putus putih: area konten utama 1200 px. Biru: kotak 1080×1080 yang tersisa bila dipotong 1:1. Kuning: baris dasar subtitle.</p> : null}
           <p className="preview-disclaimer">Pratinjau memakai komposisi yang sama dengan hasil render, jadi teks, durasi scene, narasi, dan backsound identik dengan MP4.</p>
+          <CinematicStudio active={cine} hasMusic={musicMode !== "none"} frames={timeline.ok ? timeline.scenes.map(x => x.durationInFrames) : []} onApply={applyCinematic} onClear={() => setCine(null)}
+            onFx={(text, fx: FxId) => setCine(c => c ? { ...c, fx: { ...c.fx, [text]: fx }, plan: { ...c.plan, scenes: c.plan.scenes.map(x => x.text === text ? { ...x, fx } : x), fxByText: { ...c.plan.fxByText, [text]: fx } } } : c)} />
           {timeline.ok && <AiDirector language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"} active={Object.keys(directorInfo).length > 0} note={directorNote} onPlan={applyDirector} onUndo={undoDirector} onRedo={redoDirector} canRedo={directorHistory.future.length > 0} versions={directorHistory.past.length}
             input={{ scenes: timeline.scenes.map(sc => ({ text: sc.text, seconds: sc.durationInFrames / FPS })), videoEdit: !!(videoEdit && source), style, palette, affiliate: activeMode === "affiliate" && affiliateBrief ? { product: affiliateBrief.product } : undefined,
               current: timeline.scenes.map(sc => ({ template: overrides[sc.text]?.template, icon: overrides[sc.text]?.icon, cut: cutOverrides[sc.text] })) }} />}

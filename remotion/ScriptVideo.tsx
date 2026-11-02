@@ -18,6 +18,7 @@ import { VideoOverlay } from "./Overlays";
 import { BottomVisual, TopVisual } from "./SceneVisuals";
 import { EditLayers } from "./EditEffects";
 import { zoomAt } from "../lib/edit-profile";
+import { fxFrame, isFx } from "../lib/cinematic";
 
 function resolveAudio(src: string): string {
   // Browser renders pass blob:/http(s):/data: URLs; CLI renders pass a file name inside public/.
@@ -154,13 +155,17 @@ function SceneView({ scene, index, count, title, style, colors, layout, insets, 
   const family = chooseFamily(visual, scene.narrative, role);
   // Text scenes draw no karaoke caption (it would duplicate the headline), so no caption band is reserved.
   const box = contentBox(false, insets);
+  // Cinematic Studio preset: replaces the style's own entrance (opacity/blur/scale) for this scene, and may add a glass card or a light sweep.
+  const fx = isFx(scene.fx) ? fxFrame(scene.fx, frame, d) : null;
   return (
-    <AbsoluteFill style={{ opacity: fadeIn }}>
+    <AbsoluteFill style={{ opacity: fx ? fx.opacity : fadeIn }}>
+      {fx && fx.glass > 0 ? <div data-fx-glass="1" style={{ position: "absolute", left: SAFE.side - 24, right: SAFE.side - 24, top: box.top + box.height * 0.2, height: box.height * 0.6, borderRadius: 56, opacity: fx.glass, transform: `translateY(${fx.y}px)`, background: `linear-gradient(135deg, ${colors.text}2e 0%, ${colors.text}0d 55%, ${colors.accent}1f 100%)`, border: `1.5px solid ${colors.text}40`, boxShadow: `0 30px 90px ${colors.bg1}aa, inset 0 1px 0 ${colors.text}59` }} /> : null}
       {scene.image ? <SceneImage src={scene.image} index={index} length={d} colors={colors} /> : null}
       {/* Everything stays inside the platform safe area; the full safe box is used because text scenes carry no caption band. */}
-      <div data-family={family} style={{ position: "absolute", top: box.top, left: SAFE.side, width: box.width, height: box.height, display: "flex", flexDirection: "column", justifyContent: "center", color: colors.text, transform: `translateY(${drift}px) scale(${popScale})`, filter: blur ? `blur(${blur}px)` : undefined }}>
+      <div data-family={family} style={{ position: "absolute", top: box.top, left: SAFE.side, width: box.width, height: box.height, display: "flex", flexDirection: "column", justifyContent: "center", color: colors.text, transform: fx ? `translate(${fx.x}px, ${fx.y + drift * 0.3}px) scale(${fx.scale})` : `translateY(${drift}px) scale(${popScale})`, filter: (fx ? fx.blur : blur) ? `blur(${fx ? fx.blur : blur}px)` : undefined }}>
         <FamilyView family={family} scene={scene} visual={visual} role={role} index={index} count={count} title={title} style={style} colors={colors} layout={layout} storyVisuals={storyVisuals} box={{ width: box.width, height: box.height - 12 }} />
       </div>
+      {fx && fx.sweep >= 0 ? <div data-fx-sweep="1" style={{ position: "absolute", top: 0, bottom: 0, width: 260, left: -260 + fx.sweep * (WIDTH + 520), transform: "skewX(-18deg)", background: `linear-gradient(90deg, transparent, ${colors.text}40, transparent)`, mixBlendMode: "screen", pointerEvents: "none" }} /> : null}
     </AbsoluteFill>
   );
 }

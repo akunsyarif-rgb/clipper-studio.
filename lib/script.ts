@@ -77,6 +77,8 @@ export type Scene = {
   image?: string;
   /** Stock video URL used as a muted scene background. */
   videoSrc?: string;
+  /** Cinematic motion preset (lib/cinematic.ts) for a text scene: entrance, push, glass card or light sweep. Absent = the style's own motion. */
+  fx?: string;
 };
 
 export type CaptionStyleId = "classic" | "pop" | "outline" | "box";
