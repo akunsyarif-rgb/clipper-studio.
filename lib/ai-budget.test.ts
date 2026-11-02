@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { aiUsage, cleanupLines, resetAiGuards } from "./gemini";
-import { budgetExceeded, DEFAULT_DAILY_TOKENS, getBudget, isFreeModel, recordUsage, setDailyLimit } from "./ai-budget";
+import { budgetExceeded, DEFAULT_DAILY_TOKENS, getBudget, isFreeModel, localDayKey, recordUsage, setDailyLimit } from "./ai-budget";
 
 const reply = (lines: string[], tokens?: number) => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ lines }) }] } }], ...(tokens ? { usageMetadata: { totalTokenCount: tokens } } : {}) }), { status: 200 });
 const opts = (fn: unknown) => ({ apiKey: "k".repeat(30), model: "m", language: "id", fetchImpl: fn as typeof fetch, retryDelaysMs: [] as number[] });
@@ -36,11 +36,15 @@ describe("daily AI budget", () => {
     expect(aiUsage.cacheHits).toBe(1);
     setDailyLimit(DEFAULT_DAILY_TOKENS);
   });
-  it("tells free models from billable ones, and a new day starts at zero", () => {
+  it("uses the device's local calendar date, including year and month boundaries", () => {
+    expect(localDayKey(new Date(2026, 10, 2, 23, 59))).toBe("2026-11-02");
+    expect(localDayKey(new Date(2026, 10, 3, 0, 0))).toBe("2026-11-03");
+    expect(localDayKey(new Date(2026, 11, 31))).toBe("2026-12-31");
+    expect(localDayKey(new Date(2027, 0, 1))).toBe("2027-01-01");
+  });
+  it("tells free models from billable ones", () => {
     expect(isFreeModel("openrouter/free")).toBe(true);
     expect(isFreeModel("meta/llama:free")).toBe(true);
     expect(isFreeModel("google/gemini-2.5-pro")).toBe(false);
-    recordUsage(5);
-    expect(getBudget().day).toBe(new Date().toISOString().slice(0, 10));
   });
 });
