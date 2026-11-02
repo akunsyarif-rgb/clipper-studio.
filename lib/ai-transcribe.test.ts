@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resetAiGuards } from "./gemini";
 import { CHUNK_SECONDS, CHUNK_TIMEOUT_MS, parseTimedLines, planChunks, toBase64, toSeconds, transcribeChunk, transcribeLong, transcribePrompt } from "./ai-transcribe";
 
 const gem = (obj: unknown) => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] } }] });
@@ -121,6 +122,7 @@ describe("a whole video", () => {
     const t = await transcribeLong(100, cutter(), { ...base, transport: slowOnce, timeoutMs: 20 });
     expect(t.segments).toHaveLength(2);
     expect(n).toBe(2);
+    resetAiGuards();
     const never = async (_p: object, o: { signal: AbortSignal }) => new Promise<Response | null>((_, rej) => o.signal.addEventListener("abort", () => rej(new Error("abort"))));
     await expect(transcribeLong(100, cutter(), { ...base, transport: never, timeoutMs: 20 })).rejects.toMatchObject({ kind: "timeout", message: expect.stringMatching(/^Bagian 1 dari 1: Gemini terlalu lama/) });
   });

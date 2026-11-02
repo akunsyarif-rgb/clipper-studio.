@@ -5,7 +5,7 @@ import {
   applyCleanup, changedLines, cleanKey, cleanupLines, clearGeminiSettings, DEFAULT_GEMINI_MODEL, GeminiError, maskKey, saveGeminiSettings, wavPart,
   type LineChange,
 } from "@/lib/gemini";
-import { chooseModel, forgetOnServer, getAccess, getFeatureAccess, listAvailableModels, notifyAccessChanged, OPENROUTER_FREE_MODEL, OPENROUTER_URL, ROUTER_PRESETS, saveToServer, type Access, type Provider } from "@/lib/gemini-access";
+import { chooseModel, forgetOnServer, getAccess, listAvailableModels, notifyAccessChanged, OPENROUTER_FREE_MODEL, OPENROUTER_URL, ROUTER_PRESETS, saveToServer, type Access, type Provider } from "@/lib/gemini-access";
 import { cloud } from "@/lib/cloud";
 import type { Transcript } from "@/lib/transcript";
 
@@ -145,7 +145,7 @@ export default function GeminiCleanup({ transcript, language, disabled, onApply,
         starts = transcript.segments.map(s => s.start);
       }
       setStage(withAudio ? "Gemini mendengarkan…" : "");
-      const featureAccess = await getFeatureAccess();
+      const featureAccess = await getAccess(); // also the device key
       const active = featureAccess ?? saved;
       const after = await cleanupLines(before, { apiKey: active.apiKey, model: active.model, language, signal: ctl.signal, audio, starts, transport: active.transport, format: active.format });
       const list = changedLines(before, after);

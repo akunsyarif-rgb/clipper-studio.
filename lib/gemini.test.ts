@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import {
+import { describe, expect, it, vi } from "vitest";
+import { aiUsage, resetAiGuards,
   applyCleanup, changedLines, cleanKey, cleanupLines, cleanupPrompt, clearGeminiSettings, DEFAULT_GEMINI_MODEL, GEMINI_ENDPOINT, GeminiError, lineSimilarity,
   loadGeminiSettings, maskKey, parseLines, saveGeminiSettings,
 } from "./gemini";
@@ -99,6 +99,7 @@ describe("the answer", () => {
     const good = fakeFetch(ok(reply(["only one"])), ok(reply(["a", "b"])));
     expect(await cleanupLines(["1", "2"], opts(good.fn))).toEqual(["a", "b"]);
     expect(good.calls).toHaveLength(2);
+    resetAiGuards();
     const bad = fakeFetch(ok(reply(["x"])), ok(reply(["y"])));
     await expect(cleanupLines(["1", "2"], opts(bad.fn))).rejects.toMatchObject({ kind: "format", message: expect.stringContaining("seharusnya 2") });
   });
@@ -422,5 +423,24 @@ describe("an OpenAI-format service (a router such as Flatkey)", () => {
     expect(parseOpenAiModels(list)).toEqual(["google/gemini-3.5-flash", "google/gemini-3.5-flash-lite"]);
     expect(parseOpenAiModels({ data: [{ id: "b" }, { id: "a" }] })).toEqual(["a", "b"]);
     expect(() => parseOpenAiModels({})).toThrow(GeminiError);
+  });
+});
+
+describe("AI cost guards", () => {
+  it("answers an identical request once, from memory the second time", async () => {
+    const fn = vi.fn(async () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ lines: ["B"] }) }] } }], usageMetadata: { totalTokenCount: 12 } }), { status: 200 }));
+    const o = { apiKey: "k".repeat(30), model: "m", language: "id", fetchImpl: fn as unknown as typeof fetch, retryDelaysMs: [] as number[] };
+    expect(await cleanupLines(["a"], o)).toEqual(["B"]);
+    expect(await cleanupLines(["a"], o)).toEqual(["B"]);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(aiUsage).toMatchObject({ requests: 1, cacheHits: 1, tokens: 12 });
+  });
+  it("stops a runaway loop of different requests", async () => {
+    const fn = vi.fn(async () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ lines: ["B"] }) }] } }] }), { status: 200 }));
+    const o = { apiKey: "k".repeat(30), model: "m", language: "id", fetchImpl: fn as unknown as typeof fetch, retryDelaysMs: [] as number[] };
+    let err: unknown;
+    for (let i = 0; i < 45 && !err; i++) await cleanupLines([`line ${i}`], o).catch(e => { err = e; });
+    expect(err).toMatchObject({ kind: "quota" });
+    expect(fn.mock.calls.length).toBeLessThanOrEqual(40);
   });
 });

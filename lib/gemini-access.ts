@@ -36,7 +36,7 @@ export const defaultModelFor = (provider: Provider, baseUrl?: string | null) => 
 
 const serverTransport = (model: string): Transport => (payload, o) => cloud.fn("gemini", { action: "generate", model, body: payload }, o);
 
-/** What is available right now: the server's key if signed in and one is saved there, else this device's key, else nothing. */
+/** What is available right now (OpenRouter without a saved model gets the free alias; a paid model is only used when chosen explicitly; nothing retries or escalates by itself): the server's key if signed in and one is saved there, else this device's key, else nothing. */
 export async function getAccess(): Promise<Access | null> {
   if (cloud.user()) {
     try {
@@ -53,21 +53,6 @@ export async function getAccess(): Promise<Access | null> {
   }
   const local = loadGeminiSettings();
   return local ? { where: "device", provider: "google", baseUrl: null, model: local.model, apiKey: local.apiKey, format: "gemini" } : null;
-}
-
-/**
- * One shared access policy for all external AI features. OpenRouter's free alias is used when no model was saved;
- * a paid model remains active only after the creator explicitly selects it in shared AI settings.
- * This resolver never retries or escalates to a paid model automatically.
- */
-export async function getFeatureAccess(): Promise<Access | null> {
-  const access = await getAccess();
-  if (!access || access.provider !== "openai" || !isOpenRouter(access.baseUrl) || access.model) return access;
-  return {
-    ...access,
-    model: OPENROUTER_FREE_MODEL,
-    transport: access.where === "server" ? serverTransport(OPENROUTER_FREE_MODEL) : access.transport,
-  };
 }
 
 /** Tells every screen that shows AI features that the key (or the chosen model) changed, so they look again. */

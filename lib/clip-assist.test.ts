@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resetAiGuards } from "./gemini";
 import { applyJudgements, continuesEarlier, groundedIn, itemOf, OPENING_MAX_CHARS, DROP_SCORE, GENRES, judgePrompt, MAX_EXTEND_START, parseJudgements, WEAK_SCORE, copyPrompt, LEAD_IN_SECONDS, lineTextAt, MAX_MOMENTS, MAX_REACH_BACK, startWithLeadIn, stepped, stepToLine, type Item, MOMENT_MAX_SECONDS, momentsPrompt, parseCopy, parseMoments, suggestMoments, writeCopy, type Line } from "./clip-assist";
 
 const gem = (obj: unknown) => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] } }] });
@@ -275,11 +276,13 @@ describe("clips a new viewer can follow (comedy and the reading test)", () => {
     expect(out[1].judged?.score).toBe(9);
     // The test fails (the service answers with something else): the suggestions are returned unjudged.
     const broken = async (p: object) => { const text = (p as { contents: { parts: { text: string }[] }[] }).contents[0].parts[0].text; return ok(text.includes('"judgements"') ? gem({ nope: 1 }) : gem(moments)); };
+    resetAiGuards();
     const plain = await suggestMoments(joke, opts(broken), lim, { genre: "komedi" });
     expect(plain.map(m => m.title)).toEqual(["Ojek nunggu", "Lain"]);
     expect(plain.every(m => m.judged === undefined)).toBe(true);
     // The test can be switched off.
     prompts.length = 0;
+    resetAiGuards();
     await suggestMoments(joke, opts(t), lim, { judge: false });
     expect(prompts).toHaveLength(1);
   });
