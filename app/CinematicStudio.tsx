@@ -34,11 +34,12 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
   useEffect(() => () => abort.current?.abort(), []);
 
   // Restore the editable brief alongside the applied plan so a reload does not leave the form blank.
+  const activePlan = active?.plan;
   useEffect(() => {
-    if (!active) return;
-    setBrief(active.plan.brief);
-    setFeaturesText(active.plan.brief.features.join("\n"));
-  }, [active?.plan]);
+    if (!activePlan) return;
+    setBrief(activePlan.brief);
+    setFeaturesText(activePlan.brief.features.join("\n"));
+  }, [activePlan]);
 
   const input = useMemo(() => ({ ...brief, features: featuresText.split("\n") }), [brief, featuresText]);
   const shown = active?.plan ?? draft;
