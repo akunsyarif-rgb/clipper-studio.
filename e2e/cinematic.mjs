@@ -67,6 +67,31 @@ try {
     return fxs.join(",");
   });
 
+  await step("a new storyboard can replace an already active cinematic plan", async () => {
+    await page.getByTestId("cine-product").fill("Nova Studio");
+    await page.getByTestId("cine-tagline").fill("Kreasi tanpa batas.");
+    await page.getByTestId("cine-build").click();
+    assert((await page.getByTestId("cine-list").innerText()).includes("Kreasi tanpa batas."), "new draft is visible while cinematic mode is active");
+    const apply = page.getByTestId("cine-apply");
+    assert(await apply.isVisible(), "update action is available");
+    assert((await apply.innerText()).includes("Perbarui"), "action is labelled as an update");
+    await apply.click();
+    assert((await page.getByTestId("script").inputValue()).startsWith("Kreasi tanpa batas."), "new plan replaces the active script");
+    return "active plan updated without clearing cinematic mode";
+  });
+
+  await step("the motion library applies a built-in look to the active storyboard and keeps the creator's own preset", async () => {
+    await page.getByTestId("preset-select").selectOption("content:education");
+    await page.getByTestId("preset-apply").click();
+    await page.getByTestId("cine-apply").click();
+    assert((await page.getByTestId("palette").inputValue()) === "pearl" && (await page.getByTestId("style").inputValue()) === "hybrid", "the template's look is applied");
+    await page.getByTestId("preset-name").fill("Gaya uji");
+    await page.getByTestId("preset-save").click();
+    await page.getByTestId("cine-note").waitFor({ timeout: 3000 });
+    const opts = await page.getByTestId("preset-select").locator("option").allInnerTexts();
+    assert(opts.includes("Gaya uji"), "own preset listed: " + opts.join(","));
+  });
+
   await step("the plan survives a reload (offered back with the session)", async () => {
     await page.waitForTimeout(2500); // autosave is debounced
     await page.reload(); await openFolds(page);
@@ -75,6 +100,15 @@ try {
     await page.getByTestId("fold-cinematic").evaluate(d => { d.open = true; });
     await page.getByTestId("cine-clear").waitFor({ timeout: 10000 });
     assert((await page.getByTestId("cine-list").locator("li").count()) === planned, "same storyboard after reload");
+    assert((await page.getByTestId("preset-select").locator("option").allInnerTexts()).includes("Gaya uji"), "own preset still there after reload");
+    assert((await page.getByTestId("cine-product").inputValue()) === "Nova Studio", "product brief restored");
+    assert((await page.getByTestId("cine-tagline").inputValue()) === "Kreasi tanpa batas.", "tagline restored");
+    assert((await page.getByTestId("cine-problem").inputValue()) === "Terlalu banyak aplikasi.", "problem restored");
+    assert((await page.getByTestId("cine-features").inputValue()).includes("Cepat dan responsif."), "features restored");
+    assert((await page.getByTestId("cine-proof").inputValue()) === "Dipakai 10.000 tim.", "proof restored");
+    assert((await page.getByTestId("cine-cta").inputValue()) === "Coba gratis hari ini.", "CTA restored");
+    const acts = await page.getByTestId("cine-list").locator("li").evaluateAll(els => els.map(el => el.getAttribute("data-act")));
+    assert(acts.join(",") === "hook,problem,reveal,feature,feature,proof,cta", "scene act roles restored: " + acts.join(","));
   });
 
   await step("renders an MP4 as long as the beat plan, with the automatic cinematic backsound", async () => {
@@ -96,7 +130,7 @@ try {
   await step("clearing the mode keeps the script", async () => {
     await page.getByTestId("cine-clear").click();
     await page.getByTestId("cine-apply").waitFor({ timeout: 3000 });
-    assert((await page.getByTestId("script").inputValue()).startsWith("Satu ketukan"), "script kept");
+    assert((await page.getByTestId("script").inputValue()).startsWith("Kreasi tanpa batas."), "script kept");
   });
 
   await step("no horizontal scroll on iPhone-size viewport", async () => {

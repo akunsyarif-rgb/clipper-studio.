@@ -5,6 +5,7 @@ import { buildCinematic, CINEMATIC_PLAYBOOK, FX, isFx, polishCinematic, TONES, v
 import { GeminiError, aiUsage } from "@/lib/gemini";
 import { getAccess } from "@/lib/gemini-access";
 import { FPS } from "@/lib/script";
+import { applyPresetToPlan, builtInPresets, loadPresets, presetFromPlan, savePresets, type LibraryPreset } from "@/lib/motion-library";
 import { useGeminiAccess } from "./useGeminiAccess";
 
 const EMPTY: Brief = { product: "", tagline: "", problem: "", features: [], proof: "", cta: "", tone: "keynote", seconds: 30, language: "id" };
@@ -31,12 +32,45 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const abort = useRef<AbortController | null>(null);
+  const [mine, setMine] = useState<LibraryPreset[]>([]);
+  const [presetId, setPresetId] = useState("");
+  const [presetName, setPresetName] = useState("");
+  useEffect(() => { setMine(loadPresets()); }, []);
   useEffect(() => () => abort.current?.abort(), []);
 
+  // Restore the editable brief alongside the applied plan so a reload does not leave the form blank.
+  // Only when the applied script changes (apply, restore): changing a scene's motion preset must not overwrite what is being typed.
+  const activePlan = active?.plan;
+  const activeScript = activePlan?.script;
+  useEffect(() => {
+    if (!activePlan) return;
+    setBrief(activePlan.brief);
+    setFeaturesText(activePlan.brief.features.join("\n"));
+  }, [activeScript]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const input = useMemo(() => ({ ...brief, features: featuresText.split("\n") }), [brief, featuresText]);
-  const shown = active?.plan ?? draft;
-  const issues = useMemo(() => shown ? validateCinematic(shown, { hasMusic, frames: active ? frames : undefined, fps: FPS }) : [], [shown, hasMusic, frames, active]);
+  // A newly built or polished draft must take precedence over the applied plan; otherwise active mode hides every edit.
+  const shown = draft ?? active?.plan ?? null;
+  const issues = useMemo(() => shown ? validateCinematic(shown, { hasMusic, frames: active && !draft ? frames : undefined, fps: FPS }) : [], [shown, hasMusic, frames, active, draft]);
   const set = <K extends keyof Brief>(k: K, v: Brief[K]) => { setBrief(b => ({ ...b, [k]: v })); setDraft(null); };
+
+  const library = shown ? [...builtInPresets(shown.concept), ...mine] : mine;
+  function usePreset() {
+    const preset = library.find(p => p.id === presetId);
+    if (!shown || !preset) return;
+    setDraft(applyPresetToPlan(shown, preset)); setError(""); setNote(`Preset “${preset.name}” dipasang pada storyboard. ${active ? "Tekan Perbarui untuk memakainya di Motion Studio." : "Tekan Pakai di Motion Studio."}`);
+  }
+  function saveMine() {
+    if (!shown || !presetName.trim()) return setError("Beri nama preset dulu.");
+    const next = [...mine, presetFromPlan(presetName, shown)];
+    if (!savePresets(next)) return setError("Browser menolak menyimpan preset di perangkat ini.");
+    setMine(next); setPresetName(""); setError(""); setNote("Preset disimpan di perangkat ini (tampilan + gerak tiap bagian).");
+  }
+  function removeMine() {
+    const next = mine.filter(p => p.id !== presetId);
+    if (next.length === mine.length || !savePresets(next)) return;
+    setMine(next); setPresetId("");
+  }
 
   function build() {
     setError(""); setNote("");
@@ -87,17 +121,32 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
             <div>{s.text}</div>
             <select value={s.fx} aria-label={`Gerak adegan ${i + 1}`} data-testid="cine-fx" onChange={e => {
               const fx = e.target.value; if (!isFx(fx)) return;
-              if (active) onFx(s.text, fx); else setDraft(d => d ? { ...d, scenes: d.scenes.map((x, k) => k === i ? { ...x, fx } : x), fxByText: { ...d.fxByText, [s.text]: fx } } : d);
+              if (active && !draft) onFx(s.text, fx); else setDraft(d => d ? { ...d, scenes: d.scenes.map((x, k) => k === i ? { ...x, fx } : x), fxByText: { ...d.fxByText, [s.text]: fx } } : d);
             }}>{FX.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}</select>
           </li>)}
         </ol>
         {issues.length > 0 && <ul className="cine-issues" data-testid="cine-issues">{issues.map((m, i) => <li key={i} data-level={m.level}>{m.level === "error" ? "⛔" : "⚠️"} {m.message}</li>)}</ul>}
         <div className="button-row">
-          {!active && <button type="button" onClick={() => draft && onApply(draft)} disabled={!draft || issues.some(x => x.level === "error")} data-testid="cine-apply">Pakai di Motion Studio</button>}
+          {draft && <button type="button" onClick={() => onApply(draft)} disabled={issues.some(x => x.level === "error")} data-testid="cine-apply">{active ? "Perbarui di Motion Studio" : "Pakai di Motion Studio"}</button>}
           {active && <button type="button" onClick={() => { setDraft(active.plan); onClear(); }} data-testid="cine-clear">Lepas mode sinematik</button>}
         </div>
         {active && <p className="preview-disclaimer">Mode aktif: panjang adegan mengikuti ketukan {bpm} BPM dan backsound sinematik otomatis. Mengubah naskah di atas melepas panjang adegan sinematik (gerak tiap adegan tetap bila kalimatnya sama).</p>}
       </>}
+      {shown && <div className="preset-library" data-testid="preset-library">
+        <label>Pustaka preset (tampilan + gerak)<select value={presetId} onChange={e => setPresetId(e.target.value)} data-testid="preset-select">
+          <option value="">Pilih preset…</option>
+          <optgroup label="Bawaan">{library.filter(p => p.builtIn).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</optgroup>
+          {mine.length > 0 && <optgroup label="Preset saya">{mine.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</optgroup>}
+        </select></label>
+        <div className="button-row">
+          <button type="button" onClick={usePreset} disabled={!presetId} data-testid="preset-apply">Pasang pada storyboard</button>
+          {presetId.startsWith("mine:") && <button type="button" onClick={removeMine} data-testid="preset-delete">Hapus preset</button>}
+        </div>
+        <div className="field-grid">
+          <label>Simpan tampilan ini sebagai preset<input value={presetName} onChange={e => setPresetName(e.target.value)} maxLength={40} placeholder="Nama preset" data-testid="preset-name" /></label>
+        </div>
+        <button type="button" onClick={saveMine} disabled={!presetName.trim()} data-testid="preset-save">Simpan preset (di perangkat ini)</button>
+      </div>}
       <details><summary><small>Pedoman sinematik yang dipakai</small></summary><ul>{CINEMATIC_PLAYBOOK.map((r, i) => <li key={i}><small>{r}</small></li>)}</ul></details>
     </div>
   </details>;
