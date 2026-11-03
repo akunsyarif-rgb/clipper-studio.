@@ -288,6 +288,7 @@ try {
     assert((await p.getByTestId("asr-seg").first().inputValue()).endsWith("!"), "accepted change applied");
     assert(/waktu kata dipertahankan/.test(await p.getByTestId("asr-info").innerText()), "says timing is kept");
     assert((await p.evaluate(() => localStorage.getItem("clipper:gemini:v1")) ?? "").includes(KEY), "key kept on this device");
+    assert(/Pemakaian AI hari ini/.test(await p.getByTestId("ai-usage").innerText()), "today's AI use and the daily limit are shown");
 
     // Letting Gemini listen is a separate, explicit choice; the audio then travels with the request.
     assert(await p.getByTestId("gemini-run-audio").isDisabled(), "audio is off until the creator allows it");

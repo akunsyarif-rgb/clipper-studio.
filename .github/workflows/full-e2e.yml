@@ -1,0 +1,53 @@
+name: Full browser regression
+
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - "lib/**"
+      - "e2e/**"
+      - "remotion/**"
+      - "public/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "next.config.*"
+      - "playwright.config.*"
+      - ".github/workflows/full-e2e.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: full-e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends ffmpeg
+          ffmpeg -version | head -1
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright for E2E
+        # Installed outside the project tree: installing into it with --no-save crashes npm ("reading 'edgesOut'").
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw" && npm init -y >/dev/null && npm install playwright@1.64.1
+          echo "NODE_PATH=$RUNNER_TEMP/pw/node_modules" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/pw/node_modules/.bin" >> "$GITHUB_PATH"
+      - name: Install Chromium
+        run: playwright install --with-deps chromium
+      - name: Build production app
+        run: npm run build
+      - name: Run complete browser regression suite
+        run: npm run test:e2e

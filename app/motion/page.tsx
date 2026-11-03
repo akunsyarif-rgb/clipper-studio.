@@ -31,6 +31,7 @@ import { scenesToSrt } from "@/lib/srt";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
 import TranscriptPanel from "../TranscriptPanel";
 import AiDirector from "../AiDirector";
+import AppNav from "../AppNav";
 import CinematicStudio from "../CinematicStudio";
 import IconifyPanel from "../IconifyPanel";
 import { registerIcon, setCustomIconEntrance } from "@/lib/visuals";
@@ -877,6 +878,7 @@ export default function MotionStudio() {
         <Link className="motion-brand" href="/"><span className="motion-logo">✳</span> clipper<span>studio</span></Link>
         <span><Link className="back-link" href="/hub" data-testid="link-hub">Content Hub</Link> · <Link className="back-link" href="/">← Clipper Studio</Link></span>
       </header>
+      <AppNav current="studio" />
 
       <section className="motion-intro compact">
         <div className="seg two mode-switch" role="radiogroup" aria-label="Jenis konten">
