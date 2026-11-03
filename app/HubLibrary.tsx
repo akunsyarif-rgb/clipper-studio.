@@ -114,10 +114,9 @@ export default function HubLibrary() {
   }
 
   const empty = assets && assets.length === 0;
-  return <main className="hub-page">
+  return <main className="hub-page hub-dark">
     <header className="hub-top">
       <Link className="brand" href="/"><span className="logo">c</span><span>clipper<span className="light">studio</span></span></Link>
-      <span><Link className="text-link" href="/">Clipper</Link> · <Link className="text-link" href="/motion">Motion</Link></span>
     </header>
     <AppNav current="library" />
     <h1>Library (Content Hub)</h1>

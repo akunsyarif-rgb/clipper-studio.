@@ -263,7 +263,7 @@ export default function Home() {
   const startSeconds = parseTime(start);
 
   return <main className="shell">
-    <header className="topbar"><Link className="brand" href="/"><span className="logo">c</span><span>clipper<span className="light">studio</span></span></Link><span className="pill"><i /> LOCAL-FIRST MVP</span><Link className="text-link" href="/hub" data-testid="link-hub">Content Hub</Link></header>
+    <header className="topbar"><Link className="brand" href="/"><span className="logo">c</span><span>clipper<span className="light">studio</span></span></Link><span className="pill"><i /> LOCAL-FIRST MVP</span></header>
     <AppNav current="clipper" />
     <CloudAccount />
     <section className="hero"><div className="eyebrow"><span className="eyebrow-line" /> VIDEO WORKSPACE</div><h1>Video panjang.<br/><em>Potongan yang tepat.</em></h1><p>Potong video menjadi klip 9:16, 16:9, atau 1:1. Pilih video, atur rentang waktu, lalu ekspor MP4 langsung dari perangkat.</p><div className="hero-tags"><span><b>01</b> Lokal dahulu</span><span><b>02</b> Tanpa login</span><span><b>03</b> Maks. 1 GB</span></div></section>
@@ -315,7 +315,6 @@ export default function Home() {
       {message&&<div className={"notice " + (isError ? "notice-error" : "")} role={isError ? "alert" : "status"} data-testid="message">{message}</div>}{errorDetail&&<details className="error-details"><summary>Detail teknis</summary><code>{errorDetail}</code></details>}
       <p className="fine-print">Batas: sumber 60 menit / 1 GB, satu klip maks. 5 menit. Kinerja bergantung pada perangkat, codec, dan memori browser. Di iPhone/iPad, 720p jauh lebih cepat daripada 1080p.</p>
     </section>
-    <Link className="motion-link" href="/motion" data-testid="motion-link"><span className="bottom-icon">✳</span><span><strong>Motion Graphics Lab</strong><small>Buat video 9:16 dari naskah dan narasi, render MP4 di browser.</small></span><b>Buka →</b></Link>
     <section className="bottom-note"><div className="bottom-icon">✦</div><div><strong>Lebih sederhana untuk workflow kreator.</strong><p>Pemotongan berjalan di perangkat dan tidak memerlukan akun. Hasilnya disimpan di perangkat; video baru dikirim ke Content Hub (penyimpanan cloud privat) bila Anda memilih dan menyetujuinya.</p></div></section>
     <footer><Link className="footer-brand" href="/">CLIPPER STUDIO</Link><span>Local-first · Mobile-first</span></footer>
   </main>;

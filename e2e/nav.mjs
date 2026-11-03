@@ -24,6 +24,13 @@ try {
       assert(w[0] <= w[1] + 1, `scrollWidth ${w[0]} > ${w[1]}`);
     });
   }
+  await step("one way to each place: no second link to the studio, library or home page content duplicated in headers", async () => {
+    for (const [path, target] of [["/", "/motion"], ["/hub", "/motion"], ["/assets", "/motion"], ["/motion", "/hub"], ["/", "/hub"]]) {
+      await page.goto(`http://localhost:${PORT}${path}`); await page.getByTestId("app-nav").waitFor();
+      const n = await page.locator(`a[href="${target}"]`).count();
+      assert(n === 1, `${path} has ${n} links to ${target}`);
+    }
+  });
   await step("every menu item leads to its page", async () => {
     await page.goto(`http://localhost:${PORT}/`);
     for (const [path, key] of PAGES.slice(1)) { await page.getByTestId(`nav-${key}`).click(); await page.waitForURL(`**${path}`); await page.getByTestId("app-nav").waitFor(); }
