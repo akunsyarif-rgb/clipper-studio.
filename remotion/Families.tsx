@@ -230,7 +230,7 @@ function EditorialCentered({ scene, visual, role, title, colors, box }: FamilyPr
 }
 
 /** 2. Kinetic typography: words brighten as they are spoken; only the focus words take the accent. */
-function Kinetic({ scene, visual, role, colors, box }: FamilyProps) {
+function Kinetic({ scene, visual, colors, box }: FamilyProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 40 }}>
       <PinnedIcon visual={visual} colors={colors} />
@@ -241,7 +241,7 @@ function Kinetic({ scene, visual, role, colors, box }: FamilyProps) {
 }
 
 /** 3. Explainer / infographic: step marker or cause → effect flow, with the concept icon as a label. */
-function Explainer({ scene, visual, role, colors, box }: FamilyProps) {
+function Explainer({ scene, visual, colors, box }: FamilyProps) {
   const text = stripMarks(scene.text);
   const cause = visual.template !== "list" ? splitCause(text) : null;
   const icon = visual.icon ? ICONS[visual.icon] : null;
@@ -320,7 +320,7 @@ export function formatNumber(value: number, decimals: number, prefix: string): s
 }
 
 /** 5. Data / product showcase: one figure (or one action) as the hero, the sentence as its context. */
-function DataAction({ scene, visual, role, colors, box }: FamilyProps) {
+function DataAction({ scene, visual, colors, box }: FamilyProps) {
   const text = stripMarks(scene.text);
   const p = useAppear(10, MOTION.springFirm);
   const PILL = 112;
@@ -335,7 +335,7 @@ function DataAction({ scene, visual, role, colors, box }: FamilyProps) {
   );
 }
 
-function DataFigure({ scene, visual, role, colors, box }: FamilyProps) {
+function DataFigure({ scene, visual, colors, box }: FamilyProps) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const text = stripMarks(scene.text);

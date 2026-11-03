@@ -298,42 +298,6 @@ export function audioCleanupPrompt(lines: string[], starts: number[], language: 
 
 export type SceneScore = { score: number; reason: string };
 
-export function judgePrompt(scenes: { text: string; seconds: number }[], language: string): string {
-  const lang = language === "en" ? "bahasa Inggris" : "bahasa Indonesia";
-  return [
-    `Kamu membantu editor video pendek (${lang}). Berikut kalimat-kalimat sebuah video yang dibacakan satu per satu. Nilai tiap kalimat 0 sampai 1: seberapa pantas diberi animasi grafis di atas pembicara.`,
-    "Nilai tinggi: istilah/merek populer, angka atau uang, perbandingan, ajakan bertindak, poin kunci yang perlu diingat penonton.",
-    "Nilai rendah: basa-basi, pengisi, transisi, pengulangan, kalimat yang cukup didengar saja.",
-    "Beri alasan singkat (maksimal 6 kata, bahasa Indonesia). Jangan menilai berdasarkan panjang kalimat saja.",
-    "Balas hanya JSON {\"scenes\": [{\"index\": n, \"score\": 0..1, \"reason\": \"...\"}]} untuk setiap kalimat.",
-    "",
-    "Masukan (JSON):",
-    JSON.stringify(scenes.map((s, index) => ({ index, text: s.text.replace(/\*/g, ""), seconds: Math.round(s.seconds * 10) / 10 }))),
-  ].join("\n");
-}
-
-/** Scores by scene index; a scene the model skipped or scored with something that is not a number stays undefined. */
-export function parseScores(response: unknown, expected: number): (SceneScore | undefined)[] {
-  const parsed = answerJson(response);
-  const list = Array.isArray(parsed) ? parsed : (parsed as { scenes?: unknown } | null)?.scenes;
-  if (!Array.isArray(list)) throw new GeminiError("format", "Jawaban Gemini tidak berisi daftar nilai. Coba lagi.");
-  const out: (SceneScore | undefined)[] = Array.from({ length: expected }, () => undefined);
-  for (const item of list as { index?: unknown; score?: unknown; reason?: unknown }[]) {
-    if (typeof item?.index !== "number" || !Number.isInteger(item.index) || item.index < 0 || item.index >= expected) continue;
-    if (typeof item.score !== "number" || !Number.isFinite(item.score)) continue;
-    out[item.index] = { score: Math.round(Math.min(1, Math.max(0, item.score)) * 100) / 100, reason: String(item.reason ?? "").replace(/\s+/g, " ").trim().slice(0, 60) };
-  }
-  if (!out.some(Boolean)) throw new GeminiError("format", "Gemini tidak memberi nilai yang bisa dipakai. Coba lagi.");
-  return out;
-}
-
-/** Asks Gemini how much each sentence deserves an animation. Only the sentences' text is sent. */
-export async function judgeScenesWithGemini(scenes: { text: string; seconds: number }[], o: CleanupOptions): Promise<(SceneScore | undefined)[]> {
-  if (scenes.length === 0) return [];
-  const schema = { type: "OBJECT", properties: { scenes: { type: "ARRAY", items: { type: "OBJECT", properties: { index: { type: "INTEGER" }, score: { type: "NUMBER" }, reason: { type: "STRING" } }, required: ["index", "score", "reason"] } } }, required: ["scenes"] };
-  return ask(o, [{ text: judgePrompt(scenes, o.language) }], schema, json => parseScores(json, scenes.length));
-}
-
 // ---- turning the answer into a better transcript -----------------------------------------------------------------
 
 const norm = (w: string) => w.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]+/gu, "");

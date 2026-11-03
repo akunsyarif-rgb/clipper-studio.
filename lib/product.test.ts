@@ -70,6 +70,7 @@ describe("searchWeb", () => {
     await expect(searchWeb("x", { fn: fnOf(new Error("offline")).fn })).rejects.toMatchObject({ kind: "network" });
   });
   it("keeps the page's text when it is missing from an older answer", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { text: _t, ...noText } = page;
     expect((await readProductPage("u", { fn: fnOf(json(200, { page: noText })).fn })).text).toBe("");
   });

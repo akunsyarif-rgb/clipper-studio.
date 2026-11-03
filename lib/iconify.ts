@@ -79,7 +79,7 @@ export async function searchSvgIcons(keyword: string, limit = 12, o: { fetchImpl
 }
 
 // ---- icon body -> the studio's own icon format ----------------------------------------------------------------------------------
-const SHAPES = ["path", "circle", "ellipse", "line", "polyline", "polygon", "rect"] as const;
+type Shape = "path" | "circle" | "ellipse" | "line" | "polyline" | "polygon" | "rect";
 const KEEP = new Set(["d", "cx", "cy", "r", "rx", "ry", "x", "y", "x1", "y1", "x2", "y2", "width", "height", "points"]);
 const SAFE_VALUE = /^[\d\s.,eE+\-a-zA-Z]*$/; // path data, numbers and points only
 
@@ -91,7 +91,7 @@ export function bodyToNode(body: string): IconNode {
     for (const a of m[2].matchAll(/([\w:-]+)\s*=\s*"([^"]*)"/g)) if (KEEP.has(a[1]) && SAFE_VALUE.test(a[2])) attrs[a[1]] = a[2];
     if (m[1] === "path" ? !attrs.d : Object.keys(attrs).length === 0) continue;
     // Fills in line sets are small dots drawn as stroke-only parts; this studio draws everything as a line.
-    out.push([m[1] as (typeof SHAPES)[number], attrs]);
+    out.push([m[1] as Shape, attrs]);
   }
   return out;
 }

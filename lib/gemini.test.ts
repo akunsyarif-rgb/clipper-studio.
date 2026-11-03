@@ -205,7 +205,7 @@ describe("applyCleanup keeps the timing of the speech", () => {
   });
 });
 
-import { audioCleanupPrompt, judgePrompt, judgeScenesWithGemini, MAX_AUDIO_SECONDS, parseScores, wavPart } from "./gemini";
+import { audioCleanupPrompt, MAX_AUDIO_SECONDS, wavPart } from "./gemini";
 import { blendAi, judgeScenes } from "./importance";
 import { detectVisual } from "./visuals";
 
@@ -239,33 +239,6 @@ describe("listening to the speech", () => {
     const { fn, calls } = fakeFetch(ok(reply(["A"])));
     await cleanupLines(["a"], opts(fn));
     expect(JSON.parse(calls[0].init.body as string).contents[0].parts).toHaveLength(1);
-  });
-});
-
-describe("judging which sentences deserve an animation", () => {
-  const scores = (list: unknown[]) => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({ scenes: list }) }] } }] });
-  it("reads scores by index, clamps them, and leaves skipped sentences empty", () => {
-    const out = parseScores(scores([{ index: 0, score: 1.4, reason: "  angka   uang " }, { index: 2, score: 0.2, reason: "basa-basi" }, { index: 9, score: 1, reason: "x" }, { index: 1, score: "tinggi", reason: "" }]), 3);
-    expect(out).toEqual([{ score: 1, reason: "angka uang" }, undefined, { score: 0.2, reason: "basa-basi" }]);
-  });
-  it("rejects an answer with nothing usable", () => {
-    expect(() => parseScores(scores([]), 2)).toThrow(GeminiError);
-    expect(() => parseScores(scores([{ index: 5, score: 1 }]), 2)).toThrow(/nilai/);
-  });
-  it("sends only the sentences, key in the header", async () => {
-    const { fn, calls } = fakeFetch(ok(scores([{ index: 0, score: 0.9, reason: "uang" }, { index: 1, score: 0.1, reason: "basa-basi" }])));
-    const out = await judgeScenesWithGemini([{ text: "Gaji *100 juta* sebulan", seconds: 3 }, { text: "ya gitu deh", seconds: 1 }], opts(fn));
-    expect(out.map(x => x?.score)).toEqual([0.9, 0.1]);
-    expect(calls[0].init.headers).toMatchObject({ "x-goog-api-key": KEY });
-    const text = JSON.parse(calls[0].init.body as string).contents[0].parts[0].text as string;
-    expect(text).toContain("Gaji 100 juta sebulan");
-    expect(text).not.toContain("*");
-    expect(judgePrompt([{ text: "a", seconds: 1 }], "en")).toContain("bahasa Inggris");
-  });
-  it("sends nothing for an empty script", async () => {
-    const { fn, calls } = fakeFetch();
-    expect(await judgeScenesWithGemini([], opts(fn))).toEqual([]);
-    expect(calls).toHaveLength(0);
   });
 });
 
@@ -401,10 +374,6 @@ describe("an OpenAI-format service (a router such as Flatkey)", () => {
     expect(parseLines(oa([{ type: "text", text: "{\"lines\":[\"y\"]}" }]), 1)).toEqual(["y"]);
     expect(() => parseLines(oa(""), 1)).toThrow(/tidak memberi jawaban/);
     expect(() => parseLines(oa("x", { finish_reason: "content_filter" }), 1)).toThrow(expect.objectContaining({ kind: "blocked" }));
-  });
-  it("judges sentences through the same format", async () => {
-    const transport = async () => ok(oa(JSON.stringify({ scenes: [{ index: 0, score: 0.7, reason: "uang" }] })));
-    expect(await judgeScenesWithGemini([{ text: "Gaji 100 juta", seconds: 3 }], { ...opts(fakeFetch().fn), apiKey: "", transport, format: "openai" })).toEqual([{ score: 0.7, reason: "uang" }]);
   });
   it("is not used straight from the browser (no transport)", async () => {
     await expect(cleanupLines(["a"], { ...opts(fakeFetch().fn), format: "openai" })).rejects.toMatchObject({ kind: "key", message: expect.stringContaining("masuk ke akun") });

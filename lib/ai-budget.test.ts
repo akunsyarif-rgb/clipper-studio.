@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { aiUsage, cleanupLines, resetAiGuards } from "./gemini";
-import { budgetExceeded, DEFAULT_DAILY_TOKENS, getBudget, isFreeModel, localDayKey, recordUsage, setDailyLimit } from "./ai-budget";
+import { budgetExceeded, DEFAULT_DAILY_TOKENS, getBudget, isFreeModel, localDayKey, setDailyLimit } from "./ai-budget";
 
 const reply = (lines: string[], tokens?: number) => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ lines }) }] } }], ...(tokens ? { usageMetadata: { totalTokenCount: tokens } } : {}) }), { status: 200 });
 const opts = (fn: unknown) => ({ apiKey: "k".repeat(30), model: "m", language: "id", fetchImpl: fn as typeof fetch, retryDelaysMs: [] as number[] });

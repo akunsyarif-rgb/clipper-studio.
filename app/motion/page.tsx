@@ -293,7 +293,7 @@ export default function MotionStudio() {
       else setAutosave(true);
     })();
     return () => { alive = false; };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!source) return; const url = source.url; return () => URL.revokeObjectURL(url); }, [source]);
   /** The clip arrives as the base video with its subtitles, ready to edit (same state as "use the transcript" after uploading here). */
   const [handoffNote, setHandoffNote] = useState("");
@@ -407,6 +407,7 @@ export default function MotionStudio() {
     : { cuts: [], judgements: [] };
   const planned = animationPlan.cuts;
   const stickerPlan = timeline.ok && !(videoEdit && source) ? planStickers(timeline.scenes.map(sc => sc.text), { mode: stickerMode, overrides: stickerOverrides }) : [];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const sceneList = timeline.ok ? (videoEdit && source ? (list: typeof timeline.scenes) => fitScenesToVideo(list, Math.round(trimSeconds(trim, source.seconds) * FPS)) : (list: typeof timeline.scenes) => list)(timeline.scenes).map((sc, i) => ({
     ...sc, visual: sceneVisuals[i], narrative: narrativePlan[i], ...(timed && !aiFresh ? { wordStarts: timed.wordStarts[i], wordEnds: timed.wordEnds[i], pauseFrames: undefined } : {}),
     ...(videoEdit && source ? { cut: cutOverrides[sc.text] ?? planned[i], ...(cutOverrides[sc.text] === "clip" ? { clipFrom: clipStarts[sc.text] ?? (trim?.start ?? 0) } : {}) } : {}),
@@ -437,6 +438,7 @@ export default function MotionStudio() {
   const snapshot = useMemo<SessionData>(() => ({
     v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlay: overlayPos, density, brandMotion, ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(trim ? { trim } : {}), ...(editProfile !== "standard" ? { edit: { profile: editProfile, edits, emphasis, sfx: comedySfx } } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}), ...(cine ? { cine: saveCine(cine) } : {}), ...usedIcons, ...(iconEntrance !== "pop" ? { iconMotion: iconEntrance } : {}), ...(stickerMode !== "off" ? { stickerMode } : {}), ...(Object.keys(stickerOverrides).length ? { stickerOverrides } : {}), ...(sfxMode !== "off" ? { sfx: sfxMode } : {}), imported,
     voiceMode: voiceMode === "ai" ? "ai" : "none", ttsLang, ttsVoice, ttsSpeed,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlayPos, density, brandMotion, storyVisuals, typography, captionStyle, backdrop, grain, stickerMode, stickerOverrides, sfxMode, cine, customIcons, iconEntrance, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed, trim, editProfile, edits, emphasis, comedySfx]);
   useEffect(() => {
     if (!autosave || isPristine(snapshot, SAMPLE, !!source)) return;
@@ -493,7 +495,7 @@ export default function MotionStudio() {
 
   // Structured plan the renderer will draw, checked before render (lib/storyboard.ts).
   const storyboard = useMemo(() => buildStoryboard(sceneList, { captions, videoEdit: !!(videoEdit && source), storyVisuals }), [sceneList, captions, videoEdit, source, storyVisuals]);
-  const storyIssues: Issue[] = useMemo(() => validateStoryboard(storyboard, { audioSeconds: mode.kind === "audio" ? narration?.seconds : undefined }), [storyboard, mode.kind, narration?.seconds]); // eslint-disable-line react-hooks/exhaustive-deps
+  const storyIssues: Issue[] = useMemo(() => validateStoryboard(storyboard, { audioSeconds: mode.kind === "audio" ? narration?.seconds : undefined }), [storyboard, mode.kind, narration?.seconds]);
   const storyErrors = storyIssues.filter(i => i.level === "error");
 
   const blocker = !timeline.ok ? timeline.error : titleError
