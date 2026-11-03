@@ -7,9 +7,10 @@ const store: Record<string, string> = {};
 beforeEach(() => { for (const k of Object.keys(store)) delete store[k]; (globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; }, removeItem: (k: string) => { delete store[k]; } }; });
 
 describe("motion library", () => {
-  it("offers the 4 tones and the 7 content templates", () => {
+  it("offers 2 motion sets, the 4 tones and the 7 content templates", () => {
     const b = builtInPresets(plan.concept);
-    expect(b).toHaveLength(11);
+    expect(b).toHaveLength(13);
+    expect(b.filter(p => p.id.startsWith("move:"))).toHaveLength(2);
     expect(b.filter(p => p.id.startsWith("content:"))).toHaveLength(7);
   });
   it("a saved preset applied to another storyboard restores its look and its motion per act", () => {

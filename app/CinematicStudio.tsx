@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { buildCinematic, CINEMATIC_PLAYBOOK, FX, isFx, polishCinematic, TONES, validateCinematic, type Brief, type CinePlan, type FxId } from "@/lib/cinematic";
+import { buildCinematic, CINEMATIC_PLAYBOOK, fxChoices, isFx, polishCinematic, TONES, validateCinematic, type Brief, type CinePlan, type FxId } from "@/lib/cinematic";
 import { GeminiError, aiUsage } from "@/lib/gemini";
 import { getAccess } from "@/lib/gemini-access";
 import { FPS } from "@/lib/script";
@@ -122,7 +122,7 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
             <select value={s.fx} aria-label={`Gerak adegan ${i + 1}`} data-testid="cine-fx" onChange={e => {
               const fx = e.target.value; if (!isFx(fx)) return;
               if (active && !draft) onFx(s.text, fx); else setDraft(d => d ? { ...d, scenes: d.scenes.map((x, k) => k === i ? { ...x, fx } : x), fxByText: { ...d.fxByText, [s.text]: fx } } : d);
-            }}>{FX.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}</select>
+            }}>{fxChoices(s.fx).map(f => <option key={f.id} value={f.id}>{f.label}</option>)}</select>
           </li>)}
         </ol>
         {issues.length > 0 && <ul className="cine-issues" data-testid="cine-issues">{issues.map((m, i) => <li key={i} data-level={m.level}>{m.level === "error" ? "⛔" : "⚠️"} {m.message}</li>)}</ul>}

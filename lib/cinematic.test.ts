@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { beatDurations, beatMap, buildCinematic, chooseFx, FX_IDS, fxFrame, parsePolish, polishCinematic, validateCinematic, type Act } from "./cinematic";
+import { fxChoices, isFx, beatDurations, beatMap, buildCinematic, chooseFx, FX_IDS, fxFrame, parsePolish, polishCinematic, validateCinematic, type Act } from "./cinematic";
 import { buildTimeline, FPS, MIN_SCENE_SECONDS, splitScript } from "./script";
 
 const brief = { product: "Nova", tagline: "Satu ketukan untuk semuanya.", problem: "Terlalu banyak aplikasi.", features: ["Cepat dan responsif.", "Aman sejak awal.", "Ringan di perangkat apa pun."], proof: "Dipakai 10.000 tim.", cta: "Coba gratis hari ini.", tone: "keynote" as const, seconds: 30 };
@@ -19,6 +19,36 @@ describe("motion presets", () => {
   it("morph starts large and blurred (continuity), keynote reveal starts small", () => {
     expect(fxFrame("morph", 0, 90)).toMatchObject({ scale: 1.35, opacity: 1 });
     expect(fxFrame("keynote-reveal", 0, 90).scale).toBeLessThan(1);
+  });
+});
+
+describe("signature presets", () => {
+  it("flood opens on a full black frame and contracts to nothing; page push slides in from the right and settles; mask rise reveals from a line", () => {
+    expect(fxFrame("flood", 0, 90).flood).toBe(1);
+    expect(fxFrame("flood", 30, 90).flood).toBe(0);
+    expect(fxFrame("flood", 10, 90).flood).toBeGreaterThan(0);
+    expect(fxFrame("page-push", 0, 90).x).toBe(900);
+    expect(fxFrame("page-push", 40, 90).x).toBe(0);
+    const r = fxFrame("blur-rise", 0, 90);
+    expect(r.reveal).toBeLessThan(1); expect(r.y).toBeGreaterThan(100);
+    expect(fxFrame("blur-rise", 40, 90)).toMatchObject({ reveal: 1, y: 0 });
+  });
+  it("no preset blurs or fades the scene in (the keynote direction); only the old ones may", () => {
+    for (const id of ["keynote-reveal", "blur-rise", "page-push", "flood", "hold-cut", "liquid-glass"] as const) for (const f of [0, 3, 8, 15]) expect(fxFrame(id, f, 90).blur).toBe(0);
+    expect(fxFrame("keynote-reveal", 8, 90).opacity).toBe(1);
+    for (const id of ["blur-rise", "page-push", "flood", "hold-cut", "liquid-glass"] as const) expect(fxFrame(id, 0, 90).opacity).toBe(1);
+  });
+  it("overshoot pop: keynote reveal passes full size a little, then settles", () => {
+    const peak = Math.max(...Array.from({ length: 24 }, (_, f) => fxFrame("keynote-reveal", f, 3000).scale));
+    expect(peak).toBeGreaterThan(1.0); expect(peak).toBeLessThan(1.1);
+  });
+  it("storyboards only pick current presets; legacy ones stay valid and are kept in a picker only when used", () => {
+    const p = buildCinematic(brief);
+    const legacy = ["morph", "parallax-push", "light-sweep"];
+    expect(p.scenes.every(s => !legacy.includes(s.fx))).toBe(true);
+    expect(fxChoices().map(f => f.id)).not.toContain("morph");
+    expect(fxChoices("morph").map(f => f.id)).toContain("morph");
+    for (const id of legacy) expect(isFx(id)).toBe(true);
   });
 });
 

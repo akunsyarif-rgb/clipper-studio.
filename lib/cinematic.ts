@@ -4,39 +4,47 @@
 import { answerJson, ask, GeminiError, type CleanupOptions } from "./gemini";
 import { BPM, type Mood } from "./audio";
 import { clamp01, easeOut } from "./brand-motion";
+import { easeOutBack } from "./icon-motion";
 import { MAX_SCENE_CHARS, MIN_SCENE_SECONDS, splitScript, type PaletteId, type StyleId } from "./script";
 import type { TypePackId } from "./fonts";
 import type { SfxMode } from "./sfx";
 
 // ---- motion presets -----------------------------------------------------------------------------------------------
 
-export type FxId = "keynote-reveal" | "morph" | "liquid-glass" | "parallax-push" | "light-sweep" | "blur-rise" | "hold-cut";
-export const FX: { id: FxId; label: string; description: string }[] = [
-  { id: "keynote-reveal", label: "Keynote reveal", description: "Muncul membesar dari sedikit kecil dengan blur yang mengering, lalu mendorong pelan; pembuka produk." },
-  { id: "morph", label: "Morph", description: "Mulai besar dan buram seolah lanjutan adegan sebelumnya, lalu mengecil dan menajam; kontinuitas tanpa potongan." },
-  { id: "liquid-glass", label: "Liquid glass", description: "Kartu kaca tembus pandang yang melayang di belakang teks; fitur dan bukti." },
-  { id: "parallax-push", label: "Parallax push", description: "Dorongan kamera yang lambat dengan geser halus; suasana dan cerita." },
-  { id: "light-sweep", label: "Light sweep", description: "Sapuan cahaya melintasi teks; momen pengungkapan." },
-  { id: "blur-rise", label: "Blur rise", description: "Naik dari bawah sambil menajam; kalimat pendukung." },
-  { id: "hold-cut", label: "Hold & cut", description: "Tanpa animasi masuk, langsung terlihat dan tahan; ketukan tegas atau ajakan penutup." },
+export type FxId = "keynote-reveal" | "morph" | "liquid-glass" | "parallax-push" | "light-sweep" | "blur-rise" | "hold-cut" | "page-push" | "flood";
+/** `legacy` presets still render (old sessions and saved presets keep working) but are no longer offered or chosen automatically. */
+export const FX: { id: FxId; label: string; description: string; legacy?: boolean }[] = [
+  { id: "keynote-reveal", label: "Muncul membal", description: "Membesar dengan pegas dan sedikit melampaui ukuran, lalu tenang; pembuka dan pengungkapan produk." },
+  { id: "blur-rise", label: "Naik dari garis", description: "Teks naik keluar dari garis tak terlihat, tanpa blur; kalimat pendukung dan fitur." },
+  { id: "page-push", label: "Halaman mendorong", description: "Adegan baru mendorong masuk dari kanan; perpindahan tegas tanpa fade." },
+  { id: "flood", label: "Bentuk hitam menyusut", description: "Layar hitam penuh yang menyusut membuka adegan; penanda momen besar." },
+  { id: "liquid-glass", label: "Kartu kaca", description: "Kartu kaca tembus pandang yang muncul membal dan melayang di belakang teks; fitur dan bukti." },
+  { id: "hold-cut", label: "Tahan & potong", description: "Tanpa animasi masuk, langsung terlihat dan tahan; ketukan tegas atau ajakan penutup." },
+  { id: "morph", label: "Morph (lama)", legacy: true, description: "Mulai besar lalu mengecil; kontinuitas tanpa potongan." },
+  { id: "parallax-push", label: "Dorongan kamera (lama)", legacy: true, description: "Dorongan kamera lambat dengan geser halus." },
+  { id: "light-sweep", label: "Sapuan cahaya (lama)", legacy: true, description: "Sapuan cahaya melintasi teks." },
 ];
+/** What the pickers offer: the current presets, plus the legacy one a scene already uses. */
+export const fxChoices = (current?: string) => FX.filter(f => !f.legacy || f.id === current);
 export const FX_IDS = FX.map(f => f.id);
 export const isFx = (v: unknown): v is FxId => typeof v === "string" && (FX_IDS as string[]).includes(v);
 
-export type FxFrame = { opacity: number; scale: number; x: number; y: number; blur: number; /** 0..1 strength of the glass card. */ glass: number; /** -1 none, else 0..1 position of the light band across the scene. */ sweep: number };
+export type FxFrame = { opacity: number; scale: number; x: number; y: number; blur: number; /** 0..1 strength of the glass card. */ glass: number; /** -1 none, else 0..1 position of the light band across the scene. */ sweep: number; /** 1 = everything shown; below 1 the text rises out from behind a fixed line. */ reveal: number; /** 0..1 size of the black shape that floods the frame and contracts (0 = none). */ flood: number };
 
 /** The look of a preset at `frame` of a scene of `d` frames. Pure and frame-exact, so preview and MP4 match. */
 export function fxFrame(id: FxId, frame: number, d: number): FxFrame {
   const p = (start: number, len: number) => easeOut(clamp01((frame - start) / Math.max(1, len)));
   const life = clamp01(frame / Math.max(1, d - 1));
-  const base: FxFrame = { opacity: 1, scale: 1, x: 0, y: 0, blur: 0, glass: 0, sweep: -1 };
+  const base: FxFrame = { opacity: 1, scale: 1, x: 0, y: 0, blur: 0, glass: 0, sweep: -1, reveal: 1, flood: 0 };
   switch (id) {
-    case "keynote-reveal": { const a = p(0, 22); return { ...base, opacity: p(0, 10), scale: 0.9 + 0.1 * a + 0.03 * life, blur: 14 * (1 - a) }; }
-    case "morph": { const a = p(0, 20); return { ...base, scale: 1.35 - 0.35 * a + 0.02 * life, blur: 24 * (1 - a) }; }
-    case "liquid-glass": { const a = p(0, 16); return { ...base, opacity: p(0, 8), scale: 0.96 + 0.04 * a, y: Math.sin(frame / 24) * 6, glass: a }; }
+    case "keynote-reveal": { const t = clamp01(frame / 16); return { ...base, opacity: p(0, 4), scale: 0.88 + 0.12 * easeOutBack(t, 1.2) + 0.03 * life }; }
+    case "morph": { const a = p(0, 20); return { ...base, scale: 1.35 - 0.35 * a + 0.02 * life }; }
+    case "liquid-glass": { const t = clamp01(frame / 16); return { ...base, scale: 0.9 + 0.1 * easeOutBack(t, 1.1), y: Math.sin(frame / 24) * 6, glass: 1 }; }
     case "parallax-push": return { ...base, opacity: p(0, 8), scale: 1 + 0.06 * life, x: -22 * (1 - life) };
     case "light-sweep": return { ...base, opacity: p(0, 8), sweep: frame < 6 || frame > 40 ? -1 : (frame - 6) / 34 };
-    case "blur-rise": { const a = p(0, 18); return { ...base, opacity: p(0, 10), y: 60 * (1 - a), blur: 12 * (1 - a) }; }
+    case "blur-rise": { const a = p(0, 16); return { ...base, y: 130 * (1 - a), reveal: a >= 1 ? 1 : a }; }
+    case "page-push": { const a = p(0, 16); return { ...base, x: 900 * (1 - a) }; }
+    case "flood": { const a = p(3, 14); return { ...base, flood: frame < 3 ? 1 : 1 - a }; }
     case "hold-cut": return { ...base, scale: 1 + 0.02 * life };
   }
 }
@@ -116,8 +124,8 @@ export type CineScene = { act: Act; text: string; fx: FxId; seconds: number };
 export type CinePlan = { brief: Brief; concept: Concept; map: BeatMap; scenes: CineScene[]; script: string; fxByText: Record<string, FxId> };
 
 const ACT_FX: Record<Act, FxId[]> = {
-  hook: ["hold-cut", "keynote-reveal"], problem: ["parallax-push", "blur-rise"], reveal: ["keynote-reveal", "light-sweep"],
-  feature: ["liquid-glass", "blur-rise", "morph"], proof: ["liquid-glass", "parallax-push"], cta: ["hold-cut", "light-sweep"],
+  hook: ["hold-cut", "keynote-reveal"], problem: ["page-push", "blur-rise"], reveal: ["flood", "keynote-reveal"],
+  feature: ["liquid-glass", "blur-rise", "page-push"], proof: ["liquid-glass", "page-push"], cta: ["hold-cut", "keynote-reveal"],
 };
 const ACT_WEIGHT: Record<Act, number> = { hook: 1, problem: 1.2, reveal: 1.6, feature: 1.3, proof: 1.2, cta: 1.1 };
 
