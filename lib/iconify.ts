@@ -102,9 +102,10 @@ export async function fetchIcon(iconFullName: string, o: { fetchImpl?: Fetch; si
   const p = parseIconName(iconFullName);
   if (!p) throw new IconifyError("unsupported", "Hanya set ikon garis berlisensi bebas yang dipakai.");
   const json = await once(`i:${iconFullName}`, () => getJson(`${API}/${p.prefix}.json?icons=${encodeURIComponent(p.name)}`, o.fetchImpl ?? fetch, o.signal)) as {
-    icons?: Record<string, { body?: string; width?: number; height?: number }>; width?: number; height?: number;
+    icons?: Record<string, { body?: string; width?: number; height?: number }>; aliases?: Record<string, { parent?: string }>; width?: number; height?: number;
   };
-  const icon = json?.icons?.[p.name];
+  // A renamed icon is an alias: the answer carries the parent icon and a map from the old name to it.
+  const icon = json?.icons?.[p.name] ?? json?.icons?.[json?.aliases?.[p.name]?.parent ?? ""];
   if (!icon || typeof icon.body !== "string") throw new IconifyError("format", "Ikon tidak ditemukan.");
   const w = icon.width ?? json.width ?? 24, h = icon.height ?? json.height ?? 24;
   if (w !== 24 || h !== 24) throw new IconifyError("unsupported", "Ukuran ikon tidak didukung.");
