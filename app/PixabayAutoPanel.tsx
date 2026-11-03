@@ -87,7 +87,7 @@ export default function PixabayAutoPanel({ scenes, onApply, onApplyVideo, musicO
     </div>
     {error && <div className="notice notice-error" role="alert" data-testid="pixabay-auto-error">{error}</div>}
     {summary && <div className="notice" role="status" data-testid="pixabay-auto-summary">{summary}</div>}
-    <div className="music-auto" data-testid="music-auto">
+    <div className="music-auto" data-testid="auto-assets-music">
       <p className="preview-disclaimer">Musik dan efek suara dibuat otomatis di perangkat Anda (gratis, tanpa API, mengikuti gaya video). Musik dan SFX Pixabay tidak punya API resmi, jadi tidak bisa dicari otomatis.</p>
       <button type="button" onClick={onMusic} disabled={disabled || musicOn} data-testid="music-auto-on">{musicOn ? "Musik otomatis sudah aktif" : "Nyalakan musik otomatis"}</button>
     </div>
