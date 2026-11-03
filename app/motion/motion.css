@@ -251,3 +251,5 @@ button.scene-row{width:100%;text-align:left;color:inherit;font:inherit;backgroun
 .auto-assets button{min-height:44px;padding:0 14px;border-radius:9px;border:1px solid #44465f;background:#1d2040;color:#dce0f2;font-size:12px;font-weight:700}
 .auto-assets button[data-testid=pixabay-auto-run]{border:0;background:linear-gradient(100deg,#8fe0bd,#62e8d9);color:#0d1b16}
 .auto-assets button:disabled{opacity:.6;cursor:not-allowed}
+.auto-assets .seg-row{display:flex;gap:6px}.auto-assets .seg-row button{flex:1}.auto-assets .seg-row button.active{border-color:#8fe0bd;background:#14312a;color:#d9fff0}
+.auto-assets .music-auto{border-top:1px solid var(--m-line);padding-top:10px;display:flex;flex-direction:column;gap:8px}

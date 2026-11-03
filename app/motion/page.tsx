@@ -1164,7 +1164,7 @@ export default function MotionStudio() {
               current: timeline.scenes.map(sc => ({ template: overrides[sc.text]?.template, icon: overrides[sc.text]?.icon, cut: cutOverrides[sc.text] })) }} />}
           {timeline.ok && <IconifyPanel entrance={iconEntrance} onEntrance={chooseEntrance} disabled={rendering} accent={PALETTES[palette].accent} onApply={applyIcon}
             scenes={timeline.scenes.map((sc, i) => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery, hasIcon: !!sceneVisuals[i]?.icon || overrides[sc.text]?.icon === "none" }))} />}
-          {timeline.ok && <PixabayAutoPanel disabled={rendering} onApply={putPixabayPhoto}
+          {timeline.ok && <PixabayAutoPanel disabled={rendering} onApply={putPixabayPhoto} onApplyVideo={putPixabayVideo} musicOn={musicMode === "auto"} onMusic={() => { setMusicMode("auto"); setMood(moodForStyle(style)); }}
             scenes={timeline.scenes.map((sc, i) => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery, hasImage: !!images[sc.text] || (!!(videoEdit && source) && sceneList[i]?.cut !== "graphic") }))} />}
           {timeline.ok && <PexelsPanel disabled={rendering} onApply={putStockPhoto}
             // Over a source video a picture only appears in a full-screen cutaway, so automatic filling covers just those scenes.

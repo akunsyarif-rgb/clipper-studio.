@@ -42,6 +42,7 @@ try {
     const body = JSON.parse(route.request().postData() || "{}");
     calls.push(body);
     if (missingKey) return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "MISSING_KEY", message: "Kunci Pixabay belum dipasang di server." } }) });
+    if (body.action === "video-search") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ videos: [{ id: 901, tags: "x", photographer: "Videografer", pageUrl: "https://pixabay.com/v/901", duration: 12, url: "https://cdn.pixabay.com/video/901.mp4", thumbnail: "t", width: 720, height: 1280, size: 1000 }, { id: 902, tags: "y", photographer: "V2", pageUrl: "https://pixabay.com/v/902", duration: 90, url: "https://cdn.pixabay.com/video/902.mp4", thumbnail: "t", width: 720, height: 1280, size: 10 }], totalHits: 2, remaining: 80 }) });
     if (body.action === "search") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ photos: [1, 2, 3].map(n => ({ id: n + calls.length * 10, alt: "x", photographer: "Fotografer", pageUrl: "https://pixabay.com/p/" + n, thumb: "t", image: "https://pixabay.com/img/" + n + ".jpg" })), totalHits: 3, remaining: 90 }) });
     return route.fulfill({ status: 200, contentType: "image/jpeg", body: jpgBytes });
   });
@@ -62,6 +63,21 @@ try {
     assert((await page.locator(".scene-thumb").count()) >= 2, "pictures are on the scenes");
     const searches = calls.filter(c => c.action === "search").map(c => c.query);
     assert(searches.length >= 2 && searches.every(q => /^[a-z ]+$/i.test(q)), "English keyword searches: " + searches.join(" | "));
+  });
+
+  await step("video backgrounds: the same tap, short clips only (a 90 s clip is never chosen); music turns on with one button", async () => {
+    await page.getByTestId("script").fill("Fresh pizza at lunch.\nSunset over the sea.");
+    await page.getByTestId("auto-kind-video").click();
+    const before = calls.length;
+    await page.getByTestId("pixabay-auto-run").click();
+    await page.getByTestId("pixabay-auto-summary").filter({ hasText: /video/ }).waitFor({ timeout: 20000 });
+    const vids = calls.slice(before).filter(c => c.action === "video-search");
+    assert(vids.length >= 1, "video searches were made");
+    assert((await page.getByTestId("scene-credit").allInnerTexts()).some(t => /Videografer/.test(t)), "the short clip was chosen (not the 90 s one) and credited");
+    await page.getByTestId("music-auto-on").click();
+    assert(await page.getByTestId("music-auto-on").isDisabled(), "music is on");
+    assert(/Otomatis/.test(await page.getByTestId("fold-music").locator("summary").innerText()), "the music fold says automatic");
+    await page.getByTestId("auto-kind-photo").click();
   });
 
   await step("a missing server key is explained and nothing breaks", async () => {
