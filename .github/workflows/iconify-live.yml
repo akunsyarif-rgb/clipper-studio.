@@ -13,4 +13,4 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - run: npx -y tsx scripts/iconify-live-check.ts
+      - run: npx -y tsx scripts/iconify-live-check.mts
