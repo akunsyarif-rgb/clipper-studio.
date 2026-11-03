@@ -11,6 +11,7 @@ import {
 import TranscriptPanel from "./TranscriptPanel";
 import CloudAccount from "./CloudAccount";
 import SaveToHub from "./SaveToHub";
+import NextSteps from "./NextSteps";
 import ClipFlow, { type NewClip } from "./ClipFlow";
 import WatermarkPanel from "./WatermarkPanel";
 import CtaPanel from "./CtaPanel";
@@ -39,6 +40,7 @@ const MAX_CLIPS = 10;
 
 export default function Home() {
   const router = useRouter();
+  const [studioBusy, setStudioBusy] = useState(false);
   const ai = useGeminiAccess();
   const picker = useRef<HTMLInputElement>(null);
   const player = useRef<HTMLVideoElement>(null);
@@ -180,6 +182,20 @@ export default function Home() {
     });
   }
 
+  /** The finished clip becomes the base video of the studio (same hand-over as a clip chosen by the AI), so nothing is picked again. */
+  async function continueInStudio() {
+    if (!result) return;
+    setStudioBusy(true);
+    try {
+      const checked = await checkedVideo(await fetch(result.url).then(r => r.blob()));
+      if (!checked.probe.ok) { say("Hasil ekspor tidak bisa diputar di browser ini, jadi tidak dikirim ke Studio. Unduh hasilnya atau ekspor ulang.", true); return; }
+      const seconds = result.seconds ?? await new Promise<number>(res => { const v = document.createElement("video"); v.preload = "metadata"; v.onloadedmetadata = () => res(Number.isFinite(v.duration) ? v.duration : 0); v.onerror = () => res(0); v.src = result.url; });
+      const ok = await saveClipHandoff({ blob: checked.blob, name: result.name, type: "video/mp4", seconds, padStart: 0, padEnd: 0, title: result.name.replace(/\.[^.]+$/, ""), opening: "", transcript: null, at: Date.now() });
+      if (!ok) { say("Browser menolak menyimpan klip untuk dikirim. Unduh dulu lalu pilih videonya di Studio kreatif.", true); return; }
+      router.push("/motion");
+    } finally { setStudioBusy(false); }
+  }
+
   function addClip() {
     if (!file || !duration) return say("Pilih video dan tunggu durasinya terbaca.", true);
     const r = currentRange();
@@ -311,6 +327,7 @@ export default function Home() {
       {!busy && !asrBusy && lastJob && !result && <button className="secondary-button" onClick={() => runExport(lastJob)} data-testid="retry">↻ Ulangi ekspor terakhir</button>}
       {result&&<div className="download-card" data-testid="result"><span className="download-check">✓</span><div><strong>Video selesai dibuat</strong><span>{result.label} · {formatBytes(result.size)}</span></div><a className="download-button" href={result.url} download={result.name} data-testid="download" onClick={() => { const b = historyBase.current; if (b) void updateHistory(l => logDownload(l, { ...b, now: Date.now() }, { name: result.name, size: result.size, label: result.label })); }}>Simpan MP4 ↓</a></div>}
       {result&&<SaveToHub key={result.url} getBlob={() => fetch(result.url).then(r => r.blob())} fileName={result.name} title={result.name.replace(/\.[^.]+$/, "")} source="clipper" seconds={result.seconds} width={result.w} height={result.h} historyId={result.historyId} />}
+      {result&&<NextSteps hint="Simpan hasil ke Library dengan tombol di atas, atau lanjutkan mengedit klip ini: tambah subtitle, animasi, suara, dan musik."><button type="button" className="secondary-button" onClick={() => void continueInStudio()} disabled={studioBusy} data-testid="next-studio">{studioBusy ? "Menyiapkan…" : "Lanjut ke Studio kreatif →"}</button></NextSteps>}
       {result&&<div className="result-tools"><video src={result.url} controls playsInline preload="metadata" className="result-video"/><button className="text-button" onClick={share}>Bagikan / simpan ke Photos</button></div>}
       {message&&<div className={"notice " + (isError ? "notice-error" : "")} role={isError ? "alert" : "status"} data-testid="message">{message}</div>}{errorDetail&&<details className="error-details"><summary>Detail teknis</summary><code>{errorDetail}</code></details>}
       <p className="fine-print">Batas: sumber 60 menit / 1 GB, satu klip maks. 5 menit. Kinerja bergantung pada perangkat, codec, dan memori browser. Di iPhone/iPad, 720p jauh lebih cepat daripada 1080p.</p>
