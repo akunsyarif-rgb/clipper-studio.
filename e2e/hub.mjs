@@ -157,6 +157,12 @@ try {
   await b.install(ctx);
   ctx.on("request", r => { const u = r.url(); if (!u.startsWith(BASE) && !u.includes("supabase.co") && !u.includes("fake-r2.test") && !u.startsWith("data:") && !u.startsWith("blob:") && !/^https:\/\/fonts\.(googleapis|gstatic)\.com\//.test(u)) outside.push(u); });
   const page = await ctx.newPage(); watch(page);
+  if (process.env.HUB_DEBUG) {
+    page.on("console", m => console.log("DBG console", m.type(), m.text().slice(0, 200)));
+    page.on("pageerror", e => console.log("DBG pageerror", String(e.message).slice(0, 200)));
+    ctx.on("response", r => { const u = r.url(); if (u.includes("supabase.co")) console.log("DBG resp", r.status(), r.request().method(), u.replace(/^https:\/\/[^/]+/, "").slice(0, 120)); });
+    page.on("framenavigated", f => { if (f === page.mainFrame()) console.log("DBG nav", f.url().slice(0, 100)); });
+  }
 
   await step("main studio: nothing is uploaded until the creator opens the box, ticks consent and presses Unggah", async () => {
     await page.goto(BASE);
@@ -164,6 +170,12 @@ try {
     await page.getByText("00:00:08").first().waitFor({ timeout: 15000 });
     await page.getByTestId("export").click();
     await page.getByTestId("result").waitFor({ timeout: 120000 });
+    if (process.env.HUB_DEBUG) {
+      for (const t of [0, 300, 1500, 4000]) {
+        await new Promise(r => setTimeout(r, t));
+        console.log("DBG t+" + t, JSON.stringify(await page.evaluate(() => ({ ls: (localStorage.getItem("clipper:cloud:v1") || "null").slice(0, 120), now: Date.now(), enabled: !document.querySelector('[data-testid=hub-open]')?.disabled, ua: navigator.userAgent.slice(-40) }))));
+      }
+    }
     assert(await page.getByTestId("hub-open").isEnabled(), "signed in: the button is enabled");
     await new Promise(r => setTimeout(r, 800));
     assert(b.f.calls.length === 0 && b.f.puts.length === 0, "no automatic upload after export");

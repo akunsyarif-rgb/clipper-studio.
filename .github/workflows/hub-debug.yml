@@ -1,0 +1,33 @@
+name: Hub e2e debug (temporary)
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/hub-debug.yml"
+
+jobs:
+  hub:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends ffmpeg
+      - run: npm ci
+      - name: Install Playwright for E2E
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw" && npm init -y >/dev/null && npm install playwright@1.64.1
+          echo "NODE_PATH=$RUNNER_TEMP/pw/node_modules" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/pw/node_modules/.bin" >> "$GITHUB_PATH"
+      - run: playwright install --with-deps chromium
+      - run: npm run build
+      - name: Hub e2e with diagnostics
+        env:
+          HUB_DEBUG: "1"
+        run: node e2e/hub.mjs 2>&1 | tee hub.log; test ${PIPESTATUS[0]} -eq 0
