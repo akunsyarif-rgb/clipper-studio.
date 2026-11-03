@@ -144,6 +144,18 @@ try {
     assert((await page.getByTestId("script").inputValue()).startsWith("Kreasi tanpa batas."), "script kept");
   });
 
+  await step("not only products: another kind of film changes the labels and the wording (education)", async () => {
+    await page.getByTestId("fold-cinematic").evaluate(d => { d.open = true; });
+    await page.getByTestId("cine-genre").selectOption("edukasi");
+    assert((await page.getByText("Pertanyaan atau pembuka").count()) >= 1 && (await page.getByText("Langkah atau poin penting").count()) >= 1, "labels follow the kind of film");
+    await page.getByTestId("cine-product").fill("Fotosintesis");
+    await page.getByTestId("cine-tagline").fill("");
+    await page.getByTestId("cine-build").click();
+    const list = await page.getByTestId("cine-list").innerText();
+    assert(/Apa itu Fotosintesis\?/.test(list) && /Inilah kuncinya\./.test(list), "education wording: " + list.slice(0, 120));
+    assert(/pembuka/.test(list) && /kuncinya|ringkasan/.test(list), "act names fit the genre");
+  });
+
   await step("no horizontal scroll on iPhone-size viewport", async () => {
     const w = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
     assert(w[0] <= w[1] + 1, `scrollWidth ${w[0]} > ${w[1]}`);

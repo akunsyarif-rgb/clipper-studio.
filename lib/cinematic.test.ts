@@ -147,3 +147,21 @@ describe("saving a plan with the session", () => {
     expect(restoreCine({ ...saveCine({ plan: p, fx: p.fxByText }), seconds: [3] })).toBeNull();
   });
 });
+
+
+describe("genres: not only products", () => {
+  it("the same structure with wording that fits the kind of film, and labels per genre", async () => {
+    const { GENRES, GENRE_IDS } = await import("./cinematic");
+    expect(GENRE_IDS).toEqual(["produk", "cerita", "edukasi", "profil"]);
+    const edu = buildCinematic({ genre: "edukasi", product: "Fotosintesis", features: ["Daun menyerap cahaya.", "Air naik dari akar."], tone: "keynote", seconds: 30 });
+    expect(edu.scenes.map(s => s.act)).toEqual(["hook", "reveal", "feature", "feature", "cta"]);
+    expect(edu.scenes[0].text).toBe("Apa itu Fotosintesis?");
+    expect(edu.scenes[1].text).toBe("Inilah kuncinya.");
+    const story = buildCinematic({ genre: "cerita", product: "Perjalanan Ayu", problem: "Ia hampir menyerah.", proof: "Kini ia memimpin timnya.", tone: "luxury" });
+    expect(story.scenes.map(s => s.act)).toEqual(["hook", "problem", "reveal", "proof", "cta"]);
+    expect(story.scenes[2].text).toBe("Lalu semuanya berubah.");
+    expect(buildCinematic({ product: "Nova" }).brief.genre).toBe("produk");
+    expect(buildCinematic({ genre: "nonsense" as never, product: "Nova" }).brief.genre).toBe("produk");
+    for (const id of GENRE_IDS) { expect(validateCinematic(buildCinematic({ genre: id, product: "Uji" }), { hasMusic: true }).filter(i => i.level === "error")).toEqual([]); expect(GENRES[id].act.hook).toBeTruthy(); }
+  });
+});

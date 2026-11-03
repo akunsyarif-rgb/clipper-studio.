@@ -53,7 +53,7 @@ export function fxFrame(id: FxId, frame: number, d: number): FxFrame {
 
 /** Craft rules (distilled, not copied) used both by the deterministic planner and as the AI's playbook. */
 export const CINEMATIC_PLAYBOOK = [
-  "Struktur film peluncuran: hook (satu pernyataan berani) -> masalah -> pengungkapan produk -> 2-4 fitur (satu ide per adegan) -> bukti -> ajakan.",
+  "Struktur film: hook (satu pernyataan berani) -> masalah atau konflik -> pengungkapan atau titik balik -> 2-4 poin (satu ide per adegan) -> bukti atau hasil -> penutup atau ajakan.",
   "Gaya Keynote: kalimat pendek, satu fokus per layar, banyak ruang kosong, kontras tinggi, gerak halus dan percaya diri; jangan ramai.",
   "Morph: beri kontinuitas antara adegan berurutan dengan mulai dari ukuran/blur adegan sebelumnya, bukan memudar dari hitam.",
   "Liquid glass: kaca tembus pandang hanya untuk fitur dan bukti, maksimal 2 adegan berurutan, teks tetap kontras tinggi.",
@@ -73,7 +73,38 @@ export const TONES: { id: Tone; label: string }[] = [
   { id: "warm", label: "Hangat (ramah, gaya hidup)" },
 ];
 
-export type Brief = { product: string; tagline: string; problem: string; features: string[]; proof: string; cta: string; tone: Tone; seconds: number; /** Language of the generated lines. */ language?: "id" | "en" };
+/** What the film is about. Same story structure (hook, problem, reveal, points, proof, closing); the labels and the default wording change. */
+export type Genre = "produk" | "cerita" | "edukasi" | "profil";
+type GenreInfo = {
+  label: string; subject: string; tagline: string; problem: string; points: string; proof: string; cta: string; act: Record<Act, string>;
+  fallback: (b: { product: string; tagline: string }, en: boolean) => { hook: string; reveal: string; cta: string };
+};
+export const GENRES: Record<Genre, GenreInfo> = {
+  produk: {
+    label: "Produk / peluncuran", subject: "Produk", tagline: "Kalimat utama (hook)", problem: "Masalah", points: "Fitur (satu per baris, maks. 4)", proof: "Bukti", cta: "Ajakan",
+    act: { hook: "hook", problem: "masalah", reveal: "pengungkapan", feature: "fitur", proof: "bukti", cta: "ajakan" },
+    fallback: (b, en) => ({ hook: b.tagline || (en ? `Meet ${b.product}.` : `Kenalkan ${b.product}.`), reveal: b.tagline ? (en ? `Introducing ${b.product}.` : `Inilah ${b.product}.`) : (en ? "Everything, made simple." : "Semuanya jadi lebih sederhana."), cta: en ? `Try ${b.product} today.` : `Coba ${b.product} sekarang.` }),
+  },
+  cerita: {
+    label: "Cerita / motivasi", subject: "Judul atau tema", tagline: "Kalimat pembuka (hook)", problem: "Tantangan atau konflik", points: "Poin cerita (satu per baris, maks. 4)", proof: "Hasil atau pelajaran", cta: "Penutup atau ajakan",
+    act: { hook: "pembuka", problem: "konflik", reveal: "titik balik", feature: "isi", proof: "hasil", cta: "penutup" },
+    fallback: (b, en) => ({ hook: b.tagline || `${b.product}.`, reveal: en ? "Then everything changed." : "Lalu semuanya berubah.", cta: en ? "Take the first step today." : "Mulai langkah pertamamu hari ini." }),
+  },
+  edukasi: {
+    label: "Edukasi / penjelasan", subject: "Topik", tagline: "Pertanyaan atau pembuka", problem: "Kesalahpahaman umum", points: "Langkah atau poin penting (satu per baris, maks. 4)", proof: "Contoh atau fakta", cta: "Ringkasan atau ajakan",
+    act: { hook: "pembuka", problem: "masalah", reveal: "kuncinya", feature: "poin", proof: "contoh", cta: "ringkasan" },
+    fallback: (b, en) => ({ hook: b.tagline || (en ? `What is ${b.product}?` : `Apa itu ${b.product}?`), reveal: en ? "Here is the key." : "Inilah kuncinya.", cta: en ? "Try it now, one step at a time." : "Coba sekarang, mulai dari satu langkah." }),
+  },
+  profil: {
+    label: "Brand / acara / profil", subject: "Nama brand atau acara", tagline: "Slogan atau kalimat utama", problem: "Latar atau kebutuhan", points: "Sorotan (satu per baris, maks. 4)", proof: "Capaian atau angka", cta: "Ajakan (daftar, kunjungi, hubungi)",
+    act: { hook: "pembuka", problem: "latar", reveal: "perkenalan", feature: "sorotan", proof: "capaian", cta: "ajakan" },
+    fallback: (b, en) => ({ hook: b.tagline || (en ? `This is ${b.product}.` : `Inilah ${b.product}.`), reveal: en ? `Welcome to ${b.product}.` : `Selamat datang di ${b.product}.`, cta: en ? `Join ${b.product} today.` : `Bergabunglah dengan ${b.product} sekarang.` }),
+  },
+};
+export const GENRE_IDS = Object.keys(GENRES) as Genre[];
+export const isGenre = (v: unknown): v is Genre => typeof v === "string" && (GENRE_IDS as string[]).includes(v);
+
+export type Brief = { genre?: Genre; product: string; tagline: string; problem: string; features: string[]; proof: string; cta: string; tone: Tone; seconds: number; /** Language of the generated lines. */ language?: "id" | "en" };
 
 export const MAX_FEATURES = 4;
 export const clean = (s: unknown, max = MAX_SCENE_CHARS) => String(s ?? "").replace(/\s+/g, " ").replace(/[*\n]/g, " ").trim().slice(0, max);
@@ -81,6 +112,7 @@ export const clean = (s: unknown, max = MAX_SCENE_CHARS) => String(s ?? "").repl
 export function normalizeBrief(b: Partial<Brief>): Brief {
   const tone = TONES.some(t => t.id === b.tone) ? b.tone! : "keynote";
   return {
+    genre: isGenre(b.genre) ? b.genre : "produk",
     product: clean(b.product, 60), tagline: clean(b.tagline, 100), problem: clean(b.problem, 120),
     features: (b.features ?? []).map(f => clean(f, 100)).filter(Boolean).slice(0, MAX_FEATURES),
     proof: clean(b.proof, 120), cta: clean(b.cta, 80), tone,
@@ -132,13 +164,14 @@ const ACT_WEIGHT: Record<Act, number> = { hook: 1, problem: 1.2, reveal: 1.6, fe
 /** Default wording for an empty field, so a brief with only a product name still makes a complete film. */
 function lines(b: Brief): { act: Act; text: string }[] {
   const en = b.language === "en";
+  const d = GENRES[b.genre ?? "produk"].fallback(b, en);
   const out: { act: Act; text: string }[] = [];
-  out.push({ act: "hook", text: b.tagline || (en ? `Meet ${b.product}.` : `Kenalkan ${b.product}.`) });
+  out.push({ act: "hook", text: d.hook });
   if (b.problem) out.push({ act: "problem", text: b.problem });
-  out.push({ act: "reveal", text: b.tagline ? (en ? `Introducing ${b.product}.` : `Inilah ${b.product}.`) : (en ? "Everything, made simple." : "Semuanya jadi lebih sederhana.") });
+  out.push({ act: "reveal", text: d.reveal });
   for (const f of b.features) out.push({ act: "feature", text: f });
   if (b.proof) out.push({ act: "proof", text: b.proof });
-  out.push({ act: "cta", text: b.cta || (en ? `Try ${b.product} today.` : `Coba ${b.product} sekarang.`) });
+  out.push({ act: "cta", text: b.cta || d.cta });
   return out;
 }
 
@@ -214,7 +247,7 @@ export function validateCinematic(plan: CinePlan, o: { hasMusic?: boolean; frame
 export function polishPrompt(plan: CinePlan): string {
   const en = plan.brief.language === "en";
   return [
-    `Kamu penulis naskah film peluncuran produk gaya Keynote (${en ? "bahasa Inggris" : "bahasa Indonesia"}). Tulis ulang kalimat tiap adegan agar lebih tajam dan sinematik.`,
+    `Kamu penulis naskah film pendek sinematik gaya Keynote (jenis: ${GENRES[plan.brief.genre ?? "produk"].label}) (${en ? "bahasa Inggris" : "bahasa Indonesia"}). Tulis ulang kalimat tiap adegan agar lebih tajam dan sinematik.`,
     "Aturan: jumlah dan urutan adegan TIDAK berubah; tiap kalimat maks. 12 kata dan 100 karakter; jangan menambah klaim, angka, atau fitur yang tidak ada di brief; jangan memakai tanda bintang.",
     ...CINEMATIC_PLAYBOOK.slice(0, 2).map((r, n) => `${n + 1}. ${r}`),
     `Produk: ${plan.brief.product}`,

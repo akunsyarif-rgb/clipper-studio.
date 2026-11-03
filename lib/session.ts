@@ -1,7 +1,7 @@
 // What the motion studio remembers on this device between visits (pure types, validation and keys).
 // Stored in the browser's own storage by session-store.ts; nothing is sent anywhere.
 import { isEntrance, type Entrance } from "./icon-motion";
-import { isFx, TONES, type SavedCine } from "./cinematic";
+import { isFx, isGenre, TONES, type SavedCine } from "./cinematic";
 import { CAPTION_STYLES, CONTENT_PRESETS, PALETTES, STYLES, type CaptionStyleId, type ContentPresetId, type PaletteId, type StyleId } from "./script";
 import { TYPE_PACK_IDS, type TypePackId } from "./fonts";
 import { SFX_MODES, type SfxMode } from "./sfx";
@@ -88,7 +88,8 @@ function isSavedCine(value: unknown): value is SavedCine {
       || typeof brief.cta !== "string" || brief.cta.length > 80
       || !TONES.some(t => t.id === brief.tone) || brief.tone !== cine.tone
       || typeof brief.seconds !== "number" || !Number.isFinite(brief.seconds) || brief.seconds < 12 || brief.seconds > 60
-      || (brief.language !== undefined && brief.language !== "id" && brief.language !== "en")) return false;
+      || (brief.language !== undefined && brief.language !== "id" && brief.language !== "en")
+      || (brief.genre !== undefined && !isGenre(brief.genre))) return false;
   }
 
   if (cine.acts !== undefined

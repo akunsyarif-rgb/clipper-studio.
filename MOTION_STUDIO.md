@@ -720,3 +720,9 @@ Yang ditawarkan sekarang (6): **Muncul membal** (pegas dengan overshoot), **Naik
 - Satu jalan ke tiap tempat: menu empat item (`AppNav`) di semua halaman; tautan ganda (kartu "Motion Graphics Lab", "Content Hub", "Ke Motion Studio", dll.) dihapus. Tautan serah-terima transkrip di panel transkrip tetap karena membawa data.
 - Satu tampilan gelap (navy) dan aksen mint di semua halaman, dengan logo yang sama.
 - Foto otomatis (`app/PixabayAutoPanel.tsx`): satu ketukan mengisi adegan yang belum punya foto dari Pixabay (kunci di server, tanpa pengaturan, tanpa AI). Kata kunci: frasa Inggris dari Sutradara AI bila ada, kalau tidak dari kamus kata → Inggris (`lib/icon-keywords.ts`). Hanya saat tombol ditekan, satu pencarian sekali, maks. 12 adegan; kredit foto ikut tersimpan.
+
+## Pilih model gratis, video di tengah, Cinematic Studio untuk semua jenis film
+
+- **Model gratis dari daftar** (`app/FreeModelPicker.tsx`, `lib/openrouter-free.ts`): tombol "Pilih dari daftar model gratis" mengambil daftar publik OpenRouter (tanpa kunci), menyaring yang gratis untuk prompt dan jawaban dan berkeluaran teks, lalu menampilkannya sebagai pilihan (urut konteks terpanjang); "Otomatis" (`openrouter/free`) tetap disarankan. Memilih tidak pernah berpindah ke model berbayar.
+- **Video sumber di tengah**: video yang bukan 9:16 kini ditaruh di tengah bingkai (contain) di atas latar palet, bukan menempel di atas.
+- **Cinematic Studio: jenis film** (`GENRES` di `lib/cinematic.ts`): Produk/peluncuran, Cerita/motivasi, Edukasi/penjelasan, Brand/acara/profil. Struktur adegan sama; label isian, nama adegan, dan kalimat bawaan menyesuaikan. Sesi lama tanpa jenis dibaca sebagai "produk".

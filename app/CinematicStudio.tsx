@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { buildCinematic, CINEMATIC_PLAYBOOK, fxChoices, isFx, polishCinematic, TONES, validateCinematic, type Brief, type CinePlan, type FxId } from "@/lib/cinematic";
+import { buildCinematic, CINEMATIC_PLAYBOOK, fxChoices, GENRES, GENRE_IDS, isFx, polishCinematic, TONES, validateCinematic, type Brief, type CinePlan, type Genre, type FxId } from "@/lib/cinematic";
 import { GeminiError, aiUsage } from "@/lib/gemini";
 import { getAccess } from "@/lib/gemini-access";
 import { FPS } from "@/lib/script";
 import { applyPresetToPlan, builtInPresets, loadPresets, presetFromPlan, savePresets, type LibraryPreset } from "@/lib/motion-library";
 import { useGeminiAccess } from "./useGeminiAccess";
 
-const EMPTY: Brief = { product: "", tagline: "", problem: "", features: [], proof: "", cta: "", tone: "keynote", seconds: 30, language: "id" };
+const EMPTY: Brief = { genre: "produk", product: "", tagline: "", problem: "", features: [], proof: "", cta: "", tone: "keynote", seconds: 30, language: "id" };
 
 /**
  * Cinematic Studio: brief -> concept -> beat map -> storyboard, then handed to the studio as an ordinary script, style, palette,
@@ -74,7 +74,7 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
 
   function build() {
     setError(""); setNote("");
-    if (!brief.product.trim()) return setError("Isi nama produk dulu.");
+    if (!brief.product.trim()) return setError(`Isi ${GENRES[brief.genre ?? "produk"].subject.toLowerCase()} dulu.`);
     setDraft(buildCinematic(input));
   }
 
@@ -93,17 +93,19 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
   }
 
   const bpm = shown?.map.bpm;
+  const g = GENRES[brief.genre ?? "produk"];
   return <details className="fold cinematic-studio" data-testid="fold-cinematic">
-    <summary><b>Cinematic Studio</b> <small>{active ? `Aktif · ${active.plan.scenes.length} adegan · ${active.plan.map.bpm} BPM` : "Film peluncuran produk"}</small></summary>
+    <summary><b>Cinematic Studio</b> <small>{active ? `Aktif · ${active.plan.scenes.length} adegan · ${active.plan.map.bpm} BPM` : "Film sinematik: produk, cerita, edukasi, brand"}</small></summary>
     <div className="fold-body">
       <p className="preview-disclaimer">Isi brief singkat; naskah, gaya, palet, huruf, gerak tiap adegan, dan panjang adegan (sesuai ketukan) disusun di perangkat ini tanpa AI. AI hanya opsional untuk memoles kalimat.</p>
       <div className="field-grid">
-        <label>Produk<input value={brief.product} onChange={e => set("product", e.target.value)} maxLength={60} data-testid="cine-product" /></label>
-        <label>Kalimat utama (hook)<input value={brief.tagline} onChange={e => set("tagline", e.target.value)} maxLength={100} data-testid="cine-tagline" /></label>
-        <label>Masalah<input value={brief.problem} onChange={e => set("problem", e.target.value)} maxLength={120} data-testid="cine-problem" /></label>
-        <label>Fitur (satu per baris, maks. 4)<textarea rows={3} value={featuresText} onChange={e => { setFeaturesText(e.target.value); setDraft(null); }} data-testid="cine-features" /></label>
-        <label>Bukti<input value={brief.proof} onChange={e => set("proof", e.target.value)} maxLength={120} data-testid="cine-proof" /></label>
-        <label>Ajakan<input value={brief.cta} onChange={e => set("cta", e.target.value)} maxLength={80} data-testid="cine-cta" /></label>
+        <label>Jenis film<select value={brief.genre ?? "produk"} onChange={e => set("genre", e.target.value as Genre)} data-testid="cine-genre">{GENRE_IDS.map(g => <option key={g} value={g}>{GENRES[g].label}</option>)}</select></label>
+        <label>{g.subject}<input value={brief.product} onChange={e => set("product", e.target.value)} maxLength={60} data-testid="cine-product" /></label>
+        <label>{g.tagline}<input value={brief.tagline} onChange={e => set("tagline", e.target.value)} maxLength={100} data-testid="cine-tagline" /></label>
+        <label>{g.problem}<input value={brief.problem} onChange={e => set("problem", e.target.value)} maxLength={120} data-testid="cine-problem" /></label>
+        <label>{g.points}<textarea rows={3} value={featuresText} onChange={e => { setFeaturesText(e.target.value); setDraft(null); }} data-testid="cine-features" /></label>
+        <label>{g.proof}<input value={brief.proof} onChange={e => set("proof", e.target.value)} maxLength={120} data-testid="cine-proof" /></label>
+        <label>{g.cta}<input value={brief.cta} onChange={e => set("cta", e.target.value)} maxLength={80} data-testid="cine-cta" /></label>
         <label>Suasana<select value={brief.tone} onChange={e => set("tone", e.target.value as Brief["tone"])} data-testid="cine-tone">{TONES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select></label>
         <label>Durasi<select value={brief.seconds} onChange={e => set("seconds", Number(e.target.value))} data-testid="cine-seconds">{[15, 30, 45, 60].map(s => <option key={s} value={s}>{s} detik</option>)}</select></label>
       </div>
@@ -117,7 +119,7 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
         <p data-testid="cine-beat"><small>{shown.map.bpm} BPM · satu ketukan {shown.map.beat.toFixed(2)} dtk · satu bar {shown.map.bar.toFixed(1)} dtk · {shown.concept.palette}, {shown.concept.typography}</small></p>
         <ol className="cine-list" data-testid="cine-list">
           {shown.scenes.map((s, i) => <li key={i} data-act={s.act}>
-            <small>{s.act} · {s.seconds.toFixed(1)} dtk ({Math.round(s.seconds / shown.map.beat)} ketukan)</small>
+            <small>{GENRES[shown.brief.genre ?? "produk"].act[s.act]} · {s.seconds.toFixed(1)} dtk ({Math.round(s.seconds / shown.map.beat)} ketukan)</small>
             <div>{s.text}</div>
             <select value={s.fx} aria-label={`Gerak adegan ${i + 1}`} data-testid="cine-fx" onChange={e => {
               const fx = e.target.value; if (!isFx(fx)) return;
