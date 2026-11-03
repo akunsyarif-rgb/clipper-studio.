@@ -16,7 +16,12 @@ export const MAX_PRESETS = 20;
 export function builtInPresets(base: Concept): LibraryPreset[] {
   const tones = TONES.map(t => ({ id: `tone:${t.id}`, name: t.label, builtIn: true, concept: conceptFor(t.id), fxByAct: {} }));
   const content = CONTENT_PRESETS.map(p => ({ id: `content:${p.id}`, name: p.label, builtIn: true, concept: { ...base, style: p.style, palette: p.palette }, fxByAct: {} }));
-  return [...tones, ...content];
+  // Signature motion sets: the same look, with a motion plan per act.
+  const moves: LibraryPreset[] = [
+    { id: "move:keynote", name: "Gerak keynote tegas", builtIn: true, concept: base, fxByAct: { hook: "hold-cut", problem: "page-push", reveal: "flood", feature: "blur-rise", proof: "page-push", cta: "hold-cut" } },
+    { id: "move:glass", name: "Gerak kaca halus", builtIn: true, concept: base, fxByAct: { hook: "keynote-reveal", problem: "blur-rise", reveal: "keynote-reveal", feature: "liquid-glass", proof: "liquid-glass", cta: "hold-cut" } },
+  ];
+  return [...moves, ...tones, ...content];
 }
 
 export function presetFromPlan(name: string, plan: CinePlan): LibraryPreset {

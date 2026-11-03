@@ -67,6 +67,17 @@ try {
     return fxs.join(",");
   });
 
+  await step("the signature presets really draw in the preview: black flood on the reveal scene, glass card on a feature scene, nothing blurred", async () => {
+    const fxs = await page.getByTestId("cine-fx").evaluateAll(els => els.map(e => e.value));
+    const flood = fxs.indexOf("flood"), glass = fxs.indexOf("liquid-glass");
+    assert(flood >= 0 && glass >= 0, "the plan uses a flood and a glass scene: " + fxs);
+    await page.getByTestId("scene-item").nth(flood).locator(".scene-row").click();
+    await page.locator(".player-wrap [data-fx-flood]").first().waitFor({ timeout: 8000 });
+    await page.getByTestId("scene-item").nth(glass).locator(".scene-row").click();
+    await page.locator(".player-wrap [data-fx-glass]").first().waitFor({ timeout: 8000 });
+    assert((await page.locator(".player-wrap [style*='blur(']").count()) === 0, "no blur filter anywhere in the preview");
+  });
+
   await step("a new storyboard can replace an already active cinematic plan", async () => {
     await page.getByTestId("cine-product").fill("Nova Studio");
     await page.getByTestId("cine-tagline").fill("Kreasi tanpa batas.");
