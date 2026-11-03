@@ -18,7 +18,6 @@ async function step(name, fn) {
   catch (err) { failed = true; results.push(`FAIL ${name}: ${err instanceof Error ? err.message : err}`); }
 }
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
-async function until(check, message, ms = 10000) { for (let i = 0; i < ms / 100; i++) { if (await check().catch(() => false)) return; await new Promise(r => setTimeout(r, 100)); } throw new Error(message); }
 
 const SCRIPT = ["Halo semuanya, selamat datang.", "Tahukah kamu apa yang terjadi", "Ternyata jawabannya sederhana.", "Terima kasih sudah menonton."].join("\n");
 

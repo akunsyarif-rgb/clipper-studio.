@@ -53,6 +53,12 @@ describe("fetching an icon", () => {
     expect(a.node).toHaveLength(2);
     expect(fn).toHaveBeenCalledTimes(1);
   });
+  it("follows an alias (a renamed icon) to its parent, as the real API answers", async () => {
+    const real = { prefix: "lucide", aliases: { "alert-triangle": { parent: "triangle-alert" } }, width: 24, height: 24, icons: { "triangle-alert": { body: '<path d="M1 1h4"/>' } } };
+    const icon = await fetchIcon("lucide:alert-triangle", { fetchImpl: (async () => json(real)) as unknown as typeof fetch });
+    expect(icon.id).toBe("iconify:lucide:alert-triangle");
+    expect(icon.node).toHaveLength(1);
+  });
   it("rejects a non-24 grid, a missing icon and a disallowed set", async () => {
     await expect(fetchIcon("lucide:rocket", { fetchImpl: (async () => json({ ...reply, width: 32, height: 32 })) as unknown as typeof fetch })).rejects.toMatchObject({ kind: "unsupported" });
     resetIconifyCache();

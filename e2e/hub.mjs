@@ -4,7 +4,7 @@
 // and by the live run recorded in the pull request.
 // Needs `npm run build` first, plus ffmpeg on PATH for the fixture video.
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -131,7 +131,6 @@ try {
   const ctxOut = await browser.newContext({ acceptDownloads: true });
   await out.install(ctxOut);
   const pOut = await ctxOut.newPage(); watch(pOut);
-  const signedOutHub = fakeBackend();
 
   await step("signed out: the hub asks to sign in and calls nothing", async () => {
     await pOut.goto(BASE + "/hub");
@@ -284,7 +283,7 @@ try {
     await page.getByTestId("hub-nomatch").waitFor();
     await page.getByTestId("hub-search").fill("");
     const titles = async () => (await page.locator(".hub-title").allInnerTexts());
-    const newest = await titles(), idxNew = newest.indexOf("Tips masak cepat");
+    const newest = await titles();
     await page.getByTestId("hub-sort").selectOption("oldest");
     const oldest = await titles();
     assert(oldest[0] === "Tips masak cepat" && JSON.stringify([...oldest].reverse()) === JSON.stringify(newest), "sort oldest first reverses newest first: " + oldest.join("|") + " / " + newest.join("|"));

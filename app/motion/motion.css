@@ -231,7 +231,7 @@ button.scene-row{width:100%;text-align:left;color:inherit;font:inherit;backgroun
 /* Cinematic Studio and Ikon otomatis panels (they sit in the preview column, outside .studio-panel, so they carry their own form look). */
 .fold-body{display:flex;flex-direction:column;gap:12px;padding:6px 2px 10px}
 .fold-body>p{margin:0}
-.fold-body .field-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.fold-body .field-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
 .fold-body label{display:flex;flex-direction:column;gap:6px;min-width:0;font-size:11px;font-weight:700;color:#d6dbeb}
 .fold-body input:not([type=checkbox]),.fold-body select,.fold-body textarea{display:block;width:100%;min-width:0;border:1px solid #343750;background:#171a31;color:#f0f2ff;border-radius:9px;padding:11px 12px;font:13px/1.5 'DM Sans',system-ui,sans-serif;outline:none}
 .fold-body textarea{resize:vertical;min-height:84px}
