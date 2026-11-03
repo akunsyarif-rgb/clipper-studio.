@@ -1,0 +1,16 @@
+name: Iconify live check (temporary)
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/iconify-live.yml"
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx -y tsx scripts/iconify-live-check.ts
