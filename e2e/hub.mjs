@@ -48,6 +48,10 @@ const seed = () => [
 function fakeBackend() {
   const f = { assets: seed(), calls: [], puts: [], gets: [], putFailures: 0, partFailures: 0, multipart: null, parts: {}, putHang: false, listFails: 0, seq: 0 };
   async function install(ctx) {
+    // Only the media library is faked. Every other call to the project (gemini status, history and transcript sync, token refresh) must
+    // not reach the real server: it answers 401/400 to the fake session, the app then signs out, and the save button stays disabled.
+    // On a machine with no internet this was invisible; on CI it failed every signed-in step. Registered first, so the specific route wins.
+    await ctx.route(/^https:\/\/smwealrfgnzxquqqscxs\.supabase\.co\/(?!functions\/v1\/media-library)/, route => route.abort("failed"));
     await ctx.route("https://smwealrfgnzxquqqscxs.supabase.co/functions/v1/media-library", async route => {
       const req = route.request();
       if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
