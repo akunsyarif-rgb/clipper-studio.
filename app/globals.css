@@ -64,7 +64,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .cta-toggle small{font-size:10px;color:var(--muted);line-height:1.5}
 
 /* iPad/iPhone Safari zooms into any field under 16px and shifts the page when it does: keep fields at 16px on touch screens. */
-@media (pointer:coarse){input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea{font-size:16px!important}}
+@media (any-pointer:coarse),(hover:none){input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea{font-size:16px!important}}
 html{overflow-anchor:none;-webkit-text-size-adjust:100%}
 
 .app-nav{display:flex;gap:8px;overflow-x:auto;padding:10px 0 4px;margin:0;-webkit-overflow-scrolling:touch}
@@ -78,3 +78,4 @@ input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),
 a{color:#a99bff}.app-nav a{color:inherit}.brand,.footer-brand,.text-link{color:inherit}
 body{color-scheme:dark}
 .free-model-picker{display:flex;flex-direction:column;gap:6px;margin-top:10px;font-size:11px}.free-model-picker button{align-self:flex-start;border:1px solid #2b2f4a;border-radius:7px;background:#151726;color:var(--ink);padding:9px 12px;font-size:11px}
+.next-steps{margin-top:14px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;gap:6px;font-size:12px}.next-steps b{font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.75}.next-steps p{margin:0;line-height:1.55}.next-steps .button-row{display:flex;flex-wrap:wrap;gap:8px}.next-steps .secondary-button{width:auto;padding:0 16px;margin-top:4px}

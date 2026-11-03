@@ -3,7 +3,6 @@ import Link from "next/link";
 const ITEMS = [
   { href: "/", key: "clipper", label: "Potong video", hint: "Ambil bagian terbaik dari video panjang" },
   { href: "/motion", key: "studio", label: "Studio kreatif", hint: "Subtitle, motion, film sinematik, suara" },
-  { href: "/assets", key: "assets", label: "Aset", hint: "Foto, video, musik gratis" },
   { href: "/hub", key: "library", label: "Library", hint: "Hasil dan catatan tersimpan" },
 ] as const;
 

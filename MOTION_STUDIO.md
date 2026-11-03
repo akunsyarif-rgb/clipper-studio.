@@ -708,7 +708,7 @@ Di panel Cinematic Studio: pilih preset bawaan (4 suasana + 7 template konten) a
 
 ## Menu bersama dan anggaran AI
 
-- Menu empat tempat di semua halaman (`app/AppNav.tsx`): **Potong video** (`/`), **Studio kreatif** (`/motion`), **Aset** (`/assets`), **Library** (`/hub`), tiap item dengan keterangan singkat dan halaman aktif ditandai.
+- Menu tiga tempat di semua halaman (`app/AppNav.tsx`): **Potong video** (`/`), **Studio kreatif** (`/motion`), **Library** (`/hub`), tiap item dengan keterangan singkat dan halaman aktif ditandai.
 - Anggaran AI harian di perangkat (`lib/ai-budget.ts`, tampil di panel pengaturan AI lewat `app/AiUsage.tsx`): token dan permintaan hari ini, batas harian (default 200.000 token, 0 = tanpa batas). Setelah batas tercapai permintaan AI baru ditolak dengan pesan jelas (hasil yang sudah ada di cache tetap dilayani; fitur lokal tetap jalan). Model yang bukan gratis diberi peringatan; aplikasi tidak memilih model berbayar sendiri. Biaya dalam rupiah tidak dihitung karena harga per model tidak diketahui; yang dihitung token (dilaporkan layanan, atau diperkirakan ±4 karakter/token).
 
 ## Preset gerak khas (arah keynote: tanpa fade dan blur)
@@ -726,6 +726,18 @@ Yang ditawarkan sekarang (6): **Muncul membal** (pegas dengan overshoot), **Naik
 - **Model gratis dari daftar** (`app/FreeModelPicker.tsx`, `lib/openrouter-free.ts`): tombol "Pilih dari daftar model gratis" mengambil daftar publik OpenRouter (tanpa kunci), menyaring yang gratis untuk prompt dan jawaban dan berkeluaran teks, lalu menampilkannya sebagai pilihan (urut konteks terpanjang); "Otomatis" (`openrouter/free`) tetap disarankan. Memilih tidak pernah berpindah ke model berbayar.
 - **Video sumber di tengah**: video yang bukan 9:16 kini ditaruh di tengah bingkai (contain) di atas latar palet, bukan menempel di atas.
 - **Cinematic Studio: jenis film** (`GENRES` di `lib/cinematic.ts`): Produk/peluncuran, Cerita/motivasi, Edukasi/penjelasan, Brand/acara/profil. Struktur adegan sama; label isian, nama adegan, dan kalimat bawaan menyesuaikan. Sesi lama tanpa jenis dibaca sebagai "produk".
+
+## Langkah berikutnya dan perjalanan penuh
+
+- Halaman Aset dihapus dari menu dan dari app: pencarian foto/video ada di Studio kreatif (per adegan dan satu tombol otomatis), jadi halaman itu hanya duplikat dan jalan buntu (asetnya tidak bisa dipakai di Studio).
+- Di bawah hasil ekspor ada "Langkah berikutnya" (`app/NextSteps.tsx`): di Potong video, tombol "Lanjut ke Studio kreatif" membawa klip hasil sebagai video dasar Studio (serah-terima yang sama dengan klip pilihan AI, tanpa memilih ulang); di Studio, petunjuk menyimpan ke Library dan membuka Paket SEO.
+- `e2e/journey.mjs`: satu tes perjalanan penuh: pilih video → ekspor klip 3 dtk → lanjut ke Studio → render → MP4 (1080x1920, ±3 dtk, ada suara) → menu ke Library.
+
+## Mengetik aman di semua kolom
+
+- `e2e/typing-everywhere.mjs`: membuka semua panel, lalu untuk setiap kolom teks (di `/`, `/motion`, `/hub`) mengklik, mengetik, dan memastikan elemen yang sama tetap ada dan terfokus, posisi halaman tidak melompat, dan tidak berubah sesaat setelahnya (autosave dan timer). Lulus di Chromium dengan viewport tablet + sentuh; WebKit/iPad Safari belum bisa diuji dari CI.
+- `app/StableTyping.tsx` kini juga menjaga fokus: bila kolom kehilangan fokus atau elemennya diganti dalam 1,5 dtk setelah ketikan tanpa Anda mengetuk tempat lain atau menekan Tab/Enter/Escape, kolom yang sama difokuskan lagi dengan kursor di tempat semula (`window.__focusRescues` menghitungnya). Ketukan, Tab, Enter, dan Escape dihormati.
+- Kolom 16 px kini berlaku untuk layar sentuh dan juga iPad yang memakai trackpad/keyboard (`any-pointer: coarse`, `hover: none`).
 
 ## Catatan keamanan dependensi (`npm audit`)
 
