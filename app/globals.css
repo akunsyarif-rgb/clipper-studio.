@@ -77,3 +77,4 @@ html{overflow-anchor:none;-webkit-text-size-adjust:100%}
 input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),textarea,select{background:#151726;color:var(--ink);border:1px solid #2b2f4a;border-radius:8px}
 a{color:#a99bff}.app-nav a{color:inherit}.brand,.footer-brand,.text-link{color:inherit}
 body{color-scheme:dark}
+.free-model-picker{display:flex;flex-direction:column;gap:6px;margin-top:10px;font-size:11px}.free-model-picker button{align-self:flex-start;border:1px solid #2b2f4a;border-radius:7px;background:#151726;color:var(--ink);padding:9px 12px;font-size:11px}

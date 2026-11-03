@@ -392,6 +392,17 @@ try {
     await p.getByTestId("gemini-key").fill("sk-router-key-0123456789abcdef");
     // Free first: OpenRouter comes with its free alias already filled in, so no model name has to be typed (and no paid model is picked for the creator).
     assert((await p.getByTestId("gemini-model").inputValue()) === "openrouter/free", "OpenRouter defaults to the free model");
+    // A free model can be picked from a list (OpenRouter's public list, faked here) instead of typing its name.
+    await p.route("https://openrouter.ai/api/v1/models", r => r.fulfill({ status: 200, headers: { "access-control-allow-origin": "*" }, contentType: "application/json", body: JSON.stringify({ data: [
+      { id: "meta/llama-x:free", name: "Llama X (free)", context_length: 131072, pricing: { prompt: "0", completion: "0" } },
+      { id: "paid/model", name: "Paid", context_length: 1000000, pricing: { prompt: "0.001", completion: "0.002" } }] }) }));
+    await p.getByTestId("free-models-load").click();
+    await p.getByTestId("free-models-select").waitFor({ timeout: 8000 });
+    const opts = await p.getByTestId("free-models-select").locator("option").allInnerTexts();
+    assert(opts.some(t => /Llama X/.test(t)) && !opts.some(t => /Paid/.test(t)), "only free models are listed: " + opts.join(" | "));
+    await p.getByTestId("free-models-select").selectOption("meta/llama-x:free");
+    assert((await p.getByTestId("gemini-model").inputValue()) === "meta/llama-x:free", "the picked free model fills the model field");
+    await p.getByTestId("gemini-model").fill("");
     await p.getByTestId("gemini-model").fill("google/gemini-x");
     await p.getByTestId("gemini-save").click();
     await p.getByTestId("gemini-run").waitFor({ timeout: 5000 });
