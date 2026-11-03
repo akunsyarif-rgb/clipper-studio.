@@ -63,7 +63,7 @@ try {
     await page.getByTestId("start").fill("00:00:02");
     await page.getByTestId("end").fill("00:00:09");
     await page.getByTestId("aspect-1:1").click();
-    await page.getByTestId("motion-link").click();
+    await page.getByTestId("nav-studio").click();
     await page.waitForURL(/\/motion/, { timeout: 10000 });
     await page.getByRole("link", { name: /clipper/i }).first().click();
     await page.waitForURL(u => !u.pathname.startsWith("/motion"), { timeout: 10000 });

@@ -415,7 +415,7 @@ try {
     await page.getByTestId("hub-grid").waitFor({ timeout: 10000 });
     assert(await page.getByTestId("history-panel").count() === 0, "notes hidden on the video tab");
     await page.goto(BASE);
-    assert(await page.getByTestId("link-hub").count() === 1 && await page.getByTestId("link-history").count() === 0, "single header link");
+    assert(await page.getByTestId("nav-library").count() === 1 && await page.getByTestId("link-history").count() === 0, "single header link");
   });
 
   await step("hub: storage use against the free 10 GB, and clearing uploads that never finished (confirm first, records kept)", async () => {

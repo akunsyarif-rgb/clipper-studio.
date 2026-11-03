@@ -714,3 +714,9 @@ Di panel Cinematic Studio: pilih preset bawaan (4 suasana + 7 template konten) a
 ## Preset gerak khas (arah keynote: tanpa fade dan blur)
 
 Yang ditawarkan sekarang (6): **Muncul membal** (pegas dengan overshoot), **Naik dari garis** (teks naik dari garis mask tetap, id `blur-rise` dipertahankan agar sesi lama tetap jalan), **Halaman mendorong** (masuk dari kanan), **Bentuk hitam menyusut** (layar hitam penuh yang menyusut membuka adegan), **Kartu kaca** (muncul membal) dan **Tahan & potong**. Tiga preset lama (morph, dorongan kamera, sapuan cahaya) tetap bisa dirender dan valid di sesi/preset tersimpan, tetapi tidak lagi dipilih otomatis maupun ditawarkan kecuali sudah dipakai. Dua set gerak bawaan di Motion Library: "Gerak keynote tegas" dan "Gerak kaca halus". Semua murni per frame di `lib/cinematic.ts` (`fxFrame`) dan digambar `remotion/ScriptVideo.tsx`.
+
+## Satu menu, satu tampilan, aset otomatis
+
+- Satu jalan ke tiap tempat: menu empat item (`AppNav`) di semua halaman; tautan ganda (kartu "Motion Graphics Lab", "Content Hub", "Ke Motion Studio", dll.) dihapus. Tautan serah-terima transkrip di panel transkrip tetap karena membawa data.
+- Satu tampilan gelap (navy) dan aksen mint di semua halaman, dengan logo yang sama.
+- Foto otomatis (`app/PixabayAutoPanel.tsx`): satu ketukan mengisi adegan yang belum punya foto dari Pixabay (kunci di server, tanpa pengaturan, tanpa AI). Kata kunci: frasa Inggris dari Sutradara AI bila ada, kalau tidak dari kamus kata → Inggris (`lib/icon-keywords.ts`). Hanya saat tombol ditekan, satu pencarian sekali, maks. 12 adegan; kredit foto ikut tersimpan.
