@@ -732,3 +732,9 @@ Yang ditawarkan sekarang (6): **Muncul membal** (pegas dengan overshoot), **Naik
 - Halaman Aset dihapus dari menu dan dari app: pencarian foto/video ada di Studio kreatif (per adegan dan satu tombol otomatis), jadi halaman itu hanya duplikat dan jalan buntu (asetnya tidak bisa dipakai di Studio).
 - Di bawah hasil ekspor ada "Langkah berikutnya" (`app/NextSteps.tsx`): di Potong video, tombol "Lanjut ke Studio kreatif" membawa klip hasil sebagai video dasar Studio (serah-terima yang sama dengan klip pilihan AI, tanpa memilih ulang); di Studio, petunjuk menyimpan ke Library dan membuka Paket SEO.
 - `e2e/journey.mjs`: satu tes perjalanan penuh: pilih video → ekspor klip 3 dtk → lanjut ke Studio → render → MP4 (1080x1920, ±3 dtk, ada suara) → menu ke Library.
+
+## Mengetik aman di semua kolom
+
+- `e2e/typing-everywhere.mjs`: membuka semua panel, lalu untuk setiap kolom teks (di `/`, `/motion`, `/hub`) mengklik, mengetik, dan memastikan elemen yang sama tetap ada dan terfokus, posisi halaman tidak melompat, dan tidak berubah sesaat setelahnya (autosave dan timer). Lulus di Chromium dengan viewport tablet + sentuh; WebKit/iPad Safari belum bisa diuji dari CI.
+- `app/StableTyping.tsx` kini juga menjaga fokus: bila kolom kehilangan fokus atau elemennya diganti dalam 1,5 dtk setelah ketikan tanpa Anda mengetuk tempat lain atau menekan Tab/Enter/Escape, kolom yang sama difokuskan lagi dengan kursor di tempat semula (`window.__focusRescues` menghitungnya). Ketukan, Tab, Enter, dan Escape dihormati.
+- Kolom 16 px kini berlaku untuk layar sentuh dan juga iPad yang memakai trackpad/keyboard (`any-pointer: coarse`, `hover: none`).

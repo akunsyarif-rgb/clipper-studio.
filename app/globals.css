@@ -64,7 +64,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .cta-toggle small{font-size:10px;color:var(--muted);line-height:1.5}
 
 /* iPad/iPhone Safari zooms into any field under 16px and shifts the page when it does: keep fields at 16px on touch screens. */
-@media (pointer:coarse){input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea{font-size:16px!important}}
+@media (any-pointer:coarse),(hover:none){input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea{font-size:16px!important}}
 html{overflow-anchor:none;-webkit-text-size-adjust:100%}
 
 .app-nav{display:flex;gap:8px;overflow-x:auto;padding:10px 0 4px;margin:0;-webkit-overflow-scrolling:touch}

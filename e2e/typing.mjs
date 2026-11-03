@@ -74,6 +74,31 @@ try {
     assert((await page.evaluate(() => scrollY)) < 5, "normal scrolling was blocked");
   });
 
+  await step("focus stolen or the field replaced right after a keystroke is given back, with the caret; tapping elsewhere or Tab is respected", async () => {
+    const el = page.getByTestId("cine-tagline");
+    await el.scrollIntoViewIfNeeded(); await el.click(); await el.fill("");
+    await page.keyboard.type("halo dunia");
+    // 1) something blurs the field
+    await page.evaluate(() => document.activeElement.blur());
+    await page.waitForTimeout(150);
+    let st = await page.evaluate(() => ({ id: document.activeElement?.getAttribute("data-testid"), caret: document.activeElement?.selectionStart, rescues: window.__focusRescues }));
+    assert(st.id === "cine-tagline" && st.caret === 10 && st.rescues >= 1, `blur was undone: ${JSON.stringify(st)}`);
+    await page.keyboard.type("!");
+    // 2) the element is replaced by a new one (a remount)
+    await page.evaluate(() => { const old = document.activeElement; const fresh = old.cloneNode(true); fresh.value = old.value; old.replaceWith(fresh); });
+    await page.waitForTimeout(150);
+    st = await page.evaluate(() => ({ id: document.activeElement?.getAttribute("data-testid"), value: document.activeElement?.value, caret: document.activeElement?.selectionStart }));
+    assert(st.id === "cine-tagline" && st.value === "halo dunia!" && st.caret === 11, `replacement refocused with the caret: ${JSON.stringify(st)}`);
+    // 3) the person taps elsewhere: it stays blurred
+    await page.keyboard.type("x");
+    await page.getByTestId("cine-build").click();
+    await page.waitForTimeout(300);
+    assert((await page.evaluate(() => document.activeElement?.getAttribute("data-testid"))) !== "cine-tagline", "a tap elsewhere is respected");
+    // 4) Tab moves on and is not pulled back
+    await el.click(); await page.keyboard.type("y"); await page.keyboard.press("Tab"); await page.waitForTimeout(300);
+    assert((await page.evaluate(() => document.activeElement?.getAttribute("data-testid"))) !== "cine-tagline", "Tab moves to the next field");
+  });
+
   await browser.close();
 } finally {
   try { process.kill(-server.pid, "SIGTERM"); } catch { server.kill(); }
