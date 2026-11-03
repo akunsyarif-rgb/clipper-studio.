@@ -454,6 +454,10 @@ export default function MotionStudio() {
       const [remote, local] = await Promise.all([cloud.pullSession(), loadSession()]);
       if (!alive || !remote || isPristine(remote, SAMPLE, false)) return;
       if (remote.savedAt <= (local?.savedAt ?? 0)) return;
+      // The offer sits above the script box: showing it while a field is focused would push the page down mid-typing. Wait until typing stops.
+      const typing = () => { const a = document.activeElement; return !!a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName); };
+      while (alive && typing()) await new Promise(r => setTimeout(r, 500));
+      if (!alive) return;
       setSaved(remote); setSavedCloud(true); setSavedSource(null);
     })();
     return () => { alive = false; };
