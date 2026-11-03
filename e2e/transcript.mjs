@@ -435,6 +435,10 @@ try {
     await p.getByTestId("restore-offer").waitFor({ timeout: 10000 });
     await p.getByTestId("restore-discard").click();
     assert((await p.getByTestId("script").inputValue()).startsWith("Jangan tunggu"), "sample script after starting over");
+    // The stored session is deleted asynchronously: wait for the offer to go and for storage to settle before reloading (a reload mid-delete
+    // left the old session behind on a slow CI machine).
+    await p.getByTestId("restore-offer").waitFor({ state: "hidden", timeout: 10000 });
+    await p.waitForTimeout(1500);
     await p.reload();
     await p.waitForTimeout(1500);
     assert((await p.getByTestId("restore-offer").count()) === 0, "nothing offered after starting over");
