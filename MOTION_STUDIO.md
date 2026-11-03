@@ -726,3 +726,10 @@ Yang ditawarkan sekarang (6): **Muncul membal** (pegas dengan overshoot), **Naik
 - **Model gratis dari daftar** (`app/FreeModelPicker.tsx`, `lib/openrouter-free.ts`): tombol "Pilih dari daftar model gratis" mengambil daftar publik OpenRouter (tanpa kunci), menyaring yang gratis untuk prompt dan jawaban dan berkeluaran teks, lalu menampilkannya sebagai pilihan (urut konteks terpanjang); "Otomatis" (`openrouter/free`) tetap disarankan. Memilih tidak pernah berpindah ke model berbayar.
 - **Video sumber di tengah**: video yang bukan 9:16 kini ditaruh di tengah bingkai (contain) di atas latar palet, bukan menempel di atas.
 - **Cinematic Studio: jenis film** (`GENRES` di `lib/cinematic.ts`): Produk/peluncuran, Cerita/motivasi, Edukasi/penjelasan, Brand/acara/profil. Struktur adegan sama; label isian, nama adegan, dan kalimat bawaan menyesuaikan. Sesi lama tanpa jenis dibaca sebagai "produk".
+
+## Catatan keamanan dependensi (`npm audit`)
+
+16 temuan: 15 moderat dan 1 tinggi, semuanya tidak dapat dieksploitasi di app ini dan sengaja tidak diperbaiki dengan `npm audit fix --force`.
+- **PostCSS bawaan Next 15 (tinggi + 1 moderat):** celah pada pemrosesan CSS dengan `sourceMappingURL` yang dikendalikan penyerang. App hanya membangun CSS miliknya sendiri saat build; tidak ada CSS dari pihak luar yang diproses, dan tidak ada yang berjalan di server produksi. Perbaikannya menuntut Next 16 (perubahan besar); tinjau saat bermigrasi ke Next 16.
+- **Rantai ESLint / minimatch (14 moderat):** hanya alat pengembangan (lint), tidak ikut ke build produksi. "Perbaikan" yang disarankan npm adalah menurunkan versi ke yang lama, bukan solusi.
+- Workflow CI memakai `actions/checkout@v5` dan `actions/setup-node@v5` (Node 24) agar tidak terkena penghentian Node 20 di GitHub Actions.
