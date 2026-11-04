@@ -4,6 +4,8 @@ import Link from "next/link";
 import GeminiCleanup from "./GeminiCleanup";
 import ClipAssist from "./ClipAssist";
 import { useEffect, useRef, useState, type RefObject } from "react";
+import HeavyWorkNotice from "./HeavyWorkNotice";
+import { useWakeLock } from "./useWakeLock";
 import { formatBytes, formatTime } from "@/lib/clip";
 import { isOneOffPreview, keepStorage, modelIsCached } from "@/lib/asr/storage";
 import { ASR_RUN_KEY, defaultModelFor, isTouchDevice, lighterModel, parseRunMark } from "@/lib/asr/device";
@@ -64,6 +66,7 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
   const handle = useRef<ResilientHandle | null>(null);
   const cancelled = useRef(false);
   const working = phase !== "idle";
+  useWakeLock(working);
 
   // After mount: a lighter default on tablets and phones, and recognise a run that took the page down last time.
   useEffect(() => {
@@ -212,6 +215,7 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
     {touch && /small/.test(model) && !working && <div className="notice" data-testid="asr-heavy-hint">Model ini berat; di iPad atau ponsel Safari bisa menutup aplikasi karena memori. Disarankan &quot;Akurat (base)&quot;.</div>}
     {preciseTiming && onUseTiming && <button className="primary-button" disabled={working || locked || !range} onClick={() => void run(true)} data-testid="asr-precise"><span>Presisikan waktu subtitle</span><small>satu ketukan: dibuat di perangkat dari suara asli, teks naskah tidak berubah</small></button>}
     <button className="secondary-button" disabled={working || locked || !range} onClick={() => void run()} data-testid="asr-run"><span>✎</span> {working ? "Sedang membuat transkrip…" : transcript ? "Buat ulang transkrip bagian terpilih" : "Buat transkrip bagian terpilih"}<small>maks. 3 menit</small></button>
+    {working && <HeavyWorkNotice what="transcript" seconds={range?.duration ?? 0} modelCached={cached} testId="asr-heavy" />}
     {working && <div className="progress-wrap" data-testid="asr-progress">
       <div className="progress-label"><span>{phase === "audio" ? "Mengambil audio asli dari video…"
         : phase === "download" ? (download.total === 0 ? "Memuat model ucapan…" : download.loaded < download.total ? "Mengunduh model ucapan (sekali, lalu disimpan)…" : "Menyiapkan model (bisa beberapa menit di perangkat kecil)…")

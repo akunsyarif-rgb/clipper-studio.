@@ -26,6 +26,11 @@ try {
   for (let i = 0; i < 60; i++) { try { await fetch(BASE); break; } catch { await new Promise(r => setTimeout(r, 500)); } }
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ acceptDownloads: true, viewport: { width: 820, height: 1180 } });
+  // The Screen Wake Lock API is faked so the requests and releases can be counted.
+  await ctx.addInitScript(() => {
+    window.__wl = { requests: 0, released: 0 };
+    Object.defineProperty(navigator, "wakeLock", { configurable: true, value: { request: async () => { window.__wl.requests++; return { release: async () => { window.__wl.released++; } }; } } });
+  });
   const page = await ctx.newPage();
   const pageErrors = [];
   page.on("pageerror", e => pageErrors.push(e.message));
@@ -73,14 +78,41 @@ try {
     assert((await page.getByTestId("script").inputValue()) !== scriptBefore && /Mulai harimu dengan hangat/.test(await page.getByTestId("script").inputValue()), "Setuju put the plan into the studio");
     await page.getByTestId("advanced-settings").evaluate(d => { d.open = false; });
     await page.getByTestId("quick-render").waitFor({ timeout: 5000 });
+    await page.getByTestId("quick-checklist").waitFor({ timeout: 5000 });
+    assert(await page.getByTestId("quick-checklist").getAttribute("data-warnings") === "0", "everything is in order, so the checklist says so");
+    assert(await page.getByTestId("quick-render").isEnabled(), "render is not blocked when all conditions are met");
     await page.getByTestId("quick-render").click();
+    await page.getByTestId("quick-heavy").waitFor({ timeout: 10000 });
+    assert(/Jangan tutup layar, ubah tab, atau pindah aplikasi/.test(await page.getByTestId("quick-heavy").innerText()) && /menit/.test(await page.getByTestId("quick-heavy").innerText()), "time estimate and the instruction are shown while rendering");
+    assert((await page.evaluate(() => window.__wl.requests)) >= 1, "the screen is kept awake during the render");
     await page.getByTestId("quick-result").waitFor({ timeout: 300000 });
+    await page.waitForFunction(() => window.__wl.released >= 1, null, { timeout: 5000 });
     const [download] = await Promise.all([page.waitForEvent("download"), page.getByTestId("quick-download").click()]);
     const out = join(dir, "cepat.mp4");
     await download.saveAs(out);
     const dur = Number(spawnSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", out]).stdout.toString().trim());
     assert(dur > 10 && dur < 22, "the MP4 is about the 15 s that was asked for: " + dur);
     return `MP4 ${dur.toFixed(1)} s`;
+  });
+
+  await step("Siap render?: missing sound and closing invitation are named with one-tap fixes; warnings never block the render", async () => {
+    const p = await ctx.newPage();
+    p.on("pageerror", e => pageErrors.push(e.message));
+    await p.goto(BASE);
+    await p.getByTestId("advanced-settings").evaluate(d => { d.open = true; });
+    await p.getByTestId("voice-none").click();
+    await p.getByTestId("script").fill("Kopi enak di pagi hari.\nSeduh dengan air panas.\nRasanya hangat sekali.");
+    const sound = p.getByTestId("pre-check-sound"), cta = p.getByTestId("pre-check-cta");
+    await sound.waitFor({ timeout: 8000 });
+    assert(await sound.getAttribute("data-level") === "warn" && await cta.getAttribute("data-level") === "warn", "no music and no closing invitation are flagged");
+    assert(await p.getByTestId("render").isEnabled(), "warnings do not block the render");
+    await p.getByTestId("pre-fix-cta").click();
+    await p.waitForFunction(() => document.querySelector('[data-testid="pre-check-cta"]')?.getAttribute("data-level") === "ok", null, { timeout: 5000 });
+    assert((await p.getByTestId("script").inputValue()).split("\n").length === 4, "one invitation line was added at the end");
+    await p.getByTestId("pre-fix-music").click();
+    await p.waitForFunction(() => document.querySelector('[data-testid="pre-check-sound"]')?.getAttribute("data-level") === "ok", null, { timeout: 5000 });
+    assert(await p.getByTestId("pre-checklist").getAttribute("data-warnings") === "0", "all warnings are resolved");
+    await p.close();
   });
 
   await step("the AI card: skipping is remembered; saving a key shows the model list; the plan then comes from the AI, once", async () => {

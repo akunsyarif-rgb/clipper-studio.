@@ -8,6 +8,7 @@ import { getAccess } from "@/lib/gemini-access";
 import { isPaidAllowed } from "@/lib/paid-consent";
 import { isAiSkipped, QUICK_EXAMPLES, summarizePlan } from "@/lib/quick-start";
 import AiBusy from "./AiBusy";
+import HeavyWorkNotice from "./HeavyWorkNotice";
 import AiErrorNotice, { toAiError, type AiError } from "./AiErrorNotice";
 import { focusAiSetup, SKIP_EVENT } from "./AiSetupCard";
 import { useGeminiAccess } from "./useGeminiAccess";
@@ -19,10 +20,13 @@ type Stage = "write" | "plan" | "preview";
  * press Setuju, 3) look at the preview and press Render. Everything else stays in "Pengaturan lanjutan". Nothing changes in the
  * studio until Setuju; the plan comes from the same command agent and storyboard builder as the Cinematic Studio.
  */
-export default function QuickStart({ onApply, preview, onRender, onCancelRender, rendering, progress, result, renderError, blocker, onOpenAdvanced }: {
+export default function QuickStart({ onApply, preview, checklist, renderSeconds, onRender, onCancelRender, rendering, progress, result, renderError, blocker, onOpenAdvanced }: {
   onApply: (plan: CinePlan, visuals?: Visual[]) => void;
   /** The studio's own preview player (null while there is nothing to show). */
   preview: ReactNode;
+  /** "Siap render?" for the current video (null while there is nothing to check). */
+  checklist: ReactNode;
+  renderSeconds: number;
   onRender: () => void;
   onCancelRender: () => void;
   rendering: boolean;
@@ -111,6 +115,7 @@ export default function QuickStart({ onApply, preview, onRender, onCancelRender,
       <h2>Lihat hasilnya, lalu render</h2>
       <div className="quick-preview" data-testid="quick-preview">{preview ?? <p className="player-empty">{blocker || "Menyiapkan pratinjau…"}</p>}</div>
       {blocker && <p className="field-error" role="alert" data-testid="quick-blocker">{blocker}</p>}
+      {checklist}
       <div className="button-row">
         {rendering
           ? <button type="button" className="motion-cancel" onClick={onCancelRender} data-testid="quick-cancel">Batalkan render</button>
@@ -119,6 +124,7 @@ export default function QuickStart({ onApply, preview, onRender, onCancelRender,
         <button type="button" className="text-button" onClick={onOpenAdvanced} data-testid="quick-open-advanced">Ubah detail</button>
       </div>
       {rendering && <div className="render-progress" data-testid="quick-progress"><div><span>Merender di perangkat Anda. Jangan tutup layar…</span><b>{progress}%</b></div><i><em style={{ width: progress + "%" }} /></i></div>}
+      {rendering && <HeavyWorkNotice what="render" seconds={renderSeconds} testId="quick-heavy" />}
       {renderError && <p className="field-error" role="alert" data-testid="quick-render-error">{renderError}</p>}
       {result && <div className="render-result" data-testid="quick-result"><b>✓ Video siap</b><small>{(result.size / 1024 ** 2).toFixed(1)} MB</small><a className="motion-primary" href={result.url} download={result.name} data-testid="quick-download">Unduh MP4</a><small>Simpan ke Library dan buat judul serta tagar ada di Pengaturan lanjutan.</small></div>}
     </div>}

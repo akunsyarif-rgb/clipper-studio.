@@ -57,6 +57,7 @@ try {
     await page.getByText("Video siap").waitFor({ timeout: 15000 });
     await page.getByTestId("asr-run").click();
     await page.getByTestId("asr-progress").waitFor({ timeout: 10000 });
+    assert(/Jangan tutup layar, ubah tab, atau pindah aplikasi/.test(await page.getByTestId("asr-heavy").innerText()) && /menit/.test(await page.getByTestId("asr-heavy").innerText()), "the transcript shows a time estimate and the instruction not to leave");
     const outcome = await Promise.race([
       page.getByTestId("asr-list").waitFor({ timeout: 240000 }).then(() => "transcript"),
       page.getByTestId("asr-error").waitFor({ timeout: 240000 }).then(() => "error"),

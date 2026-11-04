@@ -8,6 +8,7 @@ import { easeOutBack } from "./icon-motion";
 import { MAX_SCENE_CHARS, MIN_SCENE_SECONDS, splitScript, type PaletteId, type StyleId } from "./script";
 import type { TypePackId } from "./fonts";
 import type { SfxMode } from "./sfx";
+import { hasCtaWords, sceneIsTooFast } from "./prerender";
 
 // ---- motion presets -----------------------------------------------------------------------------------------------
 
@@ -213,7 +214,7 @@ export function buildCinematic(input: Partial<Brief>, linesOverride?: { act: Act
 export type CineIssue = { level: "error" | "warning"; message: string };
 
 /** Checks the plan the way a director would: structure, continuity of motion, timing against the beat map, and sound. */
-export function validateCinematic(plan: CinePlan, o: { hasMusic?: boolean; frames?: number[]; fps?: number } = {}): CineIssue[] {
+export function validateCinematic(plan: CinePlan, o: { hasMusic?: boolean; hasVoice?: boolean; frames?: number[]; fps?: number } = {}): CineIssue[] {
   const issues: CineIssue[] = [];
   const s = plan.scenes;
   if (s.length < 3) issues.push({ level: "error", message: "Film terlalu pendek: minimal 3 adegan (hook, pengungkapan, ajakan)." });
@@ -238,7 +239,13 @@ export function validateCinematic(plan: CinePlan, o: { hasMusic?: boolean; frame
       at += f;
     });
   }
-  if (!o.hasMusic) issues.push({ level: "warning", message: "Belum ada musik: potongan tidak punya ketukan untuk diikuti. Nyalakan backsound otomatis." });
+  if (!o.hasMusic && !o.hasVoice) issues.push({ level: "warning", message: "Belum ada musik: potongan tidak punya ketukan untuk diikuti. Nyalakan backsound otomatis." });
+  // The same quality checks the "Siap render?" list shows: an invitation in the closing line, reading time, and a length that suits a short video.
+  const closing = s.at(-1);
+  if (closing && closing.act === "cta" && !hasCtaWords(closing.text)) issues.push({ level: "warning", message: "Kalimat penutup belum berupa ajakan yang jelas (pesan, ikuti, coba, kunjungi)." });
+  s.forEach((x, i) => { if (sceneIsTooFast(x) && x.seconds + 1e-6 >= MIN_SCENE_SECONDS) issues.push({ level: "warning", message: `Adegan ${i + 1} terlalu cepat untuk dibaca nyaman.` }); });
+  const total = s.reduce((a, x) => a + x.seconds, 0);
+  if (s.length && (total < 6 || total > 90)) issues.push({ level: "warning", message: `Panjang film ${Math.round(total)} detik; video pendek paling baik 6 sampai 90 detik.` });
   return issues;
 }
 
