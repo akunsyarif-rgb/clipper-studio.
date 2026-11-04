@@ -134,7 +134,7 @@ try {
 
   await step("signed out: the hub asks to sign in and calls nothing", async () => {
     await pOut.goto(BASE + "/hub");
-    await pOut.getByText("Masuk untuk membuka Content Hub").waitFor({ timeout: 10000 });
+    await pOut.getByText("Masuk untuk membuka Perpustakaan").waitFor({ timeout: 10000 });
     await new Promise(r => setTimeout(r, 500));
     assert(out.f.calls.length === 0, "no media-library call when signed out");
   });
@@ -148,7 +148,7 @@ try {
     const [dl] = await Promise.all([pOut.waitForEvent("download"), pOut.getByTestId("download").click()]);
     assert(/\.mp4$/.test(dl.suggestedFilename()), "local download gives an MP4");
     assert(await pOut.getByTestId("hub-open").isDisabled(), "Content Hub button is disabled without an account");
-    await pOut.getByText("Content Hub memakai akun").waitFor();
+    await pOut.getByText("Perpustakaan memakai akun").waitFor();
     assert(out.f.calls.length === 0 && out.f.puts.length === 0, "nothing sent");
   });
   await ctxOut.close();
@@ -454,7 +454,7 @@ try {
     const saved = b.f.assets; b.f.assets = [];
     await page.goto(BASE + "/hub");
     await page.getByTestId("hub-empty").waitFor({ timeout: 10000 });
-    await page.getByText("Simpan ke Content Hub").first().waitFor();
+    await page.getByText("Simpan ke Perpustakaan").first().waitFor();
     b.f.assets = saved;
   });
 

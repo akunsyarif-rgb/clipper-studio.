@@ -279,17 +279,17 @@ export default function Home() {
   const startSeconds = parseTime(start);
 
   return <main className="shell">
-    <header className="topbar"><Link className="brand" href="/"><span className="logo">c</span><span>clipper<span className="light">studio</span></span></Link><span className="pill"><i /> LOCAL-FIRST MVP</span></header>
+    <header className="topbar"><Link className="brand" href="/"><span className="logo">c</span><span>clipper<span className="light">studio</span></span></Link><span className="pill"><i /> DIPROSES DI PERANGKAT ANDA</span></header>
     <AppNav current="clipper" />
     <CloudAccount />
-    <section className="hero"><div className="eyebrow"><span className="eyebrow-line" /> VIDEO WORKSPACE</div><h1>Video panjang.<br/><em>Potongan yang tepat.</em></h1><p>Potong video menjadi klip 9:16, 16:9, atau 1:1. Pilih video, atur rentang waktu, lalu ekspor MP4 langsung dari perangkat.</p><div className="hero-tags"><span><b>01</b> Lokal dahulu</span><span><b>02</b> Tanpa login</span><span><b>03</b> Maks. 1 GB</span></div></section>
+    <section className="hero"><div className="eyebrow"><span className="eyebrow-line" /> RUANG KERJA VIDEO</div><h1>Video panjang.<br/><em>Potongan yang tepat.</em></h1><p>Potong video menjadi klip 9:16, 16:9, atau 1:1. Pilih video, atur rentang waktu, lalu ekspor MP4 langsung dari perangkat.</p><div className="hero-tags"><span><b>01</b> Lokal dahulu</span><span><b>02</b> Tanpa login</span><span><b>03</b> Maks. 1 GB</span></div></section>
     <section className="workspace">
       <div className="section-heading"><div><small>LANGKAH 01</small><h2>Pilih video atau audio sumber</h2></div><span className="step-count">01 / 03</span></div>
       <div className={"dropzone " + (file ? "has-file" : "")} onClick={() => !file && picker.current?.click()} role={!file ? "button" : undefined} tabIndex={!file ? 0 : undefined} onKeyDown={e => { if (!file && (e.key === "Enter" || e.key === " ")) picker.current?.click(); }}>
         <input ref={picker} type="file" accept={SOURCE_ACCEPT} onChange={onPick} data-testid="file-input"/>
         {file && src ? <><video ref={player} src={src} controls playsInline preload="metadata" onLoadedMetadata={onMetadata} onError={onVideoError}/><div className="file-details"><span className="file-mark">▶</span><div className="file-name"><strong>{file.name}</strong><span>{formatBytes(file.size)} · {duration ? formatTime(duration) : "Membaca durasi…"}</span></div><button className="text-button" disabled={busy||asrBusy} onClick={e => { e.stopPropagation(); resetFile(); say("Pilih video baru untuk memulai."); }}>Ganti</button></div></> : <div className="empty-drop"><div className="upload-icon"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg></div><strong>Ketuk untuk memilih video atau audio</strong><span>Ambil dari Files atau Photos di iPhone/iPad</span><div className="format-chips"><span>MP4</span><span>MOV</span><span>≤ 1 GB</span></div><small>Format/codec harus didukung browser.</small></div>}
       </div>
-      <div className="privacy-note"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span><strong>Video tetap di perangkat secara default.</strong> Pemotongan dilakukan di browser dengan FFmpeg WebAssembly; sumber tidak diunggah. Hasil ekspor baru dikirim ke Content Hub (penyimpanan cloud privat) jika Anda memilih Simpan ke Content Hub dan menyetujuinya.</span></div>
+      <div className="privacy-note"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span><strong>Video tetap di perangkat secara default.</strong> Pemotongan dilakukan di browser Anda sendiri; sumber tidak diunggah. Hasil ekspor baru dikirim ke Perpustakaan (penyimpanan cloud privat) jika Anda memilih Simpan ke Perpustakaan dan menyetujuinya.</span></div>
       <details className="yt-panel" open={!file} data-testid="yt-panel">
         <summary>Mulai dari link YouTube: AI mencari klip terbaik</summary>
         <YoutubeFlow room={MAX_CLIPS - clips.length} onPreview={u => setYt(parseYouTube(u))} onApprove={approveYoutube} />
@@ -332,7 +332,7 @@ export default function Home() {
       {message&&<div className={"notice " + (isError ? "notice-error" : "")} role={isError ? "alert" : "status"} data-testid="message">{message}</div>}{errorDetail&&<details className="error-details"><summary>Detail teknis</summary><code>{errorDetail}</code></details>}
       <p className="fine-print">Batas: sumber 60 menit / 1 GB, satu klip maks. 5 menit. Kinerja bergantung pada perangkat, codec, dan memori browser. Di iPhone/iPad, 720p jauh lebih cepat daripada 1080p.</p>
     </section>
-    <section className="bottom-note"><div className="bottom-icon">✦</div><div><strong>Lebih sederhana untuk workflow kreator.</strong><p>Pemotongan berjalan di perangkat dan tidak memerlukan akun. Hasilnya disimpan di perangkat; video baru dikirim ke Content Hub (penyimpanan cloud privat) bila Anda memilih dan menyetujuinya.</p></div></section>
-    <footer><Link className="footer-brand" href="/">CLIPPER STUDIO</Link><span>Local-first · Mobile-first</span></footer>
+    <section className="bottom-note"><div className="bottom-icon">✦</div><div><strong>Lebih sederhana untuk workflow kreator.</strong><p>Pemotongan berjalan di perangkat dan tidak memerlukan akun. Hasilnya disimpan di perangkat; video baru dikirim ke Perpustakaan (penyimpanan cloud privat) bila Anda memilih dan menyetujuinya.</p></div></section>
+    <footer><Link className="footer-brand" href="/">CLIPPER STUDIO</Link><span>Diproses di perangkat Anda · Nyaman di iPad dan HP</span></footer>
   </main>;
 }

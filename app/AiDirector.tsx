@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { directVideo, type DirectorInput, type DirectorPlan } from "@/lib/director";
-import { GeminiError } from "@/lib/gemini";
 import { getAccess } from "@/lib/gemini-access";
 import { describeScope, parseScope, restrictPlan } from "@/lib/revision";
 import { useGeminiAccess } from "./useGeminiAccess";
 import AiModelSelect from "./AiModelSelect";
+import AiBusy from "./AiBusy";
+import AiErrorNotice, { toAiError, type AiError } from "./AiErrorNotice";
 
 /**
  * "Sutradara AI": arranges the whole video from the script with the creator's own AI key. Only the sentences' text and
@@ -32,6 +33,7 @@ export default function AiDirector({ input, language, active, note, canRedo, ver
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [aiErr, setAiErr] = useState<AiError | null>(null);
   const [scopeNote, setScopeNote] = useState("");
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
@@ -42,7 +44,7 @@ export default function AiDirector({ input, language, active, note, canRedo, ver
     const request = feedback.trim();
     const { scope, outOfRange } = parseScope(request, input.scenes.length);
     if (outOfRange.length) { setError(`Scene ${outOfRange.join(", ")} tidak ada; proyek ini punya ${input.scenes.length} scene.`); return; }
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setAiErr(null);
     const ctl = new AbortController(); abort.current = ctl;
     try {
       const plan = await directVideo({ ...input, language, feedback: request || undefined, ...(request && scope.kind === "scenes" ? { scope: scope.indices } : {}) }, { apiKey: settings.apiKey, model: settings.model, language, signal: ctl.signal, transport: settings.transport, format: settings.format, timeoutMs: 90_000 });
@@ -52,7 +54,7 @@ export default function AiDirector({ input, language, active, note, canRedo, ver
       setScopeNote(`Dikerjakan pada ${where}. Naskah tidak diubah.${dropped.length ? ` Perubahan AI pada scene ${dropped.map(d => d + 1).join(", ")} diabaikan karena di luar target.` : ""}`);
       onPlan(bounded, request ? `${where}: ${request.slice(0, 40)}` : "Susunan otomatis");
       setFeedback("");
-    } catch (e) { setError(e instanceof GeminiError ? e.message : "Gagal menghubungi layanan AI."); }
+    } catch (e) { if (ctl.signal.aborted) setScopeNote("Dibatalkan. Tidak ada yang berubah."); else setAiErr(toAiError(e)); }
     finally { setBusy(false); }
   }
 
@@ -74,6 +76,8 @@ export default function AiDirector({ input, language, active, note, canRedo, ver
       </>}
     {scopeNote && <small role="status" data-testid="director-scope">{scopeNote}</small>}
     {active && note && <small role="status" data-testid="director-note"><b>Arah AI:</b> {note}</small>}
+    <AiBusy busy={busy} label="AI menyusun" onCancel={() => abort.current?.abort()} />
+    <AiErrorNotice error={aiErr} onRetry={() => void run()} onDismiss={() => setAiErr(null)} testId="director-error" />
     {error && <div className="notice notice-error" role="alert" data-testid="director-error">{error}</div>}
   </div>;
 }

@@ -49,7 +49,7 @@ try {
     await page.getByTestId("cine-list").waitFor({ timeout: 3000 });
     planned = await page.getByTestId("cine-list").locator("li").count();
     assert(planned === 7, "hook, problem, reveal, 2 features, proof, cta = 7, got " + planned);
-    assert(/60 BPM/.test(await page.getByTestId("cine-beat").innerText()), "cinematic tempo");
+    assert(/Tempo 60 ketukan per menit/.test(await page.getByTestId("cine-beat").innerText()), "cinematic tempo");
     const issues = await page.getByTestId("cine-issues").innerText().catch(() => "");
     assert(!/⛔/.test(issues), "no blocking issue: " + issues);
     return issues.replace(/\s+/g, " ");
@@ -213,6 +213,37 @@ try {
     const sum = await page.getByTestId("pixabay-auto-summary").innerText();
     assert(/\d+ foto/.test(sum) && /\d+ video/.test(sum), "photos and short clips are mixed: " + sum);
     assert(await page.getByTestId("scene-image-pexels").first().isVisible(), "a photo can be swapped scene by scene");
+    await page.evaluate(() => localStorage.removeItem("clipper:gemini:v1"));
+  });
+
+  await step("an AI problem has a way forward: a running timer with Batal, and a failed call offers retry, change model or carry on without AI", async () => {
+    let mode = "slow";
+    await page.route("https://generativelanguage.googleapis.com/**", async route => {
+      const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "POST, OPTIONS" };
+      const req = route.request();
+      if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors }).catch(() => {});
+      if (req.method() === "GET") return route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ models: [{ name: "models/gemini-2.5-flash", supportedGenerationMethods: ["generateContent"] }] }) }).catch(() => {});
+      if (mode === "slow") { await new Promise(r => setTimeout(r, 6000)); return route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: "{}" }).catch(() => {}); }
+      return route.fulfill({ status: 500, headers: cors, contentType: "application/json", body: JSON.stringify({ error: { message: "boom" } }) }).catch(() => {});
+    });
+    await page.evaluate(() => { localStorage.setItem("clipper:gemini:v1", JSON.stringify({ apiKey: "K".repeat(30), model: "uji:free", consent: true })); window.dispatchEvent(new Event("clipper:ai-access")); });
+    await page.getByTestId("fold-cinematic").evaluate(d => { d.open = true; });
+    await page.getByTestId("command-input").fill("Buat video produk teh 30 detik, suasana tenang");
+    await page.getByTestId("command-run").click();
+    await page.getByTestId("ai-busy").waitFor({ timeout: 5000 });
+    await page.waitForFunction(() => /\d+ dtk/.test(document.querySelector('[data-testid="ai-busy"]')?.textContent ?? ""), null, { timeout: 5000 });
+    await page.getByTestId("ai-cancel").click();
+    await page.getByTestId("ai-busy").waitFor({ state: "hidden", timeout: 5000 });
+    assert(/Dibatalkan/.test(await page.getByTestId("cine-note").innerText()), "cancel is acknowledged and nothing changed");
+    mode = "fail";
+    await page.getByTestId("command-input").fill("Buat video produk kopi 30 detik, suasana hangat");
+    await page.getByTestId("command-run").click();
+    await page.getByTestId("ai-error-retry").waitFor({ timeout: 20000 });
+    assert(/Layanan AI sedang sibuk/.test(await page.getByTestId("cine-error").innerText()), "the problem is explained in plain words");
+    await page.getByTestId("ai-error-model").click();
+    await page.waitForFunction(() => document.activeElement?.getAttribute("data-testid") === "ai-model-pick", null, { timeout: 3000 });
+    await page.getByTestId("ai-error-dismiss").click();
+    assert(await page.getByTestId("cine-error").count() === 0, "carrying on without AI clears the problem");
     await page.evaluate(() => localStorage.removeItem("clipper:gemini:v1"));
   });
 
