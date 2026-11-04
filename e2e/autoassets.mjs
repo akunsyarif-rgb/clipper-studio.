@@ -59,7 +59,7 @@ try {
     await page.getByTestId("pixabay-auto-run").click();
     await page.getByTestId("pixabay-auto-summary").waitFor({ timeout: 20000 });
     const text = await page.getByTestId("pixabay-auto-summary").innerText();
-    assert(/diberi foto/.test(text), text);
+    assert(/\d+ foto dipasang di \d+ adegan/.test(text), text);
     assert((await page.locator(".scene-thumb").count()) >= 2, "pictures are on the scenes");
     const searches = calls.filter(c => c.action === "search").map(c => c.query);
     assert(searches.length >= 2 && searches.every(q => /^[a-z ]+$/i.test(q)), "English keyword searches: " + searches.join(" | "));

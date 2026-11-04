@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { buildCinematic, CINEMATIC_PLAYBOOK, fxChoices, GENRES, GENRE_IDS, isFx, polishCinematic, TONES, validateCinematic, type Brief, type CinePlan, type Genre, type FxId } from "@/lib/cinematic";
 import { GeminiError, aiUsage } from "@/lib/gemini";
 import { isFreeModel } from "@/lib/ai-budget";
-import { MAX_COMMAND_CHARS, planFromCommand } from "@/lib/command-agent";
+import { MAX_COMMAND_CHARS, planFromCommand, type Visual } from "@/lib/command-agent";
 import { getAccess } from "@/lib/gemini-access";
 import { FPS } from "@/lib/script";
 import { applyPresetToPlan, builtInPresets, loadPresets, presetFromPlan, savePresets, type LibraryPreset } from "@/lib/motion-library";
@@ -22,7 +22,8 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
   hasMusic: boolean;
   /** Frame lengths of the scenes now in the timeline, to check the cuts against the beat. */
   frames: number[];
-  onApply: (plan: CinePlan) => void;
+  /** `visuals`: what to look for behind the scenes (photo or short clip), present when the creator wants them filled in. */
+  onApply: (plan: CinePlan, visuals?: Visual[]) => void;
   onClear: () => void;
   onFx: (text: string, fx: FxId) => void;
 }) {
@@ -35,8 +36,9 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
   const [note, setNote] = useState("");
   const abort = useRef<AbortController | null>(null);
   const [command, setCommand] = useState("");
-  const [terms, setTerms] = useState<string[]>([]);
+  const [terms, setTerms] = useState<Visual[]>([]);
   const [paidOk, setPaidOk] = useState(false);
+  const [autoPhotos, setAutoPhotos] = useState(true);
   const [mine, setMine] = useState<LibraryPreset[]>([]);
   const [presetId, setPresetId] = useState("");
   const [presetName, setPresetName] = useState("");
@@ -93,7 +95,7 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
     const ctl = new AbortController(); abort.current = ctl;
     try {
       const out = await planFromCommand(command, { apiKey: settings.apiKey, model: settings.model, language: "id", signal: ctl.signal, transport: settings.transport, format: settings.format });
-      setBrief(out.plan.brief); setFeaturesText(out.plan.brief.features.join("\n")); setDraft(out.plan); setTerms(out.searchTerms);
+      setBrief(out.plan.brief); setFeaturesText(out.plan.brief.features.join("\n")); setDraft(out.plan); setTerms(out.visuals);
       setNote(`Rencana siap (${settings.model}). Periksa storyboard di bawah, ubah bila perlu, lalu tekan “Pakai di Motion Studio”. Belum ada yang diubah. Permintaan sesi ini: ${aiUsage.requests}, token ${aiUsage.tokens}.`);
     } catch (e) {
       setError((e instanceof GeminiError ? e.message : "Gagal menghubungi AI.") + " Tidak ada yang diubah.");
@@ -125,7 +127,8 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
         {access && !isFreeModel(access.model) && <label className="check-row"><input type="checkbox" checked={paidOk} onChange={e => setPaidOk(e.target.checked)} data-testid="command-paid-ok" /> Izinkan model berbayar ({access.model}) untuk perintah ini</label>}
         <div className="button-row"><button type="button" onClick={() => void fromCommand()} disabled={busy || command.trim().length < 8} data-testid="command-run">{busy ? "Menyusun rencana…" : "Buat rencana dari perintah"}</button></div>
         <small className="field-hint">{access ? `Model: ${access.model} (${isFreeModel(access.model) ? "gratis" : "berbayar"}). Satu panggilan AI untuk mengisi brief; storyboard disusun di perangkat.` : "Perlu kunci AI. Tanpa itu, isi brief di bawah."}</small>
-        {terms.length > 0 && <p data-testid="command-terms"><small>Kata kunci aset: {terms.join(", ")}. Setelah rencana dipakai, buka “Foto &amp; video otomatis” di Motion Studio untuk mengisi gambarnya.</small></p>}
+        <label className="check-row"><input type="checkbox" checked={autoPhotos} onChange={e => setAutoPhotos(e.target.checked)} data-testid="command-auto-photos" /> Isi foto atau video latar otomatis (Pixabay) setelah rencana dipakai</label>
+        {terms.length > 0 && <p data-testid="command-terms"><small>Gambar yang dicari: {terms.map(t => `${t.term} (${t.kind === "video" ? "video" : "foto"})`).join(", ")}. {autoPhotos ? "Setelah rencana dipakai, tiap adegan diberi foto atau video pendek yang cocok; Anda bisa menggantinya per adegan." : "Gambar tidak diisi otomatis; gunakan “Gambar & musik otomatis” bila perlu."}</small></p>}
       </div>
       <div className="field-grid">
         <label>Jenis film<select value={brief.genre ?? "produk"} onChange={e => set("genre", e.target.value as Genre)} data-testid="cine-genre">{GENRE_IDS.map(g => <option key={g} value={g}>{GENRES[g].label}</option>)}</select></label>
@@ -158,7 +161,7 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
         </ol>
         {issues.length > 0 && <ul className="cine-issues" data-testid="cine-issues">{issues.map((m, i) => <li key={i} data-level={m.level}>{m.level === "error" ? "⛔" : "⚠️"} {m.message}</li>)}</ul>}
         <div className="button-row">
-          {draft && <button type="button" onClick={() => onApply(draft)} disabled={issues.some(x => x.level === "error")} data-testid="cine-apply">{active ? "Perbarui di Motion Studio" : "Pakai di Motion Studio"}</button>}
+          {draft && <button type="button" onClick={() => { onApply(draft, autoPhotos && terms.length ? terms : undefined); if (terms.length) { setTerms([]); setNote(autoPhotos ? "Rencana dipakai. Foto atau video latar dicari otomatis untuk semua adegan; ganti atau hapus per adegan di daftar adegan." : "Rencana dipakai."); } }} disabled={issues.some(x => x.level === "error")} data-testid="cine-apply">{active ? "Perbarui di Motion Studio" : "Pakai di Motion Studio"}</button>}
           {active && <button type="button" onClick={() => { setDraft(active.plan); onClear(); }} data-testid="cine-clear">Lepas mode sinematik</button>}
         </div>
         {active && <p className="preview-disclaimer">Mode aktif: panjang adegan mengikuti ketukan {bpm} BPM dan backsound sinematik otomatis. Mengubah naskah di atas melepas panjang adegan sinematik (gerak tiap adegan tetap bila kalimatnya sama).</p>}

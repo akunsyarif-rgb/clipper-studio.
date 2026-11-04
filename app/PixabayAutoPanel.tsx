@@ -4,18 +4,17 @@ import { useEffect, useRef, useState } from "react";
 import { downloadPixabayPhoto, PixabayError, searchPixabayPhotos, searchPixabayVideos, type PixabayPhoto, type PixabayVideo } from "@/lib/pixabay";
 import { iconLookupFor } from "@/lib/icon-keywords";
 
-const MAX_AUTO = 12;
-type SceneInfo = { text: string; /** English search phrase from the AI director, if any. */ query?: string; hasImage: boolean };
+type SceneInfo = { text: string; /** English search phrase from the AI director, if any. */ query?: string; hasImage: boolean; /** What the command agent judged fits the scene (used by the automatic run only). */ kind?: "photo" | "video" };
 
 /** What to search for a scene: the director's English phrase, else the dictionary's English word for what the scene says. */
 export const photoQueryFor = (s: SceneInfo) => iconLookupFor(s.text, s.query).query.trim();
 
 /**
  * Pictures found for you: one tap fills every scene that has no picture with the best Pixabay match for what it says. No setup and
- * no AI needed (the Pixabay key is on the server). Only when you press the button, one search at a time, at most 12 scenes; each
+ * no AI needed (the Pixabay key is on the server). Only when you press the button, one search at a time, with no cap on the number of scenes; each
  * photo can be swapped or removed in the scene list afterwards.
  */
-export default function PixabayAutoPanel({ scenes, onApply, onApplyVideo, musicOn, onMusic, disabled }: {
+export default function PixabayAutoPanel({ scenes, onApply, onApplyVideo, musicOn, onMusic, disabled, autoRun = 0 }: {
   scenes: SceneInfo[];
   onApply: (text: string, file: File, photo: PixabayPhoto) => Promise<void>;
   /** A stock clip is set as the scene's muted background (no file is downloaded). */
@@ -24,6 +23,8 @@ export default function PixabayAutoPanel({ scenes, onApply, onApplyVideo, musicO
   /** Turns the automatic backsound on (made on the device from the video's style). */
   onMusic: () => void;
   disabled: boolean;
+  /** Changes when something (the command agent) asks for the photos to be filled in without a tap. Photos only. */
+  autoRun?: number;
 }) {
   const [kind, setKind] = useState<"photo" | "video">("photo");
   const [busy, setBusy] = useState(false);
@@ -33,31 +34,43 @@ export default function PixabayAutoPanel({ scenes, onApply, onApplyVideo, musicO
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
 
-  const todo = scenes.filter(s => !s.hasImage && photoQueryFor(s).length >= 2).slice(0, MAX_AUTO);
+  const todo = scenes.filter(s => !s.hasImage && photoQueryFor(s).length >= 2); // every scene without a picture: no cap on the number of scenes
   const skipped = scenes.filter(s => !s.hasImage).length - todo.length;
 
-  async function fillAll() {
+  const lastAuto = useRef(0);
+  useEffect(() => {
+    if (!autoRun || autoRun === lastAuto.current || busy || disabled || todo.length === 0) return;
+    lastAuto.current = autoRun;
+    void fillAll("auto");
+  }, [autoRun, busy, disabled, todo.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function fillAll(mode?: "auto" | "photo" | "video") {
+    const chosen = mode ?? kind;
     const ctl = new AbortController(); abort.current = ctl;
     setBusy(true); setError(""); setSummary(""); setProgress({ done: 0, total: todo.length });
-    let placed = 0, missed = 0;
-    const used = new Set<number>();
+    let photos = 0, videos = 0, missed = 0;
+    const used = new Set<number>(), usedVideos = new Set<number>();
     try {
       for (const [i, s] of todo.entries()) {
         if (ctl.signal.aborted) break;
+        // "auto": the agent's judgement per scene (a short clip where there is motion, else a photo); a clip that is not found falls back to a photo.
+        const want = chosen === "auto" ? (s.kind ?? "photo") : chosen;
         try {
-          if (kind === "video") {
+          let done = false;
+          if (want === "video") {
             const found = await searchPixabayVideos(photoQueryFor(s), { perPage: 6, signal: ctl.signal });
-            // Short, light clips: they play muted behind the scene, so the smallest portrait-friendly one is enough.
-            const pick = found.videos.filter(v => !used.has(v.id) && v.duration <= 30).sort((a, b) => a.size - b.size)[0];
-            if (!pick) { missed++; continue; }
-            used.add(pick.id); onApplyVideo(s.text, pick); placed++;
-          } else {
+            // A few seconds are enough: prefer clips up to 15 s, then up to 30 s, the smallest first (they play muted behind the scene).
+            const pick = found.videos.filter(v => !usedVideos.has(v.id) && v.duration <= 30).sort((a, b) => Number(a.duration > 15) - Number(b.duration > 15) || a.size - b.size)[0];
+            if (pick) { usedVideos.add(pick.id); onApplyVideo(s.text, pick); videos++; done = true; }
+            else if (chosen !== "auto") { missed++; continue; }
+          }
+          if (!done) {
             const found = await searchPixabayPhotos(photoQueryFor(s), { perPage: 6, imageType: "photo", signal: ctl.signal });
             const pick = found.photos.find(p => !used.has(p.id));
             if (!pick) { missed++; continue; }
             used.add(pick.id);
             await onApply(s.text, await downloadPixabayPhoto(pick, ctl.signal), pick);
-            placed++;
+            photos++;
           }
         } catch (e) {
           if (ctl.signal.aborted) break;
@@ -66,10 +79,11 @@ export default function PixabayAutoPanel({ scenes, onApply, onApplyVideo, musicO
         }
         setProgress({ done: i + 1, total: todo.length });
       }
-      setSummary(`${placed} adegan diberi ${kind === "video" ? "video" : "foto"}${missed ? `, ${missed} tanpa hasil yang cocok` : ""}${skipped > 0 ? `, ${skipped} dilewati (belum ada kata kunci Inggris: jalankan Sutradara AI atau pilih foto manual)` : ""}. Ganti atau hapus per adegan bila kurang pas.`);
+      const parts = [photos ? `${photos} foto` : "", videos ? `${videos} video` : ""].filter(Boolean).join(" dan ");
+      setSummary(`${parts || "Tidak ada gambar"} dipasang di ${photos + videos} adegan${missed ? `, ${missed} tanpa hasil yang cocok` : ""}${skipped > 0 ? `, ${skipped} dilewati (belum ada kata kunci Inggris: jalankan Sutradara AI atau pilih foto manual)` : ""}. Ganti atau hapus per adegan bila kurang pas.`);
     } catch (e) {
       setError(e instanceof PixabayError ? e.message : "Pencarian gagal. Coba lagi.");
-      if (placed) setSummary(`${placed} adegan sempat diisi sebelum berhenti.`);
+      if (photos + videos) setSummary(`${photos + videos} adegan sempat diisi sebelum berhenti. Tekan tombolnya lagi untuk melanjutkan adegan yang tersisa.`);
     } finally { setBusy(false); setProgress(null); }
   }
 
