@@ -186,6 +186,40 @@ try {
     await ctx.close();
   });
 
+  await step("edit assistant: a sentence becomes a plan to approve; nothing changes before Terapkan; a content-dependent wish waits for the creator's go for a transcript; unsupported parts are said plainly; undo restores", async () => {
+    const { ctx, p } = await studio(beatVideo);
+    let calls = 0, lastPrompt = "";
+    await p.route("https://generativelanguage.googleapis.com/**", async route => {
+      const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "POST, OPTIONS" };
+      if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+      calls++;
+      lastPrompt = JSON.parse(route.request().postData()).contents.at(-1).parts.at(-1).text;
+      const plan = { profile: "music", captionStyle: "pop", density: "sparse", unsupported: ["ganti latar belakang"], needsTranscript: false };
+      await route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(plan) }] } }] }) });
+    });
+    await p.evaluate(() => { localStorage.setItem("clipper:gemini:v1", JSON.stringify({ apiKey: "K".repeat(30), model: "gemini-2.5-pro", consent: true })); window.dispatchEvent(new Event("clipper:ai-access")); });
+    await p.getByTestId("edit-command-input").fill("buat berirama, subtitle gaya pop, animasi seperlunya, dan ganti latar belakang");
+    await p.getByTestId("edit-command-paid-ok").waitFor({ timeout: 5000 });
+    await p.getByTestId("edit-command-run").click();
+    await p.getByTestId("edit-command-error").waitFor({ timeout: 5000 });
+    assert(/bukan model gratis/.test(await p.getByTestId("edit-command-error").innerText()) && calls === 0, "a paid model is not used without permission");
+    await p.getByTestId("edit-command-paid-ok").check();
+    await p.getByTestId("edit-command-run").click();
+    await p.getByTestId("edit-command-plan").waitFor({ timeout: 15000 });
+    assert(calls === 1 && /Belum ada transkrip/.test(lastPrompt), "one AI call, told there is no transcript yet: " + calls);
+    const planText = await p.getByTestId("edit-command-plan").innerText();
+    assert(/Musik \/ ritme/.test(planText) && /Pop/.test(planText) && /Sedikit/.test(planText), "the plan lists what will change: " + planText);
+    assert(/ganti latar belakang/.test(await p.getByTestId("edit-command-unsupported").innerText()), "what the app cannot do is said");
+    assert(await p.getByTestId("profile-standard").getAttribute("aria-checked") === "true", "nothing applied before approval");
+    await p.getByTestId("edit-command-transcript").waitFor({ timeout: 3000 });
+    assert(await p.getByTestId("asr-progress").count() === 0, "no transcript is started without the creator's go");
+    await p.getByTestId("edit-command-apply").click();
+    await p.waitForFunction(() => document.querySelector('[data-testid="profile-music"]')?.getAttribute("aria-checked") === "true", null, { timeout: 5000 });
+    await p.getByTestId("edit-command-undo").click();
+    await p.waitForFunction(() => document.querySelector('[data-testid="profile-standard"]')?.getAttribute("aria-checked") === "true", null, { timeout: 5000 });
+    await ctx.close();
+  });
+
   await step("no uncaught page errors", async () => {
     const real = pageErrors.filter(m => m !== "Failed to fetch"); // remotion.pro telemetry is unreachable here; harmless
     assert(real.length === 0, real.join(" | "));

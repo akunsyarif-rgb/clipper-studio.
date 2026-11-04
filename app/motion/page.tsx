@@ -35,6 +35,8 @@ import AppNav from "../AppNav";
 import CinematicStudio from "../CinematicStudio";
 import IconifyPanel from "../IconifyPanel";
 import PixabayAutoPanel from "../PixabayAutoPanel";
+import EditCommandPanel from "../EditCommandPanel";
+import type { EditPlan } from "@/lib/edit-command";
 import { registerIcon, setCustomIconEntrance } from "@/lib/visuals";
 import type { Entrance } from "@/lib/icon-motion";
 import type { LoadedIcon } from "@/lib/iconify";
@@ -702,6 +704,30 @@ export default function MotionStudio() {
   /** Words from a command (one per scene, in turn) that say what each scene's picture should show; with them the photos are filled in once. */
   const [queryHints, setQueryHints] = useState<Record<string, Visual>>({});
   const [autoPhotos, setAutoPhotos] = useState(0);
+  /** The edit assistant's last change: what to put back, and which pictures it added. */
+  const [editUndo, setEditUndo] = useState<{ editProfile: EditProfile; captions: boolean; captionStyle: CaptionStyleId; overlayPos: OverlayPosition; density: Density; brandMotion: BrandMotion; queryHints: Record<string, Visual>; imageKeys: string[]; cutOverrides: Record<string, string> } | null>(null);
+  const [asrStart, setAsrStart] = useState(0);
+  function applyEditPlan(plan: EditPlan) {
+    setEditUndo({ editProfile, captions, captionStyle, overlayPos, density, brandMotion, queryHints, imageKeys: Object.keys(images), cutOverrides });
+    if (plan.profile) { setEditProfile(plan.profile); setEdits([]); setEmphasis([]); }
+    if (plan.captions !== undefined) setCaptions(plan.captions);
+    if (plan.captionStyle) setCaptionStyle(plan.captionStyle);
+    if (plan.overlayPos) setOverlayPos(plan.overlayPos);
+    if (plan.density) setDensity(plan.density);
+    if (plan.brandMotion) setBrandMotion(plan.brandMotion);
+    if (plan.inserts) {
+      const v = plan.inserts.visuals;
+      setQueryHints(Object.fromEntries(timeline.ok ? timeline.scenes.map((sc, i) => [sc.text, v[i % v.length]]) : []));
+      setAutoPhotos(n => n + 1);
+    }
+  }
+  function undoEditPlan() {
+    const u = editUndo; if (!u) return;
+    setEditProfile(u.editProfile); setEdits([]); setEmphasis([]); setCaptions(u.captions); setCaptionStyle(u.captionStyle); setOverlayPos(u.overlayPos); setDensity(u.density); setBrandMotion(u.brandMotion); setQueryHints(u.queryHints);
+    for (const k of Object.keys(images)) if (!u.imageKeys.includes(k)) removeSceneImage(k);
+    setCutOverrides(u.cutOverrides as typeof cutOverrides);
+    setEditUndo(null);
+  }
   function applyCinematic(plan: CinePlan, visuals?: Visual[]) {
     const c = plan.concept;
     if (visuals?.length) {
@@ -966,7 +992,8 @@ export default function MotionStudio() {
               {videoEdit && <EditProfilePanel file={source.file} url={source.url} seconds={source.seconds} trim={trim} words={imported ? absoluteWords(allWords(imported), trim?.start ?? 0) : null} video={sourceVideo}
                 profile={editProfile} onProfile={setEditProfile} edits={edits} onEdits={setEdits} onEmphasis={setEmphasis} comedySfx={comedySfx} onComedySfx={setComedySfx}
                 onTrim={t => applyTrim(clampTrim(t, source.seconds))} audioOnly={isAudioFile(source.file)} disabled={asrBusy || rendering} />}
-              <TranscriptPanel key={`${source.url}:${trim?.start ?? 0}:${trim?.end ?? 0}`} file={source.file} video={sourceVideo} range={{ start: trim?.start ?? 0, duration: trimSeconds(trim, source.seconds) }} locked={false} onWorking={setAsrBusy} onCopy={setScript} onUseTiming={useTimingOnly} preciseTiming={!!imported && imported.granularity !== "word" && videoEdit}
+              <EditCommandPanel seconds={trimSeconds(trim, source.seconds)} hasTranscript={!!imported} lines={splitScript(script)} disabled={asrBusy || rendering} onApply={applyEditPlan} onUndo={undoEditPlan} canUndo={!!editUndo} onStartTranscript={() => setAsrStart(n => n + 1)} />
+              <TranscriptPanel startNonce={asrStart} key={`${source.url}:${trim?.start ?? 0}:${trim?.end ?? 0}`} file={source.file} video={sourceVideo} range={{ start: trim?.start ?? 0, duration: trimSeconds(trim, source.seconds) }} locked={false} onWorking={setAsrBusy} onCopy={setScript} onUseTiming={useTimingOnly} preciseTiming={!!imported && imported.granularity !== "word" && videoEdit}
                 onUse={t => { setScript(scriptFromTranscript(t, FPS)); setImported(t); setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptions(true); setCaptionOffset(0); setPalette("pearl"); setContentPreset("custom"); setOffer(null); }} />
             </div>}
           {sourceError && <p className="field-error normal-only" role="alert">{sourceError}</p>}
