@@ -766,3 +766,7 @@ Di bawah video sumber di Motion Studio ada kolom "Asisten edit" (`app/EditComman
 - **Model gratis dulu**: memakai model yang tersimpan; model non-gratis butuh kotak izin dicentang. Satu panggilan, dicache, dihitung di anggaran AI.
 - **Maksimal 3 menit**: untuk video lebih panjang kolomnya dikunci dengan petunjuk memotong dulu di Potong video.
 - Tes: `lib/edit-command.test.ts` dan langkah di `e2e/editing.mjs` (AI dipalsukan: model berbayar tanpa izin tak memanggil apa pun; satu panggilan; rencana tertulis; tak ada yang berubah sebelum Terapkan; transkrip tidak dimulai tanpa persetujuan; urungkan).
+
+## Pilihan model AI di tempatnya (`app/AiModelSelect.tsx`)
+
+Dropdown "Model AI yang dipakai" ada langsung di Sutradara AI, kolom Perintah (Cinematic Studio), dan Asisten edit, jadi tidak perlu ke pengaturan AI saat sebuah model lambat. Mengganti model di sini menyimpan model yang sama dengan pengaturan AI (di akun bila kuncinya di server, atau di perangkat), sehingga berlaku untuk semua fitur AI. Isinya: model yang sedang dipakai, model yang pernah dipakai (diingat di perangkat), dan untuk OpenRouter "Otomatis" serta daftar model gratisnya (daftar publik); untuk penyedia lain daftar model dimuat saat dropdown disentuh. Setiap model diberi label "gratis" atau "bisa ditagih". Memilih model di dropdown adalah pilihan eksplisit: untuk Perintah dan Asisten edit itu otomatis mencentang izin model berbayar. Tidak ada model yang berganti sendiri. Bila model gratis "terlalu lama menjawab" (batas 60 dtk), pilih model lain di dropdown lalu coba lagi.

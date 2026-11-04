@@ -6,6 +6,7 @@ import { describePlan, MAX_AGENT_SECONDS, MAX_EDIT_COMMAND_CHARS, planEdit, plan
 import { GeminiError, aiUsage } from "@/lib/gemini";
 import { getAccess } from "@/lib/gemini-access";
 import { useGeminiAccess } from "./useGeminiAccess";
+import AiModelSelect from "./AiModelSelect";
 
 /**
  * Edit assistant for the video already chosen: one sentence becomes a few of the studio's own settings. The creator sees the plan
@@ -57,12 +58,13 @@ export default function EditCommandPanel({ seconds, hasTranscript, lines, disabl
       <textarea rows={2} value={command} maxLength={MAX_EDIT_COMMAND_CHARS} onChange={e => setCommand(e.target.value)} disabled={disabled || tooLong} placeholder="Contoh: buat lucu, subtitle gaya pop di bawah, animasi seperlunya" data-testid="edit-command-input" />
     </label>
     {tooLong && <small className="field-hint" data-testid="edit-command-long">Asisten edit untuk video sampai 3 menit. Potong videonya dulu di Potong video.</small>}
+    {access && <AiModelSelect disabled={busy} onPick={m => setPaidOk(!isFreeModel(m))} />}
     {access && !isFreeModel(access.model) && <label className="check-row"><input type="checkbox" checked={paidOk} onChange={e => setPaidOk(e.target.checked)} data-testid="edit-command-paid-ok" /> Izinkan model berbayar ({access.model}) untuk perintah ini</label>}
     <div className="button-row">
       <button type="button" onClick={() => void run()} disabled={disabled || busy || tooLong || command.trim().length < 8} data-testid="edit-command-run">{busy ? "Menyusun rencana…" : "Buat rencana edit"}</button>
       {canUndo && <button type="button" className="text-button" onClick={() => { onUndo(); setNote("Pengaturan dikembalikan seperti sebelum perintah."); setPlan(null); }} data-testid="edit-command-undo">Urungkan perintah terakhir</button>}
     </div>
-    <small className="field-hint">{access ? `Model: ${access.model} (${isFreeModel(access.model) ? "gratis" : "berbayar"}). Satu panggilan AI; hanya memilih pengaturan yang sudah ada, tidak memotong atau menghapus apa pun.` : "Perlu kunci AI."}</small>
+    <small className="field-hint">{access ? "Satu panggilan AI; hanya memilih pengaturan yang sudah ada, tidak memotong atau menghapus apa pun." : "Perlu kunci AI."}</small>
     {error && <div className="notice notice-error" role="alert" data-testid="edit-command-error">{error}</div>}
     {note && <div className="notice" role="status" data-testid="edit-command-note">{note}</div>}
     {plan && <div data-testid="edit-command-plan">

@@ -9,6 +9,7 @@ import { getAccess } from "@/lib/gemini-access";
 import { FPS } from "@/lib/script";
 import { applyPresetToPlan, builtInPresets, loadPresets, presetFromPlan, savePresets, type LibraryPreset } from "@/lib/motion-library";
 import { useGeminiAccess } from "./useGeminiAccess";
+import AiModelSelect from "./AiModelSelect";
 
 const EMPTY: Brief = { genre: "produk", product: "", tagline: "", problem: "", features: [], proof: "", cta: "", tone: "keynote", seconds: 30, language: "id" };
 
@@ -124,9 +125,10 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
       <p className="preview-disclaimer">Isi brief singkat; naskah, gaya, palet, huruf, gerak tiap adegan, dan panjang adegan (sesuai ketukan) disusun di perangkat ini tanpa AI. AI hanya opsional untuk memoles kalimat.</p>
       <div className="command-box" data-testid="command-box">
         <label>Perintah (ceritakan video yang ingin dibuat)<textarea rows={3} value={command} maxLength={MAX_COMMAND_CHARS} onChange={e => setCommand(e.target.value)} placeholder="Contoh: video produk kopi 30 detik, suasana hangat, ajak orang memesan" data-testid="command-input" /></label>
+        {access && <AiModelSelect disabled={busy} onPick={m => setPaidOk(!isFreeModel(m))} />}
         {access && !isFreeModel(access.model) && <label className="check-row"><input type="checkbox" checked={paidOk} onChange={e => setPaidOk(e.target.checked)} data-testid="command-paid-ok" /> Izinkan model berbayar ({access.model}) untuk perintah ini</label>}
         <div className="button-row"><button type="button" onClick={() => void fromCommand()} disabled={busy || command.trim().length < 8} data-testid="command-run">{busy ? "Menyusun rencana…" : "Buat rencana dari perintah"}</button></div>
-        <small className="field-hint">{access ? `Model: ${access.model} (${isFreeModel(access.model) ? "gratis" : "berbayar"}). Satu panggilan AI untuk mengisi brief; storyboard disusun di perangkat.` : "Perlu kunci AI. Tanpa itu, isi brief di bawah."}</small>
+        <small className="field-hint">{access ? "Satu panggilan AI untuk mengisi brief; storyboard disusun di perangkat." : "Perlu kunci AI. Tanpa itu, isi brief di bawah."}</small>
         <label className="check-row"><input type="checkbox" checked={autoPhotos} onChange={e => setAutoPhotos(e.target.checked)} data-testid="command-auto-photos" /> Isi foto atau video latar otomatis (Pixabay) setelah rencana dipakai</label>
         {terms.length > 0 && <p data-testid="command-terms"><small>Gambar yang dicari: {terms.map(t => `${t.term} (${t.kind === "video" ? "video" : "foto"})`).join(", ")}. {autoPhotos ? "Setelah rencana dipakai, tiap adegan diberi foto atau video pendek yang cocok; Anda bisa menggantinya per adegan." : "Gambar tidak diisi otomatis; gunakan “Gambar & musik otomatis” bila perlu."}</small></p>}
       </div>
