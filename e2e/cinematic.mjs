@@ -182,6 +182,7 @@ try {
     // Picking a model in the list is an explicit choice: it is saved for every AI feature and counts as the permission for a paid one.
     await page.getByTestId("ai-model-pick").first().selectOption("gemini-2.5-flash");
     await page.waitForFunction(() => /gemini-2\.5-flash/.test(JSON.parse(localStorage.getItem("clipper:gemini:v1") || "{}").model || ""), null, { timeout: 5000 });
+    await page.waitForFunction(() => document.querySelector('[data-testid="command-paid-ok"]')?.checked === true, null, { timeout: 5000 }); // set right after the save, so wait for it
     assert(await page.getByTestId("command-paid-ok").isChecked(), "choosing a model in the list is the permission");
     await page.getByTestId("command-run").click();
     await page.getByTestId("command-terms").waitFor({ timeout: 15000 });
