@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import "./globals.css";
 import StableTyping from "./StableTyping";
+import AiBudgetWarning from "./AiBudgetWarning";
 export const metadata: Metadata = {
   title: "Clipper Studio",
   description: "Ruang kerja pemotongan video untuk perangkat mobile.",
@@ -19,6 +20,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return <html lang="id"><body>
     <Script id="symbol-dispose-polyfill" strategy="beforeInteractive">{SYMBOL_DISPOSE_POLYFILL}</Script>
     <StableTyping />
+    <AiBudgetWarning />
     {children}
   </body></html>;
 }

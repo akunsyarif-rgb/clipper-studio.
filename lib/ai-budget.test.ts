@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { aiUsage, cleanupLines, resetAiGuards } from "./gemini";
-import { budgetExceeded, DEFAULT_DAILY_TOKENS, getBudget, isFreeModel, localDayKey, setDailyLimit } from "./ai-budget";
+import { budgetExceeded, budgetStatus, DEFAULT_DAILY_TOKENS, DEFAULT_MONTHLY_TOKENS, getBudget, isFreeModel, localDayKey, recordUsage, setDailyLimit, setMonthlyLimit } from "./ai-budget";
 
 const reply = (lines: string[], tokens?: number) => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ lines }) }] } }], ...(tokens ? { usageMetadata: { totalTokenCount: tokens } } : {}) }), { status: 200 });
 const opts = (fn: unknown) => ({ apiKey: "k".repeat(30), model: "m", language: "id", fetchImpl: fn as typeof fetch, retryDelaysMs: [] as number[] });
 
-describe("daily AI budget", () => {
+describe("daily and monthly AI budget", () => {
   it("counts tokens (reported, or estimated when the service reports none) and requests", async () => {
     resetAiGuards();
     await cleanupLines(["a"], opts(async () => reply(["B"], 120)));
@@ -14,18 +14,41 @@ describe("daily AI budget", () => {
     expect(getBudget().tokens).toBeGreaterThan(120);
     expect(getBudget().requests).toBe(2);
   });
-  it("refuses the next request once the limit is reached, with no call to the service; the limit can be raised or removed", async () => {
+  it("only warns when a limit is reached: the next request is still sent, and the limit can be raised or removed", async () => {
     resetAiGuards();
     setDailyLimit(100);
     await cleanupLines(["a"], opts(async () => reply(["B"], 150)));
     expect(budgetExceeded()).toBe(true);
+    expect(budgetStatus()).toMatchObject({ level: "over", scope: "day" });
     let called = 0;
-    await expect(cleanupLines(["x"], opts(async () => { called++; return reply(["Y"]); }))).rejects.toMatchObject({ kind: "quota", message: expect.stringContaining("Batas pemakaian AI hari ini") });
-    expect(called).toBe(0);
+    await cleanupLines(["x"], opts(async () => { called++; return reply(["Y"]); }));
+    expect(called).toBe(1);
     setDailyLimit(0);
     expect(budgetExceeded()).toBe(false);
-    await cleanupLines(["x"], opts(async () => reply(["Y"])));
     setDailyLimit(DEFAULT_DAILY_TOKENS);
+  });
+  it("warns from 80 % of the daily or the monthly limit, whichever is closer", () => {
+    resetAiGuards();
+    setDailyLimit(1000); setMonthlyLimit(10_000);
+    expect(budgetStatus().level).toBe("ok");
+    recordUsage(850, "m");
+    expect(budgetStatus()).toMatchObject({ level: "warn", scope: "day", pct: 85 });
+    setDailyLimit(0);
+    expect(budgetStatus()).toMatchObject({ level: "ok", scope: "month" });
+    recordUsage(7500, "m");
+    expect(budgetStatus()).toMatchObject({ level: "warn", scope: "month" });
+    recordUsage(2000, "m");
+    expect(budgetStatus()).toMatchObject({ level: "over", scope: "month" });
+    expect(getBudget().monthTokens).toBe(10_350);
+    setDailyLimit(DEFAULT_DAILY_TOKENS); setMonthlyLimit(DEFAULT_MONTHLY_TOKENS);
+  });
+  it("does not count free models, but still counts their requests", () => {
+    resetAiGuards();
+    recordUsage(5000, "openrouter/free");
+    recordUsage(5000, "meta/llama:free");
+    expect(getBudget()).toMatchObject({ tokens: 0, monthTokens: 0, requests: 2 });
+    recordUsage(300, "google/gemini-2.5-pro");
+    expect(getBudget()).toMatchObject({ tokens: 300, monthTokens: 300, requests: 3 });
   });
   it("an answer already paid for is still served from memory when the budget is spent", async () => {
     resetAiGuards();
