@@ -710,7 +710,7 @@ Di panel Cinematic Studio: pilih preset bawaan (4 suasana + 7 template konten) a
 ## Menu bersama dan anggaran AI
 
 - Menu tiga tempat di semua halaman (`app/AppNav.tsx`): **Potong video** (`/`), **Studio kreatif** (`/motion`), **Library** (`/hub`), tiap item dengan keterangan singkat dan halaman aktif ditandai.
-- Anggaran AI harian di perangkat (`lib/ai-budget.ts`, tampil di panel pengaturan AI lewat `app/AiUsage.tsx`): token dan permintaan hari ini, batas harian (default 200.000 token, 0 = tanpa batas). Setelah batas tercapai permintaan AI baru ditolak dengan pesan jelas (hasil yang sudah ada di cache tetap dilayani; fitur lokal tetap jalan). Model yang bukan gratis diberi peringatan; aplikasi tidak memilih model berbayar sendiri. Biaya dalam rupiah tidak dihitung karena harga per model tidak diketahui; yang dihitung token (dilaporkan layanan, atau diperkirakan ±4 karakter/token).
+- Anggaran AI di perangkat (`lib/ai-budget.ts`, `app/AiUsage.tsx`, peringatan di semua halaman lewat `app/AiBudgetWarning.tsx`): batas **harian** (default 200.000 token) dan **bulanan** (default 3.000.000 token; 0 = tanpa batas), dalam token, tanpa rupiah. Hanya model yang bisa ditagih yang dihitung (model gratis `:free` dan `openrouter/free` tidak, tapi permintaannya tetap dicatat). Batas **hanya memberi peringatan**: mulai 80% muncul pemberitahuan, saat tercapai pemberitahuan merah, dan permintaan tetap berjalan (periksa tagihan penyedia). Cache jawaban dan batas 40 permintaan per menit tetap melindungi dari panggilan berulang.
 
 ## Preset gerak khas (arah keynote: tanpa fade dan blur)
 
