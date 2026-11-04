@@ -746,3 +746,12 @@ Yang ditawarkan sekarang (6): **Muncul membal** (pegas dengan overshoot), **Naik
 - **PostCSS bawaan Next 15 (tinggi + 1 moderat):** celah pada pemrosesan CSS dengan `sourceMappingURL` yang dikendalikan penyerang. App hanya membangun CSS miliknya sendiri saat build; tidak ada CSS dari pihak luar yang diproses, dan tidak ada yang berjalan di server produksi. Perbaikannya menuntut Next 16 (perubahan besar); tinjau saat bermigrasi ke Next 16.
 - **Rantai ESLint / minimatch (14 moderat):** hanya alat pengembangan (lint), tidak ikut ke build produksi. "Perbaikan" yang disarankan npm adalah menurunkan versi ke yang lama, bukan solusi.
 - Workflow CI memakai `actions/checkout@v5` dan `actions/setup-node@v5` (Node 24) agar tidak terkena penghentian Node 20 di GitHub Actions.
+
+## Perintah → rencana video (agen, tahap 1: membuat video dari nol)
+
+Di Cinematic Studio ada kolom "Perintah": satu kalimat seperti "video produk kopi 30 detik, suasana hangat, ajak orang memesan" menjadi brief lewat **satu** panggilan AI (`lib/command-agent.ts`), lalu storyboard disusun di perangkat persis seperti brief isian tangan. Aturannya:
+- **Rencana dulu**: hasilnya hanya mengisi form dan storyboard; tidak ada yang berubah di Motion Studio sampai Anda menekan "Pakai di Motion Studio". Tidak merender, menyimpan, atau menghapus apa pun.
+- **Model gratis dulu**: memakai model yang tersimpan di pengaturan AI. Bila itu bukan model gratis, perintah ditolak sampai kotak izin "Izinkan model berbayar untuk perintah ini" dicentang. Tidak pernah beralih ke model berbayar sendiri.
+- AI hanya mengisi brief dan tidak boleh mengarang klaim, angka, atau fitur yang tidak Anda sebut (bila tidak disebut, isiannya kosong). Genre, suasana, dan durasi yang tidak dikenal diganti nilai aman. Jawaban dicache, dihitung di anggaran AI, dan tunduk pada batas 40 permintaan per menit.
+- AI juga memberi 2-4 kata kunci aset (Inggris). Kata kunci itu ditampilkan; gambarnya diisi dengan "Foto & video otomatis" (Pexels/Pixabay) yang sudah ada setelah rencana dipakai. Pengisian aset otomatis langsung dari rencana belum ada (tahap berikutnya).
+- Tes: `lib/command-agent.test.ts` dan langkah di `e2e/cinematic.mjs` (AI dipalsukan; model berbayar tanpa izin tidak memanggil apa pun; satu panggilan; naskah studio tidak berubah sebelum disetujui).

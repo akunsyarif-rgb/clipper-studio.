@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildCinematic, CINEMATIC_PLAYBOOK, fxChoices, GENRES, GENRE_IDS, isFx, polishCinematic, TONES, validateCinematic, type Brief, type CinePlan, type Genre, type FxId } from "@/lib/cinematic";
 import { GeminiError, aiUsage } from "@/lib/gemini";
+import { isFreeModel } from "@/lib/ai-budget";
+import { MAX_COMMAND_CHARS, planFromCommand } from "@/lib/command-agent";
 import { getAccess } from "@/lib/gemini-access";
 import { FPS } from "@/lib/script";
 import { applyPresetToPlan, builtInPresets, loadPresets, presetFromPlan, savePresets, type LibraryPreset } from "@/lib/motion-library";
@@ -32,6 +34,9 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const abort = useRef<AbortController | null>(null);
+  const [command, setCommand] = useState("");
+  const [terms, setTerms] = useState<string[]>([]);
+  const [paidOk, setPaidOk] = useState(false);
   const [mine, setMine] = useState<LibraryPreset[]>([]);
   const [presetId, setPresetId] = useState("");
   const [presetName, setPresetName] = useState("");
@@ -78,6 +83,23 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
     setDraft(buildCinematic(input));
   }
 
+  /** One sentence from the creator becomes a plan to look at first; nothing is applied until "Pakai di Motion Studio". */
+  async function fromCommand() {
+    setError(""); setNote("");
+    const settings = await getAccess();
+    if (!settings) return setError("Atur kunci AI dulu di pengaturan AI. Tanpa AI, isi brief di bawah dan susun storyboard secara lokal.");
+    if (!isFreeModel(settings.model) && !paidOk) return setError(`Model ${settings.model} bukan model gratis. Centang izin di bawah kolom perintah bila Anda memang ingin memakainya untuk perintah ini.`);
+    setBusy(true);
+    const ctl = new AbortController(); abort.current = ctl;
+    try {
+      const out = await planFromCommand(command, { apiKey: settings.apiKey, model: settings.model, language: "id", signal: ctl.signal, transport: settings.transport, format: settings.format });
+      setBrief(out.plan.brief); setFeaturesText(out.plan.brief.features.join("\n")); setDraft(out.plan); setTerms(out.searchTerms);
+      setNote(`Rencana siap (${settings.model}). Periksa storyboard di bawah, ubah bila perlu, lalu tekan “Pakai di Motion Studio”. Belum ada yang diubah. Permintaan sesi ini: ${aiUsage.requests}, token ${aiUsage.tokens}.`);
+    } catch (e) {
+      setError((e instanceof GeminiError ? e.message : "Gagal menghubungi AI.") + " Tidak ada yang diubah.");
+    } finally { setBusy(false); }
+  }
+
   async function polish() {
     if (!shown) return;
     const settings = await getAccess();
@@ -98,6 +120,13 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
     <summary><b>Cinematic Studio</b> <small>{active ? `Aktif · ${active.plan.scenes.length} adegan · ${active.plan.map.bpm} BPM` : "Film sinematik: produk, cerita, edukasi, brand"}</small></summary>
     <div className="fold-body">
       <p className="preview-disclaimer">Isi brief singkat; naskah, gaya, palet, huruf, gerak tiap adegan, dan panjang adegan (sesuai ketukan) disusun di perangkat ini tanpa AI. AI hanya opsional untuk memoles kalimat.</p>
+      <div className="command-box" data-testid="command-box">
+        <label>Perintah (ceritakan video yang ingin dibuat)<textarea rows={3} value={command} maxLength={MAX_COMMAND_CHARS} onChange={e => setCommand(e.target.value)} placeholder="Contoh: video produk kopi 30 detik, suasana hangat, ajak orang memesan" data-testid="command-input" /></label>
+        {access && !isFreeModel(access.model) && <label className="check-row"><input type="checkbox" checked={paidOk} onChange={e => setPaidOk(e.target.checked)} data-testid="command-paid-ok" /> Izinkan model berbayar ({access.model}) untuk perintah ini</label>}
+        <div className="button-row"><button type="button" onClick={() => void fromCommand()} disabled={busy || command.trim().length < 8} data-testid="command-run">{busy ? "Menyusun rencana…" : "Buat rencana dari perintah"}</button></div>
+        <small className="field-hint">{access ? `Model: ${access.model} (${isFreeModel(access.model) ? "gratis" : "berbayar"}). Satu panggilan AI untuk mengisi brief; storyboard disusun di perangkat.` : "Perlu kunci AI. Tanpa itu, isi brief di bawah."}</small>
+        {terms.length > 0 && <p data-testid="command-terms"><small>Kata kunci aset: {terms.join(", ")}. Setelah rencana dipakai, buka “Foto &amp; video otomatis” di Motion Studio untuk mengisi gambarnya.</small></p>}
+      </div>
       <div className="field-grid">
         <label>Jenis film<select value={brief.genre ?? "produk"} onChange={e => set("genre", e.target.value as Genre)} data-testid="cine-genre">{GENRE_IDS.map(g => <option key={g} value={g}>{GENRES[g].label}</option>)}</select></label>
         <label>{g.subject}<input value={brief.product} onChange={e => set("product", e.target.value)} maxLength={60} data-testid="cine-product" /></label>
