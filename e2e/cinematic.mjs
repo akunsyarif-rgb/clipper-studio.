@@ -156,6 +156,36 @@ try {
     assert(/pembuka/.test(list) && /kuncinya|ringkasan/.test(list), "act names fit the genre");
   });
 
+  await step("a command becomes a plan to approve first: one AI call, nothing applied until the creator says so; a paid model needs an explicit permission", async () => {
+    let calls = 0;
+    await page.route("https://generativelanguage.googleapis.com/**", async route => {
+      const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "POST, OPTIONS" };
+      if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+      calls++;
+      const brief = { genre: "produk", product: "Kopi Pagi", tagline: "Mulai harimu hangat", problem: "", features: ["Biji pilihan", "Seduh tiga menit"], proof: "", cta: "Pesan sekarang", tone: "warm", seconds: 30, searchTerms: ["coffee cup", "morning light"] };
+      await route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(brief) }] } }] }) });
+    });
+    await page.evaluate(() => { localStorage.setItem("clipper:gemini:v1", JSON.stringify({ apiKey: "K".repeat(30), model: "gemini-2.5-pro", consent: true })); window.dispatchEvent(new Event("clipper:ai-access")); });
+    await page.getByTestId("fold-cinematic").evaluate(d => { d.open = true; });
+    const scriptBefore = await page.getByTestId("script").inputValue();
+    await page.getByTestId("command-input").fill("Buat video produk kopi 30 detik, suasana hangat, ajak orang memesan");
+    await page.getByTestId("command-paid-ok").waitFor({ timeout: 5000 });
+    await page.getByTestId("command-run").click();
+    await page.getByTestId("cine-error").waitFor({ timeout: 5000 });
+    assert(/bukan model gratis/.test(await page.getByTestId("cine-error").innerText()) && calls === 0, "a paid model is not used without the creator's permission");
+    await page.getByTestId("command-paid-ok").check();
+    await page.getByTestId("command-run").click();
+    await page.getByTestId("command-terms").waitFor({ timeout: 15000 });
+    assert(calls === 1, "one AI call for the whole plan: " + calls);
+    assert(/Belum ada yang diubah/.test(await page.getByTestId("cine-note").innerText()), "says nothing is applied yet");
+    assert((await page.getByTestId("script").inputValue()) === scriptBefore, "the studio's script is untouched before approval");
+    assert((await page.getByTestId("cine-product").inputValue()) === "Kopi Pagi" && (await page.getByTestId("cine-list").locator("li").count()) >= 4, "the form and the storyboard are filled from the command");
+    assert(/coffee cup/.test(await page.getByTestId("command-terms").innerText()), "asset search words are offered");
+    await page.getByTestId("cine-apply").click();
+    await page.waitForFunction(() => /Mulai harimu hangat/.test(document.querySelector('[data-testid="script"]').value), null, { timeout: 5000 });
+    await page.evaluate(() => localStorage.removeItem("clipper:gemini:v1"));
+  });
+
   await step("no horizontal scroll on iPhone-size viewport", async () => {
     const w = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
     assert(w[0] <= w[1] + 1, `scrollWidth ${w[0]} > ${w[1]}`);
