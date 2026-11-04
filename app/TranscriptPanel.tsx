@@ -20,7 +20,7 @@ type Range = { start: number; duration: number };
 type Phase = "idle" | "audio" | "download" | "running";
 
 /** Automatic transcript of the selected range: local Whisper, editable text, live caption preview, hand-off to /motion. */
-export default function TranscriptPanel({ file, video, range, locked, onWorking, onCopy, onUse, onUseTiming, preciseTiming, onPickRange }: {
+export default function TranscriptPanel({ file, video, range, locked, onWorking, onCopy, onUse, onUseTiming, preciseTiming, onPickRange, startNonce = 0 }: {
   file: File;
   video: RefObject<HTMLVideoElement | null>;
   /** Selected clip range, or null while the range is invalid. */
@@ -38,6 +38,8 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
   preciseTiming?: boolean;
   /** On the clipper page: sets the clip's start and end (video seconds) from an AI-suggested moment. */
   onPickRange?: (start: number, end: number) => void;
+  /** Changes when the edit assistant, with the creator's agreement, asks for the transcript to be made now. */
+  startNonce?: number;
 }) {
   const [model, setModel] = useState<ModelId>(MODELS[0].id);
   const [touch, setTouch] = useState(false);
@@ -73,6 +75,12 @@ export default function TranscriptPanel({ file, video, range, locked, onWorking,
     else if (!modelTouched.current) setModel(defaultModelFor(navigator.userAgent, navigator.maxTouchPoints));
   }, []);
 
+  const lastStart = useRef(0);
+  useEffect(() => {
+    if (!startNonce || startNonce === lastStart.current) return;
+    lastStart.current = startNonce;
+    if (!working && !locked && range) void run();
+  }, [startNonce]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setOneOff(isOneOffPreview(location.hostname, process.env.NEXT_PUBLIC_DEPLOYMENT_HOST ?? "")); }, []);
   useEffect(() => {
     let alive = true;
