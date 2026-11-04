@@ -39,6 +39,9 @@ import EditCommandPanel from "../EditCommandPanel";
 import AiSetupCard from "../AiSetupCard";
 import QuickStart from "../QuickStart";
 import PreRenderChecklist from "../PreRenderChecklist";
+import { FlowStepNav, FlowStepperBar } from "../FlowStepper";
+import StylePicker from "../StylePicker";
+import PostRenderActions from "../PostRenderActions";
 import HeavyWorkNotice from "../HeavyWorkNotice";
 import { useWakeLock } from "../useWakeLock";
 import { prerenderChecks, type FixId } from "@/lib/prerender";
@@ -80,7 +83,6 @@ import type { Visual } from "@/lib/command-agent";
 import { planToOverrides, type DirectorPlan } from "@/lib/director";
 import CloudAccount from "../CloudAccount";
 import SaveToHub from "../SaveToHub";
-import NextSteps from "../NextSteps";
 import { cloud } from "@/lib/cloud";
 import type { SceneScore } from "@/lib/gemini";
 import { isAudioFile, probeVideo, SOURCE_ACCEPT, validateFile } from "@/lib/clip";
@@ -934,10 +936,34 @@ export default function MotionStudio() {
       if (line && !splitScript(script).includes(line)) setScript(prev => `${prev.replace(/\s+$/, "")}\n${line}`.slice(0, 3000));
     }
   }
+  /** The five steps of the advanced settings; on a phone one at a time. */
+  const [flowStep, setFlowStep] = useState(1);
+  const goFlow = (n: number) => { setFlowStep(Math.min(5, Math.max(1, n))); setTimeout(() => document.querySelector("[data-testid=advanced-settings]")?.scrollIntoView({ behavior: "smooth", block: "start" }), 30); };
+  const [styleUndo, setStyleUndo] = useState<{ style: StyleId; palette: PaletteId; contentPreset: ContentPresetId | "custom" } | null>(null);
+  const rememberStyle = () => setStyleUndo({ style, palette, contentPreset });
+  /** The next combination of animation style and colours (the style moves every time, the colours every other time), so one tap always shows something new. */
+  function tryOtherStyle() {
+    rememberStyle();
+    const styles = STYLES.map(x => x.id), palettes = Object.keys(PALETTES) as PaletteId[];
+    const si = (styles.indexOf(style) + 1) % styles.length, pi = (palettes.indexOf(palette) + (si === 0 ? 1 : 2)) % palettes.length;
+    setStyle(styles[si]); setPalette(palettes[pi]); setContentPreset("custom");
+  }
+  function undoStyle() { if (!styleUndo) return; setStyle(styleUndo.style); setPalette(styleUndo.palette); setContentPreset(styleUndo.contentPreset); setStyleUndo(null); }
+  const [saveOpen, setSaveOpen] = useState(false);
+  useEffect(() => { setSaveOpen(false); }, [result]);
+  const openAdvanced = (then: () => void) => { setAdvancedOpen(true); setTimeout(then, 60); };
+  function goSave() { setSaveOpen(true); openAdvanced(() => { setFlowStep(5); setTimeout(() => document.querySelector("[data-testid=hub-open]")?.scrollIntoView({ behavior: "smooth", block: "center" }), 80); }); }
+  function makeAnother() {
+    tryOtherStyle(); setStatus("Gaya diganti. Atur seperlunya lalu tekan Render untuk membuat versi baru.");
+    openAdvanced(() => { setFlowStep(4); document.querySelector("[data-testid=step-4]")?.scrollIntoView({ behavior: "smooth", block: "start" }); });
+  }
+  function goSeo() {
+    openAdvanced(() => { setFlowStep(5); const f = document.querySelector<HTMLDetailsElement>("[data-testid=fold-seo]"); if (f) { f.open = true; f.scrollIntoView({ behavior: "smooth", block: "start" }); } });
+  }
   const studioGrid = (
-  <div className="studio-grid">
-    <section className="studio-panel" data-mode={activeMode}>
-      <div className="panel-heading"><div><small>01 / NASKAH & AUDIO</small><h2>Atur video</h2></div><span className="local-tag">{cloudUser ? "Tersinkron · tanpa media" : "Lokal · tanpa server"}</span></div>
+  <div className="studio-grid flow" data-flow-step={flowStep}>
+    <section className="studio-panel flow-steps" data-mode={activeMode}>
+      <div className="panel-heading"><div><small>PENGATURAN LANJUTAN</small><h2>Atur video</h2></div><span className="local-tag">{cloudUser ? "Tersinkron · tanpa media" : "Lokal · tanpa server"}</span></div>
       {activeMode !== "normal" && <CloudAccount onUser={setCloudUser} />}
       {handoffNote && <div className="notice" role="status" data-testid="handoff-note">{handoffNote}</div>}
       {saved && <div className="notice" data-testid="restore-offer">
@@ -950,6 +976,8 @@ export default function MotionStudio() {
         void updateHistory(l => logTrend(l, { id: scriptId(text), kind: "motion", title: t, script: text, now: Date.now() }, { platform: b.platform, niche: b.niche, audience: b.audience, trend: b.trend }));
         setSeoSeed({ platform: b.platform, niche: b.niche, audience: b.audience, trends: b.trend.slice(0, 300), nonce: Date.now() });
       }} />
+      <FlowStepperBar step={flowStep} onGo={goFlow} />
+    <section className="flow-step" data-step="1" data-testid="flow-step-1">
       <div className="step-title" data-testid="step-1"><b>1</b>{activeMode === "affiliate" ? "Produk dan naskah" : "Naskah"}</div>
       {offer && !imported && <div className="notice normal-only" data-testid="transcript-offer">
         Transkrip dari Clipper tersedia: <strong>{offer.source}</strong> ({allWords(offer.transcript).length} kata, {Math.round(offer.transcript.duration)} dtk).{" "}
@@ -1012,40 +1040,64 @@ export default function MotionStudio() {
       <label className="field-label" htmlFor="motion-title">Judul / teks pembuka</label>
       <input id="motion-title" data-testid="title" value={title} onChange={e => setTitle(e.target.value)} maxLength={60} />
       {titleError && <p className="field-error">{titleError}</p>}
-      <details className="fold" data-testid="fold-look"><summary><b>2 · Tampilan</b> <small>{STYLES.find(x => x.id === style)?.label} · {PALETTES[palette].label}{contentPreset !== "custom" ? ` · ${CONTENT_PRESETS.find(p => p.id === contentPreset)?.label}` : ""}</small></summary>
-      <label className="field-label" htmlFor="motion-preset">Template konten</label>
-      <select id="motion-preset" data-testid="content-preset" value={contentPreset} onChange={e => {
-        const id = e.target.value as ContentPresetId | "custom";
-        setContentPreset(id);
-        const preset = CONTENT_PRESETS.find(p => p.id === id);
-        if (preset) { setStyle(preset.style); setPalette(preset.palette); }
-      }}>
-        <option value="custom">Kustom · atur sendiri</option>
-        {CONTENT_PRESETS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-      </select>
-      <p className="field-hint preset-hint">{CONTENT_PRESETS.find(p => p.id === contentPreset)?.description ?? "Pilih gaya animasi dan palet warna secara manual."}</p>
-      <div className="field-row">
-        <div><label className="field-label" htmlFor="motion-style">Gaya animasi</label><select id="motion-style" data-testid="style" value={style} onChange={e => { setStyle(e.target.value as StyleId); setContentPreset("custom"); }}>{STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></div>
-        <div><label className="field-label" htmlFor="motion-palette">Palet warna</label><select id="motion-palette" data-testid="palette" value={palette} onChange={e => { setPalette(e.target.value as PaletteId); setContentPreset("custom"); }}>{(Object.keys(PALETTES) as PaletteId[]).map(p => <option key={p} value={p}>{PALETTES[p].label}</option>)}</select></div>
-      </div>
-      
-        <label className="field-label" htmlFor="typography">Tipografi <span className="field-hint">{resolveTypePack(typography).description}</span>
-          <select id="typography" value={typography} onChange={e => setTypography(e.target.value as TypePackId)} data-testid="typography">
-            {TYPE_PACK_IDS.map(id => <option key={id} value={id}>{TYPE_PACKS[id].label}</option>)}
-          </select>
-        </label>
-        {!(videoEdit && source) && <>
-          <label className="field-label" htmlFor="backdrop">Latar <span className="field-hint">mesh: bidang warna palet yang bergeser pelan</span>
-            <select id="backdrop" value={backdrop} onChange={e => setBackdrop(e.target.value as "plain" | "mesh")} data-testid="backdrop">
-              <option value="plain">Polos (gradasi palet)</option>
-              <option value="mesh">Mesh bergerak</option>
-            </select>
-          </label>
-          <label className="check-row" data-testid="grain-toggle"><input type="checkbox" checked={grain} onChange={e => setGrain(e.target.checked)} data-testid="grain" /> Tekstur film (grain halus)</label>
-        </>}
-        {!(videoEdit && source) && <label className="check-row" data-testid="story-visuals-toggle"><input type="checkbox" checked={storyVisuals} onChange={e => setStoryVisuals(e.target.checked)} data-testid="story-visuals" /> Objek visual 3D di atas teks <span className="field-hint">titik fokus untuk pembuka, langkah bertumbuh, orbit untuk renungan, satu titik untuk penutup; tanpa teks tambahan</span></label>}
-      </details>
-
+      <CinematicStudio active={cine} hasMusic={musicMode !== "none"} frames={timeline.ok ? timeline.scenes.map(x => x.durationInFrames) : []} onApply={applyCinematic} onClear={() => setCine(null)}
+        onFx={(text, fx: FxId) => setCine(c => c ? { ...c, fx: { ...c.fx, [text]: fx }, plan: { ...c.plan, scenes: c.plan.scenes.map(x => x.text === text ? { ...x, fx } : x), fxByText: { ...c.plan.fxByText, [text]: fx } } } : c)} />
+      <FlowStepNav step={1} onGo={goFlow} />
+    </section>
+    <section className="flow-step" data-step="2" data-testid="flow-step-2">
+      <div className="step-title" data-testid="step-2"><b>2</b>Gambar</div>
+      {timeline.ok && <PixabayAutoPanel autoRun={autoPhotos} disabled={rendering} onApply={putPixabayPhoto} onApplyVideo={putPixabayVideo} musicOn={musicMode === "auto"} onMusic={() => { setMusicMode("auto"); setMood(moodForStyle(style)); }}
+        scenes={timeline.scenes.map((sc, i) => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery ?? queryHints[sc.text]?.term, kind: queryHints[sc.text]?.kind, hasImage: !!images[sc.text] || (!!(videoEdit && source) && sceneList[i]?.cut !== "graphic") }))} />}
+      {timeline.ok && <IconifyPanel entrance={iconEntrance} onEntrance={chooseEntrance} disabled={rendering} accent={PALETTES[palette].accent} onApply={applyIcon}
+        scenes={timeline.scenes.map((sc, i) => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery, hasIcon: !!sceneVisuals[i]?.icon || overrides[sc.text]?.icon === "none" }))} />}
+      {timeline.ok && <PexelsPanel disabled={rendering} onApply={putStockPhoto}
+        // Over a source video a picture only appears in a full-screen cutaway, so automatic filling covers just those scenes.
+        scenes={timeline.scenes.map((sc, i) => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery, hasImage: !!images[sc.text] || (!!(videoEdit && source) && sceneList[i]?.cut !== "graphic") }))} />}
+      <div className="timeline-heading"><h3>Timeline scene</h3><span>{timeline.ok ? `${timeline.scenes.length} scene · maks. ${MAX_SECONDS} dtk` : ""}</span></div>
+      <div className="scene-list" data-testid="scenes">{timeline.ok && (() => { let t = 0; return timeline.scenes.map((s, i) => { const from = t; t += s.durationInFrames; return (
+        <div className="scene-item" key={i} data-testid="scene-item">
+          <button className="scene-row" onClick={() => player.current?.seekTo(from)}>
+            <span className="scene-index">{String(i + 1).padStart(2, "0")}</span>
+            <div className="scene-info"><b>{stripMarks(s.text)}</b><small className="narrative-hint">{NARRATIVE_ROLE_LABELS[narrativePlan[i]?.role ?? ""] ?? "Lanjutan"} · {NARRATIVE_INTENT_LABELS[narrativePlan[i]?.intent ?? "statement"] ?? "Pernyataan"} · {VISUAL_STRATEGY_LABELS[narrativePlan[i]?.strategy ?? ""] ?? "Minimal"} · {MOTION_INTENSITY_LABELS[narrativePlan[i]?.intensity ?? ""] ?? "Tenang"}{!(videoEdit && source) && sceneVisuals[i] ? <> · <span className="scene-family" data-testid="scene-family">{FAMILY_LABELS[chooseFamily(sceneVisuals[i], narrativePlan[i])]}</span></> : null}</small><small className="narrative-reason">{narrativePlan[i]?.reason}</small><small className="narrative-reason" data-testid="scene-visual-cue"><b>Brief visual:</b> {narrativePlan[i]?.visualCue} · {CONFIDENCE_LABELS[narrativePlan[i]?.confidence ?? "low"]}</small>{videoEdit && source && animationPlan.judgements[i] ? <small className="narrative-reason" data-testid="scene-importance">{cutOverrides[s.text] ? "Diatur manual" : explainScene(animationPlan.judgements[i], planned[i] === "overlay")}</small> : null}<small className="narrative-continuity"><b>Penghubung:</b> {narrativePlan[i]?.continuityCue}</small>{narrativePlan[i]?.reviewFlags?.length ? <small className="narrative-reason" data-testid="scene-review-flags"><b>Perlu diperiksa:</b> {narrativePlan[i]?.reviewFlags?.join(" ")}</small> : null}{directorInfo[s.text]?.reason ? <small className="narrative-reason director-reason" data-testid="scene-director"><b>Pilihan AI:</b> {directorInfo[s.text].reason}</small> : null}{!(videoEdit && source) && directorInfo[s.text]?.imageIdea ? <small className="narrative-reason director-reason" data-testid="scene-image-idea"><b>Ide gambar:</b> {directorInfo[s.text].imageIdea}</small> : null}</div>
+            <div className="scene-meta"><b>{(from / FPS).toFixed(1)}–{(t / FPS).toFixed(1)}s</b><small>{(s.durationInFrames / FPS).toFixed(1)} dtk</small></div>
+          </button>
+          <SceneVisualControls text={s.text} topics={sceneContext[i]} override={overrides[s.text]} disabled={rendering} cut={videoEdit ? { value: cutOverrides[s.text], auto: planned[i], clipFrom: clipStarts[s.text] } : undefined}
+            onCut={c => {
+              manualChoice(s.text);
+              setCutOverrides(prev => { const next = { ...prev }; if (c) next[s.text] = c; else delete next[s.text]; return next; });
+              // Choosing "other footage" starts at wherever the source player is now.
+              if (c === "clip" && clipStarts[s.text] === undefined) setClipStarts(prev => ({ ...prev, [s.text]: Math.min(sourceVideo.current?.currentTime ?? 0, source?.seconds ?? 0) }));
+            }}
+            onClipHere={() => setClipStarts(prev => ({ ...prev, [s.text]: Math.min(sourceVideo.current?.currentTime ?? 0, source?.seconds ?? 0) }))}
+            onClipSeek={t => { if (sourceVideo.current) { sourceVideo.current.currentTime = t; } }}
+            onChange={o => { manualChoice(s.text); setOverrides(prev => { const next = { ...prev }; if (o.template || o.icon) next[s.text] = o; else delete next[s.text]; return next; }); }} />
+          {stickerMode === "auto" && !(videoEdit && source) && <label className="scene-sticker" data-testid="scene-sticker-row"><span>Stiker</span>
+            <select value={stickerOverrides[s.text] ?? "auto"} onChange={e => setStickerOverrides(prev => { const next = { ...prev }; if (e.target.value === "auto") delete next[s.text]; else next[s.text] = e.target.value; return next; })} data-testid="scene-sticker">
+              <option value="auto">{matchSticker(s.text) ? `Otomatis · ${matchSticker(s.text)!.emoji} ${matchSticker(s.text)!.label}` : "Otomatis · tanpa"}</option>
+              <option value="none">Tanpa stiker</option>
+              {STICKERS.map(st => <option key={st.id} value={st.id}>{st.emoji} {st.label}</option>)}
+            </select></label>}
+          {<div className="scene-image" data-testid="scene-image">
+            {/* eslint-disable-next-line @next/next/no-img-element -- a local blob: thumbnail, nothing for next/image to optimise */}
+            {images[s.text] ? <img src={images[s.text].url} alt="" className="scene-thumb" /> : null}
+            <label className="text-link">
+              {images[s.text] ? "Ganti gambar" : "+ Gambar latar"}
+              <input type="file" accept="image/*" hidden disabled={rendering} data-testid="scene-image-input" onChange={e => void onSceneImage(s.text, e)} />
+            </label>
+            <button type="button" className="text-link" disabled={rendering} onClick={() => { setPickerSource("pexels"); setPickerFor(pickerFor === s.text && pickerSource === "pexels" ? null : s.text); }} data-testid="scene-image-pexels">Cari di Pexels</button>
+            <button type="button" className="text-link" disabled={rendering} onClick={() => { setPickerSource("pixabay"); setPickerFor(pickerFor === s.text && pickerSource === "pixabay" ? null : s.text); }} data-testid="scene-image-pixabay">Cari gambar Pixabay</button>
+            <button type="button" className="text-link" disabled={rendering} onClick={() => { setPickerSource("pixabay-video"); setPickerFor(pickerFor === s.text && pickerSource === "pixabay-video" ? null : s.text); }} data-testid="scene-video-pixabay">Cari video Pixabay</button>
+            {images[s.text] ? <button type="button" className="text-link" disabled={rendering} onClick={() => removeSceneImage(s.text)} data-testid="scene-image-remove">Hapus</button> : null}
+            {images[s.text]?.credit ? <small className="scene-credit" data-testid="scene-credit"><a href={images[s.text].credit!.href} target="_blank" rel="noreferrer noopener">{images[s.text].credit!.text}</a></small> : null}
+          </div>}
+          {pickerFor === s.text && pickerSource === "pexels" && <ScenePhotoPicker initialQuery={directorInfo[s.text]?.imageQuery ?? queryHints[s.text]?.term ?? ""} onChoose={(file, photo) => putStockPhoto(s.text, file, photo)} onClose={() => setPickerFor(null)} />}
+          {pickerFor === s.text && pickerSource === "pixabay" && <PixabayPhotoPicker initialQuery={directorInfo[s.text]?.imageQuery ?? queryHints[s.text]?.term ?? ""} onChoose={(file, photo) => putPixabayPhoto(s.text, file, photo)} onClose={() => setPickerFor(null)} />}
+          {pickerFor === s.text && pickerSource === "pixabay-video" && <PixabayVideoPicker initialQuery={directorInfo[s.text]?.imageQuery ?? queryHints[s.text]?.term ?? ""} onChoose={video => putPixabayVideo(s.text, video)} onClose={() => setPickerFor(null)} />}
+        </div>); }); })()}</div>
+      {timeline.ok && <p className="preview-disclaimer" data-testid="image-note">{imageError ? <span className="scene-image-error" data-testid="image-error">{imageError} </span> : null}{videoEdit && source ? "Di video sumber, gambar tampil sebagai layar penuh (maks. 4 detik) pada scene itu, dan pembicara kembali setelahnya. " : null}Gambar latar hanya dipakai di perangkat ini dan tidak ikut tersimpan atau tersinkron; pilih lagi setelah memuat ulang halaman. Pakai gambar milik Anda, foto Pexels/Pixabay, atau yang boleh dipakai ulang: gambar dari internet (mis. Pinterest) belum tentu bebas hak cipta.</p>}
+      <FlowStepNav step={2} onGo={goFlow} />
+    </section>
+    <section className="flow-step" data-step="3" data-testid="flow-step-3">
       <div className="step-title" data-testid="step-3"><b>3</b>Suara dan musik</div>
       <label className="field-label">Voice over / narasi</label>
       <div className="seg" role="radiogroup" aria-label="Voice over">
@@ -1103,7 +1155,6 @@ export default function MotionStudio() {
         {narrationBusy && <small data-testid="narration-busy">Memproses audio…</small>}
         {audioError && <p className="field-error" role="alert" data-testid="audio-error">{audioError}</p>}
       </div>}
-
       <details className="fold" data-testid="fold-music"><summary><b>Backsound</b> <small>{musicMode === "none" ? "Tanpa" : musicMode === "auto" ? `Otomatis · ${MOODS.find(m => m.id === mood)?.label}` : "Unggahan Anda"}</small></summary>
       <div className="audio-box">
         <input ref={musicInput} type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg" onChange={e => void onMusic(e)} className="file-hidden" data-testid="music-input" />
@@ -1134,7 +1185,6 @@ export default function MotionStudio() {
         {musicError && <p className="field-error" role="alert" data-testid="music-error">{musicError}</p>}
       </div>
       </details>
-
       <details className="fold" data-testid="fold-duration"><summary><b>Durasi dan subtitle</b> <small>{narration ? "Ikuti narasi" : voiceMode === "ai" ? "Ikuti suara otomatis" : target === "auto" ? "Otomatis" : `${target} detik`} · {captions ? "Subtitle tampil" : "Tanpa subtitle"}</small></summary>
       {videoEdit && source && <label className="field-label" htmlFor="caption-style">Gaya subtitle <span className="field-hint">{CAPTION_STYLES.find(c => c.id === captionStyle)?.description}</span>
         <select id="caption-style" value={captionStyle} onChange={e => setCaptionStyle(e.target.value as CaptionStyleId)} data-testid="caption-style">
@@ -1152,11 +1202,6 @@ export default function MotionStudio() {
           <select id="motion-captions" value={captions ? "on" : "off"} onChange={e => setCaptions(e.target.value === "on")}><option value="on">Tampilkan, sorot kata</option><option value="off">Tanpa subtitle</option></select></div>
       </div>
       </details>
-
-      <details className="fold" data-testid="fold-watermark"><summary><b>Watermark video</b> <small>{isWatermarkActive(watermark) ? `${watermark.text} · ${watermark.position.replace("-", " ")}` : "Nonaktif"}</small></summary>
-        <WatermarkPanel value={watermark} onChange={setWatermark} disabled={rendering} note="Terlihat langsung di pratinjau." />
-      </details>
-
       <details className="fold" data-testid="fold-fx"><summary><b>Efek suara &amp; stiker</b> <small>{SFX_LABELS[sfxMode]} · {stickerMode === "auto" ? "stiker otomatis" : "tanpa stiker"}</small></summary>
         <label className="field-label" htmlFor="sfx-mode">Efek suara <span className="field-hint">whoosh saat pindah scene, pop saat stiker muncul, dentang di ajakan; dibuat di perangkat, di bawah suara narasi</span>
           <select id="sfx-mode" value={sfxMode} onChange={e => setSfxMode(e.target.value as SfxMode)} data-testid="sfx-mode">
@@ -1171,8 +1216,59 @@ export default function MotionStudio() {
         </label>}
         {stickerMode === "auto" && !(videoEdit && source) && <small className="field-hint" data-testid="sticker-credit">{STICKER_CREDIT}. Sebutkan kredit ini di deskripsi video Anda.</small>}
       </details>
-
-      <div className="step-title" data-testid="step-4"><b>4</b>Render</div>
+      <FlowStepNav step={3} onGo={goFlow} />
+    </section>
+    <section className="flow-step" data-step="4" data-testid="flow-step-4">
+      <div className="step-title" data-testid="step-4"><b>4</b>Gaya</div>
+      <StylePicker style={style} palette={palette} onStyle={s => { rememberStyle(); setStyle(s); setContentPreset("custom"); }} onPalette={pl => { rememberStyle(); setPalette(pl); setContentPreset("custom"); }} onTryOther={tryOtherStyle} onUndo={undoStyle} canUndo={!!styleUndo} disabled={rendering} />
+      <details className="fold" data-testid="fold-look"><summary><b>Tampilan dan tema</b> <small>pilihan lengkap</small> <small>{STYLES.find(x => x.id === style)?.label} · {PALETTES[palette].label}{contentPreset !== "custom" ? ` · ${CONTENT_PRESETS.find(p => p.id === contentPreset)?.label}` : ""}</small></summary>
+      <label className="field-label" htmlFor="motion-preset">Template konten</label>
+      <select id="motion-preset" data-testid="content-preset" value={contentPreset} onChange={e => {
+        const id = e.target.value as ContentPresetId | "custom";
+        setContentPreset(id);
+        const preset = CONTENT_PRESETS.find(p => p.id === id);
+        if (preset) { setStyle(preset.style); setPalette(preset.palette); }
+      }}>
+        <option value="custom">Kustom · atur sendiri</option>
+        {CONTENT_PRESETS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+      </select>
+      <p className="field-hint preset-hint">{CONTENT_PRESETS.find(p => p.id === contentPreset)?.description ?? "Pilih gaya animasi dan palet warna secara manual."}</p>
+      <div className="field-row">
+        <div><label className="field-label" htmlFor="motion-style">Gaya animasi</label><select id="motion-style" data-testid="style" value={style} onChange={e => { setStyle(e.target.value as StyleId); setContentPreset("custom"); }}>{STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></div>
+        <div><label className="field-label" htmlFor="motion-palette">Palet warna</label><select id="motion-palette" data-testid="palette" value={palette} onChange={e => { setPalette(e.target.value as PaletteId); setContentPreset("custom"); }}>{(Object.keys(PALETTES) as PaletteId[]).map(p => <option key={p} value={p}>{PALETTES[p].label}</option>)}</select></div>
+      </div>
+      
+        <label className="field-label" htmlFor="typography">Tipografi <span className="field-hint">{resolveTypePack(typography).description}</span>
+          <select id="typography" value={typography} onChange={e => setTypography(e.target.value as TypePackId)} data-testid="typography">
+            {TYPE_PACK_IDS.map(id => <option key={id} value={id}>{TYPE_PACKS[id].label}</option>)}
+          </select>
+        </label>
+        {!(videoEdit && source) && <>
+          <label className="field-label" htmlFor="backdrop">Latar <span className="field-hint">mesh: bidang warna palet yang bergeser pelan</span>
+            <select id="backdrop" value={backdrop} onChange={e => setBackdrop(e.target.value as "plain" | "mesh")} data-testid="backdrop">
+              <option value="plain">Polos (gradasi palet)</option>
+              <option value="mesh">Mesh bergerak</option>
+            </select>
+          </label>
+          <label className="check-row" data-testid="grain-toggle"><input type="checkbox" checked={grain} onChange={e => setGrain(e.target.checked)} data-testid="grain" /> Tekstur film (grain halus)</label>
+        </>}
+        {!(videoEdit && source) && <label className="check-row" data-testid="story-visuals-toggle"><input type="checkbox" checked={storyVisuals} onChange={e => setStoryVisuals(e.target.checked)} data-testid="story-visuals" /> Objek visual 3D di atas teks <span className="field-hint">titik fokus untuk pembuka, langkah bertumbuh, orbit untuk renungan, satu titik untuk penutup; tanpa teks tambahan</span></label>}
+      </details>
+      {timeline.ok && <AiDirector language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"} active={Object.keys(directorInfo).length > 0} note={directorNote} onPlan={applyDirector} onUndo={undoDirector} onRedo={redoDirector} canRedo={directorHistory.future.length > 0} versions={directorHistory.past.length}
+        input={{ scenes: timeline.scenes.map(sc => ({ text: sc.text, seconds: sc.durationInFrames / FPS })), videoEdit: !!(videoEdit && source), style, palette, affiliate: activeMode === "affiliate" && affiliateBrief ? { product: affiliateBrief.product } : undefined,
+          current: timeline.scenes.map(sc => ({ template: overrides[sc.text]?.template, icon: overrides[sc.text]?.icon, cut: cutOverrides[sc.text] })) }} />}
+      <details className="fold" data-testid="fold-watermark"><summary><b>Watermark video</b> <small>{isWatermarkActive(watermark) ? `${watermark.text} · ${watermark.position.replace("-", " ")}` : "Nonaktif"}</small></summary>
+        <WatermarkPanel value={watermark} onChange={setWatermark} disabled={rendering} note="Terlihat langsung di pratinjau." />
+      </details>
+      <FlowStepNav step={4} onGo={goFlow} />
+    </section>
+    <section className="flow-step" data-step="5" data-testid="flow-step-5">
+      <div className="step-title" data-testid="step-5"><b>5</b>Render</div>
+      {timeline.ok && <details className="fold storyboard" data-testid="storyboard">
+        <summary>Urutan adegan {storyIssues.length ? `· ${storyErrors.length} masalah, ${storyIssues.length - storyErrors.length} saran` : "· siap render"}</summary>
+        <ol>{storyboard.scenes.map(sc => <li key={sc.id} data-testid="storyboard-scene"><b>{sc.order + 1}.</b> {FAMILY_LABELS[sc.family]} · {sc.layout} · {sc.timing.seconds} dtk · {sc.continuity === "continues" ? "lanjutan visual" : sc.continuity === "start" ? "pembuka" : "visual baru"}{sc.sticker && STICKER_BY_ID[sc.sticker] ? ` · stiker: ${STICKER_BY_ID[sc.sticker].emoji} ${STICKER_BY_ID[sc.sticker].label}` : sc.accent ? ` · objek 3D: ${STORY_VISUAL_LABELS[sc.accent]}` : ""}{sc.captionPolicy === "suppressed-duplicate" ? " · tanpa subtitle ganda" : ""}</li>)}</ol>
+        {storyIssues.map((i, n) => <small key={n} className={i.level === "error" ? "notice notice-error" : "narrative-reason"} role={i.level === "error" ? "alert" : "status"} data-testid="storyboard-issue">{i.level === "error" ? "Perlu diperbaiki: " : "Saran: "}{i.message}</small>)}
+      </details>}
       {blocker && <p className="field-error" role="alert" data-testid="blocker">{blocker}</p>}
       {timeline.ok && timeline.warnings.map(w => <p className="field-warning" key={w}>{w}</p>)}
       {timeline.ok && <PreRenderChecklist checks={preChecks} onFix={applyFix} prefix="pre" disabled={rendering} />}
@@ -1188,11 +1284,14 @@ export default function MotionStudio() {
       {rendering && <HeavyWorkNotice what="render" seconds={videoSeconds} />}
       {renderError && <p className="field-error" role="alert" data-testid="render-error">{renderError}</p>}
       {errorDetail && <details className="error-details" open><summary>Detail teknis (kirimkan saat melapor)</summary><code data-testid="error-detail">{errorDetail}</code><button className="text-link" onClick={() => navigator.clipboard?.writeText(errorDetail).then(() => setStatus("Detail teknis disalin."), () => setStatus("Salin manual teks di atas."))}>Salin detail teknis</button></details>}
-      {result && <div className="render-result" data-testid="result"><b>✓ MP4 siap</b><small>{WIDTH}×{HEIGHT} · {videoSeconds.toFixed(1)} dtk · {(result.size / 1024 ** 2).toFixed(1)} MB</small><a className="motion-primary" href={result.url} download={result.name} data-testid="download" onClick={() => { void updateHistory(l => logDownload(l, base(), { name: result.name, size: result.size, label: `${WIDTH}×${HEIGHT} · ${videoSeconds.toFixed(0)} dtk` })); }}>Simpan MP4 ↓</a>{srtUrl && <a className="text-link" href={srtUrl} download={result.name.replace(/\.mp4$/i, "") + ".srt"} data-testid="download-srt">Unduh subtitle (.srt)</a>}</div>}
-      {result && <SaveToHub key={result.url} tone="dark" getBlob={() => fetch(result.url).then(r => r.blob())} fileName={result.name} title={title.trim() || result.name.replace(/\.[^.]+$/, "")} source="motion" seconds={videoSeconds} width={WIDTH} height={HEIGHT} historyId={base().id} />}
-      {result && <NextSteps hint="Simpan MP4 ke Library dengan tombol di atas. Judul, deskripsi, dan tagar untuk unggahan ada di “Paket SEO & distribusi” di bawah." />}
+      {result && <PostRenderActions saveOpen={saveOpen} info={`${WIDTH}×${HEIGHT} · ${videoSeconds.toFixed(1)} dtk · ${(result.size / 1024 ** 2).toFixed(1)} MB`} onSave={goSave} onAnother={makeAnother} onSeo={goSeo}
+        download={<a className="motion-primary" href={result.url} download={result.name} data-testid="download" onClick={() => { void updateHistory(l => logDownload(l, base(), { name: result.name, size: result.size, label: `${WIDTH}×${HEIGHT} · ${videoSeconds.toFixed(0)} dtk` })); }}>Simpan MP4 ↓</a>}
+        extra={srtUrl ? <a className="text-link" href={srtUrl} download={result.name.replace(/\.mp4$/i, "") + ".srt"} data-testid="download-srt">Unduh subtitle (.srt)</a> : null} />}
+      {result && saveOpen && <SaveToHub key={result.url} tone="dark" getBlob={() => fetch(result.url).then(r => r.blob())} fileName={result.name} title={title.trim() || result.name.replace(/\.[^.]+$/, "")} source="motion" seconds={videoSeconds} width={WIDTH} height={HEIGHT} historyId={base().id} />}
       {status && <p className="motion-status" role="status" data-testid="status">{status}</p>}
       {timeline.ok && <SeoPanel seed={seoSeed} stored={entrySeo} storedId={historyId} onResult={onSeoResult} transcript={timeline.scenes.map(sc => stripMarks(sc.text)).join(" ")} topic={title.trim()} language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"} />}
+      <FlowStepNav step={5} onGo={goFlow} />
+    </section>
     </section>
 
     <section className="preview-column">
@@ -1205,65 +1304,6 @@ export default function MotionStudio() {
       <label className="check-row" data-testid="safe-guide-toggle"><input type="checkbox" checked={guide} onChange={e => setGuide(e.target.checked)} /> Tampilkan panduan area aman (hanya di pratinjau, tidak ikut ke MP4)</label>
       {guide ? <p className="preview-disclaimer" data-testid="safe-guide-legend">Merah: tertutup tampilan aplikasi (tab, deskripsi, tombol kanan). Putus-putus putih: area konten utama 1200 px. Biru: kotak 1080×1080 yang tersisa bila dipotong 1:1. Kuning: baris dasar subtitle.</p> : null}
       <p className="preview-disclaimer">Pratinjau memakai komposisi yang sama dengan hasil render, jadi teks, durasi scene, narasi, dan backsound identik dengan MP4.</p>
-      <CinematicStudio active={cine} hasMusic={musicMode !== "none"} frames={timeline.ok ? timeline.scenes.map(x => x.durationInFrames) : []} onApply={applyCinematic} onClear={() => setCine(null)}
-        onFx={(text, fx: FxId) => setCine(c => c ? { ...c, fx: { ...c.fx, [text]: fx }, plan: { ...c.plan, scenes: c.plan.scenes.map(x => x.text === text ? { ...x, fx } : x), fxByText: { ...c.plan.fxByText, [text]: fx } } } : c)} />
-      {timeline.ok && <AiDirector language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"} active={Object.keys(directorInfo).length > 0} note={directorNote} onPlan={applyDirector} onUndo={undoDirector} onRedo={redoDirector} canRedo={directorHistory.future.length > 0} versions={directorHistory.past.length}
-        input={{ scenes: timeline.scenes.map(sc => ({ text: sc.text, seconds: sc.durationInFrames / FPS })), videoEdit: !!(videoEdit && source), style, palette, affiliate: activeMode === "affiliate" && affiliateBrief ? { product: affiliateBrief.product } : undefined,
-          current: timeline.scenes.map(sc => ({ template: overrides[sc.text]?.template, icon: overrides[sc.text]?.icon, cut: cutOverrides[sc.text] })) }} />}
-      {timeline.ok && <IconifyPanel entrance={iconEntrance} onEntrance={chooseEntrance} disabled={rendering} accent={PALETTES[palette].accent} onApply={applyIcon}
-        scenes={timeline.scenes.map((sc, i) => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery, hasIcon: !!sceneVisuals[i]?.icon || overrides[sc.text]?.icon === "none" }))} />}
-      {timeline.ok && <PixabayAutoPanel autoRun={autoPhotos} disabled={rendering} onApply={putPixabayPhoto} onApplyVideo={putPixabayVideo} musicOn={musicMode === "auto"} onMusic={() => { setMusicMode("auto"); setMood(moodForStyle(style)); }}
-        scenes={timeline.scenes.map((sc, i) => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery ?? queryHints[sc.text]?.term, kind: queryHints[sc.text]?.kind, hasImage: !!images[sc.text] || (!!(videoEdit && source) && sceneList[i]?.cut !== "graphic") }))} />}
-      {timeline.ok && <PexelsPanel disabled={rendering} onApply={putStockPhoto}
-        // Over a source video a picture only appears in a full-screen cutaway, so automatic filling covers just those scenes.
-        scenes={timeline.scenes.map((sc, i) => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery, hasImage: !!images[sc.text] || (!!(videoEdit && source) && sceneList[i]?.cut !== "graphic") }))} />}
-      <div className="timeline-heading"><h3>Timeline scene</h3><span>{timeline.ok ? `${timeline.scenes.length} scene · maks. ${MAX_SECONDS} dtk` : ""}</span></div>
-      {timeline.ok && <details className="fold storyboard" data-testid="storyboard">
-        <summary>Urutan adegan {storyIssues.length ? `· ${storyErrors.length} masalah, ${storyIssues.length - storyErrors.length} saran` : "· siap render"}</summary>
-        <ol>{storyboard.scenes.map(sc => <li key={sc.id} data-testid="storyboard-scene"><b>{sc.order + 1}.</b> {FAMILY_LABELS[sc.family]} · {sc.layout} · {sc.timing.seconds} dtk · {sc.continuity === "continues" ? "lanjutan visual" : sc.continuity === "start" ? "pembuka" : "visual baru"}{sc.sticker && STICKER_BY_ID[sc.sticker] ? ` · stiker: ${STICKER_BY_ID[sc.sticker].emoji} ${STICKER_BY_ID[sc.sticker].label}` : sc.accent ? ` · objek 3D: ${STORY_VISUAL_LABELS[sc.accent]}` : ""}{sc.captionPolicy === "suppressed-duplicate" ? " · tanpa subtitle ganda" : ""}</li>)}</ol>
-        {storyIssues.map((i, n) => <small key={n} className={i.level === "error" ? "notice notice-error" : "narrative-reason"} role={i.level === "error" ? "alert" : "status"} data-testid="storyboard-issue">{i.level === "error" ? "Perlu diperbaiki: " : "Saran: "}{i.message}</small>)}
-      </details>}
-      <div className="scene-list" data-testid="scenes">{timeline.ok && (() => { let t = 0; return timeline.scenes.map((s, i) => { const from = t; t += s.durationInFrames; return (
-        <div className="scene-item" key={i} data-testid="scene-item">
-          <button className="scene-row" onClick={() => player.current?.seekTo(from)}>
-            <span className="scene-index">{String(i + 1).padStart(2, "0")}</span>
-            <div className="scene-info"><b>{stripMarks(s.text)}</b><small className="narrative-hint">{NARRATIVE_ROLE_LABELS[narrativePlan[i]?.role ?? ""] ?? "Lanjutan"} · {NARRATIVE_INTENT_LABELS[narrativePlan[i]?.intent ?? "statement"] ?? "Pernyataan"} · {VISUAL_STRATEGY_LABELS[narrativePlan[i]?.strategy ?? ""] ?? "Minimal"} · {MOTION_INTENSITY_LABELS[narrativePlan[i]?.intensity ?? ""] ?? "Tenang"}{!(videoEdit && source) && sceneVisuals[i] ? <> · <span className="scene-family" data-testid="scene-family">{FAMILY_LABELS[chooseFamily(sceneVisuals[i], narrativePlan[i])]}</span></> : null}</small><small className="narrative-reason">{narrativePlan[i]?.reason}</small><small className="narrative-reason" data-testid="scene-visual-cue"><b>Brief visual:</b> {narrativePlan[i]?.visualCue} · {CONFIDENCE_LABELS[narrativePlan[i]?.confidence ?? "low"]}</small>{videoEdit && source && animationPlan.judgements[i] ? <small className="narrative-reason" data-testid="scene-importance">{cutOverrides[s.text] ? "Diatur manual" : explainScene(animationPlan.judgements[i], planned[i] === "overlay")}</small> : null}<small className="narrative-continuity"><b>Penghubung:</b> {narrativePlan[i]?.continuityCue}</small>{narrativePlan[i]?.reviewFlags?.length ? <small className="narrative-reason" data-testid="scene-review-flags"><b>Perlu diperiksa:</b> {narrativePlan[i]?.reviewFlags?.join(" ")}</small> : null}{directorInfo[s.text]?.reason ? <small className="narrative-reason director-reason" data-testid="scene-director"><b>Pilihan AI:</b> {directorInfo[s.text].reason}</small> : null}{!(videoEdit && source) && directorInfo[s.text]?.imageIdea ? <small className="narrative-reason director-reason" data-testid="scene-image-idea"><b>Ide gambar:</b> {directorInfo[s.text].imageIdea}</small> : null}</div>
-            <div className="scene-meta"><b>{(from / FPS).toFixed(1)}–{(t / FPS).toFixed(1)}s</b><small>{(s.durationInFrames / FPS).toFixed(1)} dtk</small></div>
-          </button>
-          <SceneVisualControls text={s.text} topics={sceneContext[i]} override={overrides[s.text]} disabled={rendering} cut={videoEdit ? { value: cutOverrides[s.text], auto: planned[i], clipFrom: clipStarts[s.text] } : undefined}
-            onCut={c => {
-              manualChoice(s.text);
-              setCutOverrides(prev => { const next = { ...prev }; if (c) next[s.text] = c; else delete next[s.text]; return next; });
-              // Choosing "other footage" starts at wherever the source player is now.
-              if (c === "clip" && clipStarts[s.text] === undefined) setClipStarts(prev => ({ ...prev, [s.text]: Math.min(sourceVideo.current?.currentTime ?? 0, source?.seconds ?? 0) }));
-            }}
-            onClipHere={() => setClipStarts(prev => ({ ...prev, [s.text]: Math.min(sourceVideo.current?.currentTime ?? 0, source?.seconds ?? 0) }))}
-            onClipSeek={t => { if (sourceVideo.current) { sourceVideo.current.currentTime = t; } }}
-            onChange={o => { manualChoice(s.text); setOverrides(prev => { const next = { ...prev }; if (o.template || o.icon) next[s.text] = o; else delete next[s.text]; return next; }); }} />
-          {stickerMode === "auto" && !(videoEdit && source) && <label className="scene-sticker" data-testid="scene-sticker-row"><span>Stiker</span>
-            <select value={stickerOverrides[s.text] ?? "auto"} onChange={e => setStickerOverrides(prev => { const next = { ...prev }; if (e.target.value === "auto") delete next[s.text]; else next[s.text] = e.target.value; return next; })} data-testid="scene-sticker">
-              <option value="auto">{matchSticker(s.text) ? `Otomatis · ${matchSticker(s.text)!.emoji} ${matchSticker(s.text)!.label}` : "Otomatis · tanpa"}</option>
-              <option value="none">Tanpa stiker</option>
-              {STICKERS.map(st => <option key={st.id} value={st.id}>{st.emoji} {st.label}</option>)}
-            </select></label>}
-          {<div className="scene-image" data-testid="scene-image">
-            {/* eslint-disable-next-line @next/next/no-img-element -- a local blob: thumbnail, nothing for next/image to optimise */}
-            {images[s.text] ? <img src={images[s.text].url} alt="" className="scene-thumb" /> : null}
-            <label className="text-link">
-              {images[s.text] ? "Ganti gambar" : "+ Gambar latar"}
-              <input type="file" accept="image/*" hidden disabled={rendering} data-testid="scene-image-input" onChange={e => void onSceneImage(s.text, e)} />
-            </label>
-            <button type="button" className="text-link" disabled={rendering} onClick={() => { setPickerSource("pexels"); setPickerFor(pickerFor === s.text && pickerSource === "pexels" ? null : s.text); }} data-testid="scene-image-pexels">Cari di Pexels</button>
-            <button type="button" className="text-link" disabled={rendering} onClick={() => { setPickerSource("pixabay"); setPickerFor(pickerFor === s.text && pickerSource === "pixabay" ? null : s.text); }} data-testid="scene-image-pixabay">Cari gambar Pixabay</button>
-            <button type="button" className="text-link" disabled={rendering} onClick={() => { setPickerSource("pixabay-video"); setPickerFor(pickerFor === s.text && pickerSource === "pixabay-video" ? null : s.text); }} data-testid="scene-video-pixabay">Cari video Pixabay</button>
-            {images[s.text] ? <button type="button" className="text-link" disabled={rendering} onClick={() => removeSceneImage(s.text)} data-testid="scene-image-remove">Hapus</button> : null}
-            {images[s.text]?.credit ? <small className="scene-credit" data-testid="scene-credit"><a href={images[s.text].credit!.href} target="_blank" rel="noreferrer noopener">{images[s.text].credit!.text}</a></small> : null}
-          </div>}
-          {pickerFor === s.text && pickerSource === "pexels" && <ScenePhotoPicker initialQuery={directorInfo[s.text]?.imageQuery ?? queryHints[s.text]?.term ?? ""} onChoose={(file, photo) => putStockPhoto(s.text, file, photo)} onClose={() => setPickerFor(null)} />}
-          {pickerFor === s.text && pickerSource === "pixabay" && <PixabayPhotoPicker initialQuery={directorInfo[s.text]?.imageQuery ?? queryHints[s.text]?.term ?? ""} onChoose={(file, photo) => putPixabayPhoto(s.text, file, photo)} onClose={() => setPickerFor(null)} />}
-          {pickerFor === s.text && pickerSource === "pixabay-video" && <PixabayVideoPicker initialQuery={directorInfo[s.text]?.imageQuery ?? queryHints[s.text]?.term ?? ""} onChoose={video => putPixabayVideo(s.text, video)} onClose={() => setPickerFor(null)} />}
-        </div>); }); })()}</div>
-      {timeline.ok && <p className="preview-disclaimer" data-testid="image-note">{imageError ? <span className="scene-image-error" data-testid="image-error">{imageError} </span> : null}{videoEdit && source ? "Di video sumber, gambar tampil sebagai layar penuh (maks. 4 detik) pada scene itu, dan pembicara kembali setelahnya. " : null}Gambar latar hanya dipakai di perangkat ini dan tidak ikut tersimpan atau tersinkron; pilih lagi setelah memuat ulang halaman. Pakai gambar milik Anda, foto Pexels/Pixabay, atau yang boleh dipakai ulang: gambar dari internet (mis. Pinterest) belum tentu bebas hak cipta.</p>}
     </section>
   </div>
   );
@@ -1293,7 +1333,7 @@ export default function MotionStudio() {
       {activeMode === "normal" && <>
         <CloudAccount onUser={setCloudUser} />
         <AiSetupCard />
-        <QuickStart onApply={applyCinematic} preview={quickPreview} checklist={timeline.ok ? <PreRenderChecklist checks={preChecks} onFix={applyFix} prefix="quick" disabled={rendering} /> : null} renderSeconds={videoSeconds} onRender={() => void render()} onCancelRender={() => abort.current?.abort()} rendering={rendering} progress={progress} result={result} renderError={renderError} blocker={blocker ?? ""} onOpenAdvanced={() => { setAdvancedOpen(true); setTimeout(() => document.querySelector("[data-testid=advanced-settings]")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); }} />
+        <QuickStart onApply={applyCinematic} preview={quickPreview} checklist={timeline.ok ? <PreRenderChecklist checks={preChecks} onFix={applyFix} prefix="quick" disabled={rendering} /> : null} renderSeconds={videoSeconds} onSave={goSave} onAnother={() => tryOtherStyle()} onSeo={goSeo} onRender={() => void render()} onCancelRender={() => abort.current?.abort()} rendering={rendering} progress={progress} result={result} renderError={renderError} blocker={blocker ?? ""} onOpenAdvanced={() => { setAdvancedOpen(true); setTimeout(() => document.querySelector("[data-testid=advanced-settings]")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); }} />
       </>}
       {activeMode === "normal"
         ? <details className="fold advanced-settings" open={advancedOpen} onToggle={e => setAdvancedOpen((e.currentTarget as HTMLDetailsElement).open)} data-testid="advanced-settings"><summary><b>Pengaturan lanjutan</b> <small>naskah, tampilan, suara, musik, AI, dan semua pilihan detail</small></summary>{studioGrid}</details>

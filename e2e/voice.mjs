@@ -158,6 +158,7 @@ try {
 
   await step("iPhone width: no horizontal overflow, and the controls are at least 16 px so Safari does not zoom in", async () => {
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByTestId("flow-dot-3").click(); // the phone layout shows one step at a time; the voice rows are in step 3
     await openRow(1);
     const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     assert(over <= 0, "overflow " + over + "px");

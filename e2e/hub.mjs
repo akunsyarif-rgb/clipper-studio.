@@ -252,6 +252,7 @@ try {
     await page.getByText("6.0 dtk · durasi video mengikuti narasi").waitFor({ timeout: 10000 });
     await page.getByTestId("render").click();
     await page.getByTestId("result").waitFor({ timeout: 300000 });
+    await page.getByTestId("post-save").click();
     await page.getByTestId("hub-open").click();
     await page.getByTestId("hub-consent").check();
     b.f.calls.length = 0;

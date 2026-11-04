@@ -9,6 +9,7 @@ import { isPaidAllowed } from "@/lib/paid-consent";
 import { isAiSkipped, QUICK_EXAMPLES, summarizePlan } from "@/lib/quick-start";
 import AiBusy from "./AiBusy";
 import HeavyWorkNotice from "./HeavyWorkNotice";
+import PostRenderActions from "./PostRenderActions";
 import AiErrorNotice, { toAiError, type AiError } from "./AiErrorNotice";
 import { focusAiSetup, SKIP_EVENT } from "./AiSetupCard";
 import { useGeminiAccess } from "./useGeminiAccess";
@@ -20,13 +21,17 @@ type Stage = "write" | "plan" | "preview";
  * press Setuju, 3) look at the preview and press Render. Everything else stays in "Pengaturan lanjutan". Nothing changes in the
  * studio until Setuju; the plan comes from the same command agent and storyboard builder as the Cinematic Studio.
  */
-export default function QuickStart({ onApply, preview, checklist, renderSeconds, onRender, onCancelRender, rendering, progress, result, renderError, blocker, onOpenAdvanced }: {
+export default function QuickStart({ onApply, preview, checklist, renderSeconds, onSave, onAnother, onSeo, onRender, onCancelRender, rendering, progress, result, renderError, blocker, onOpenAdvanced }: {
   onApply: (plan: CinePlan, visuals?: Visual[]) => void;
   /** The studio's own preview player (null while there is nothing to show). */
   preview: ReactNode;
   /** "Siap render?" for the current video (null while there is nothing to check). */
   checklist: ReactNode;
   renderSeconds: number;
+  /** After the render: the three next moves (same as in the advanced settings). */
+  onSave: () => void;
+  onAnother: () => void;
+  onSeo: () => void;
   onRender: () => void;
   onCancelRender: () => void;
   rendering: boolean;
@@ -46,6 +51,7 @@ export default function QuickStart({ onApply, preview, checklist, renderSeconds,
   const [busy, setBusy] = useState(false);
   const [aiErr, setAiErr] = useState<AiError | null>(null);
   const [error, setError] = useState("");
+  const [another, setAnother] = useState(false);
   const abort = useRef<AbortController | null>(null);
   useEffect(() => { const sync = () => setSkipped(isAiSkipped()); sync(); window.addEventListener(SKIP_EVENT, sync); return () => { window.removeEventListener(SKIP_EVENT, sync); abort.current?.abort(); }; }, []);
 
@@ -126,7 +132,9 @@ export default function QuickStart({ onApply, preview, checklist, renderSeconds,
       {rendering && <div className="render-progress" data-testid="quick-progress"><div><span>Merender di perangkat Anda. Jangan tutup layar…</span><b>{progress}%</b></div><i><em style={{ width: progress + "%" }} /></i></div>}
       {rendering && <HeavyWorkNotice what="render" seconds={renderSeconds} testId="quick-heavy" />}
       {renderError && <p className="field-error" role="alert" data-testid="quick-render-error">{renderError}</p>}
-      {result && <div className="render-result" data-testid="quick-result"><b>✓ Video siap</b><small>{(result.size / 1024 ** 2).toFixed(1)} MB</small><a className="motion-primary" href={result.url} download={result.name} data-testid="quick-download">Unduh MP4</a><small>Simpan ke Library dan buat judul serta tagar ada di Pengaturan lanjutan.</small></div>}
+      {result && <PostRenderActions prefix="quick" info={`${(result.size / 1024 ** 2).toFixed(1)} MB`} onSave={onSave} onAnother={() => { onAnother(); setAnother(true); }} onSeo={onSeo}
+        download={<a className="motion-primary" href={result.url} download={result.name} data-testid="quick-download">Unduh MP4</a>} />}
+      {result && another && <p className="notice" role="status" data-testid="quick-another-note"><small>Gaya diganti. Pratinjau di atas sudah berubah; tekan Render untuk membuat versi baru ini.</small></p>}
     </div>}
   </section>;
 }
