@@ -161,6 +161,7 @@ try {
     await page.route("https://generativelanguage.googleapis.com/**", async route => {
       const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "POST, OPTIONS" };
       if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+      if (route.request().method() === "GET") return route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ models: [{ name: "models/gemini-2.5-pro", supportedGenerationMethods: ["generateContent"] }, { name: "models/gemini-2.5-flash", supportedGenerationMethods: ["generateContent"] }] }) });
       calls++;
       const brief = { genre: "produk", product: "Kopi Pagi", tagline: "Mulai harimu hangat", problem: "", features: ["Biji pilihan", "Seduh tiga menit"], proof: "", cta: "Pesan sekarang", tone: "warm", seconds: 30, visuals: [{ term: "coffee cup", kind: "photo" }, { term: "pouring coffee", kind: "video" }, { term: "morning light", kind: "photo" }] };
       await route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(brief) }] } }] }) });
@@ -170,10 +171,18 @@ try {
     const scriptBefore = await page.getByTestId("script").inputValue();
     await page.getByTestId("command-input").fill("Buat video produk kopi 30 detik, suasana hangat, ajak orang memesan");
     await page.getByTestId("command-paid-ok").waitFor({ timeout: 5000 });
+    // The model in use is chosen right here (no trip to the settings); a model that is not free is labelled.
+    await page.getByTestId("ai-model-pick").first().waitFor({ timeout: 5000 });
+    assert(/gemini-2\.5-pro · bisa ditagih/.test(await page.getByTestId("ai-model-pick").first().innerText()), "the model in use is shown with its label");
+    await page.getByTestId("ai-model-pick").first().focus();
+    await page.waitForFunction(() => [...document.querySelectorAll('[data-testid="ai-model-pick"] option')].some(o => /gemini-2\.5-flash/.test(o.textContent)), null, { timeout: 8000 });
     await page.getByTestId("command-run").click();
     await page.getByTestId("cine-error").waitFor({ timeout: 5000 });
     assert(/bukan model gratis/.test(await page.getByTestId("cine-error").innerText()) && calls === 0, "a paid model is not used without the creator's permission");
-    await page.getByTestId("command-paid-ok").check();
+    // Picking a model in the list is an explicit choice: it is saved for every AI feature and counts as the permission for a paid one.
+    await page.getByTestId("ai-model-pick").first().selectOption("gemini-2.5-flash");
+    await page.waitForFunction(() => /gemini-2\.5-flash/.test(JSON.parse(localStorage.getItem("clipper:gemini:v1") || "{}").model || ""), null, { timeout: 5000 });
+    assert(await page.getByTestId("command-paid-ok").isChecked(), "choosing a model in the list is the permission");
     await page.getByTestId("command-run").click();
     await page.getByTestId("command-terms").waitFor({ timeout: 15000 });
     assert(calls === 1, "one AI call for the whole plan: " + calls);

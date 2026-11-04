@@ -6,6 +6,7 @@ import { GeminiError } from "@/lib/gemini";
 import { getAccess } from "@/lib/gemini-access";
 import { describeScope, parseScope, restrictPlan } from "@/lib/revision";
 import { useGeminiAccess } from "./useGeminiAccess";
+import AiModelSelect from "./AiModelSelect";
 
 /**
  * "Sutradara AI": arranges the whole video from the script with the creator's own AI key. Only the sentences' text and
@@ -62,6 +63,7 @@ export default function AiDirector({ input, language, active, note, canRedo, ver
     {access === null
       ? <small data-testid="director-needs-key"><b>Belum ada kunci AI.</b> Masuk ke akun lalu simpan kunci OpenRouter di panel AI (atau masukkan di panel transkrip di perangkat ini).</small>
       : <>
+        <AiModelSelect disabled={busy} />
         <textarea value={feedback} onChange={e => setFeedback(e.target.value)} rows={2} maxLength={400} disabled={busy} data-testid="director-feedback"
           placeholder={active ? "Masukan Anda, mis. lebih tenang, kurangi animasi, scene 3 pakai angka" : "Opsional: arahan Anda, mis. gaya santai untuk TikTok affiliate. Sebut scene 2 untuk membatasi revisi"} aria-label="Masukan untuk Sutradara AI" />
         <div className="range-tools">
