@@ -271,6 +271,13 @@ try {
     assert(/waktu kata dipertahankan/.test(await p.getByTestId("asr-info").innerText()), "says timing is kept");
     assert((await p.evaluate(() => localStorage.getItem("clipper:gemini:v1")) ?? "").includes(KEY), "key kept on this device");
     assert(/Pemakaian AI hari ini/.test(await p.getByTestId("ai-usage").innerText()), "today's AI use and the daily limit are shown");
+    assert(/Bulan ini/.test(await p.getByTestId("ai-month").innerText()) && await p.getByTestId("ai-month-limit").isVisible(), "this month's use and its limit are shown too");
+    // A limit only warns: lowering the daily limit below today's use shows a warning (everywhere) and nothing is blocked.
+    await p.getByTestId("ai-limit").fill("1"); await p.getByTestId("ai-limit").blur();
+    await p.getByTestId("ai-limit-warning").waitFor({ timeout: 8000 });
+    await p.getByTestId("ai-budget-warning").waitFor({ timeout: 8000 });
+    await p.getByTestId("ai-limit").fill("200000"); await p.getByTestId("ai-limit").blur();
+    await p.getByTestId("ai-budget-warning").waitFor({ state: "hidden", timeout: 8000 });
 
     // Letting Gemini listen is a separate, explicit choice; the audio then travels with the request.
     assert(await p.getByTestId("gemini-run-audio").isDisabled(), "audio is off until the creator allows it");
