@@ -23,7 +23,7 @@ export default function AiErrorNotice({ error, onRetry, onDismiss, testId }: { e
   const help = error.kind ? HELP[error.kind] : undefined;
   const retryable = !!error.kind && ["timeout", "server", "quota", "model", "network", "format"].includes(error.kind);
   function changeModel(el: HTMLElement) {
-    const pick = (el.closest(".ai-director, .command-box, .cinematic-studio") ?? document).querySelector<HTMLSelectElement>('[data-testid="ai-model-pick"]');
+    const pick = document.querySelector<HTMLSelectElement>('#ai-setup [data-testid="ai-model-pick"]') ?? (el.closest(".ai-director, .command-box, .cinematic-studio") ?? document).querySelector<HTMLSelectElement>('[data-testid="ai-model-pick"]');
     pick?.scrollIntoView({ block: "center", behavior: "smooth" });
     pick?.focus();
   }

@@ -3,14 +3,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildCinematic, CINEMATIC_PLAYBOOK, fxChoices, GENRES, GENRE_IDS, isFx, polishCinematic, TONES, validateCinematic, type Brief, type CinePlan, type Genre, type FxId } from "@/lib/cinematic";
 import { aiUsage } from "@/lib/gemini";
-import { isFreeModel } from "@/lib/ai-budget";
+import { allowPaidModel, isPaidAllowed } from "@/lib/paid-consent";
 import { MAX_COMMAND_CHARS, planFromCommand, type Visual } from "@/lib/command-agent";
 import { getAccess } from "@/lib/gemini-access";
 import { FPS } from "@/lib/script";
 import { applyPresetToPlan, builtInPresets, loadPresets, presetFromPlan, savePresets, type LibraryPreset } from "@/lib/motion-library";
 import { useGeminiAccess } from "./useGeminiAccess";
-import AiModelSelect from "./AiModelSelect";
 import AiBusy from "./AiBusy";
+import { focusAiSetup } from "./AiSetupCard";
+import AiNeeded from "./AiNeeded";
 import AiErrorNotice, { toAiError, type AiError } from "./AiErrorNotice";
 
 const EMPTY: Brief = { genre: "produk", product: "", tagline: "", problem: "", features: [], proof: "", cta: "", tone: "keynote", seconds: 30, language: "id" };
@@ -95,8 +96,8 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
     retry.current = () => void fromCommand();
     setError(""); setNote(""); setAiErr(null);
     const settings = await getAccess();
-    if (!settings) return setError("Atur kunci AI dulu di pengaturan AI. Tanpa AI, isi brief di bawah dan susun urutan adegan secara lokal.");
-    if (!isFreeModel(settings.model) && !paidOk) return setError(`Model ${settings.model} bukan model gratis. Centang izin di bawah kolom perintah bila Anda memang ingin memakainya untuk perintah ini.`);
+    if (!settings) { focusAiSetup(); return setError("Belum ada AI. Siapkan AI di bagian atas halaman, atau isi brief di bawah dan susun urutan adegan tanpa AI."); }
+    if (!isPaidAllowed(settings.model) && !paidOk) return setError(`Model ${settings.model} bukan model gratis. Centang izin di bawah kolom perintah bila Anda memang ingin memakainya untuk perintah ini.`);
     setBusy(true);
     const ctl = new AbortController(); abort.current = ctl;
     try {
@@ -131,10 +132,9 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
       <p className="preview-disclaimer">Isi brief singkat; naskah, gaya, palet, huruf, gerak tiap adegan, dan panjang adegan (sesuai ketukan) disusun di perangkat ini tanpa AI. AI hanya opsional untuk memoles kalimat.</p>
       <div className="command-box" data-testid="command-box">
         <label>Perintah (ceritakan video yang ingin dibuat)<textarea rows={3} value={command} maxLength={MAX_COMMAND_CHARS} onChange={e => setCommand(e.target.value)} placeholder="Contoh: video produk kopi 30 detik, suasana hangat, ajak orang memesan" data-testid="command-input" /></label>
-        {access && <AiModelSelect disabled={busy} onPick={m => setPaidOk(!isFreeModel(m))} />}
-        {access && !isFreeModel(access.model) && <label className="check-row"><input type="checkbox" checked={paidOk} onChange={e => setPaidOk(e.target.checked)} data-testid="command-paid-ok" /> Izinkan model berbayar ({access.model}) untuk perintah ini</label>}
+        {access && (!isPaidAllowed(access.model) || paidOk) && <label className="check-row"><input type="checkbox" checked={paidOk} onChange={e => { setPaidOk(e.target.checked); if (e.target.checked && access) allowPaidModel(access.model); }} data-testid="command-paid-ok" /> Izinkan model berbayar ({access.model}) untuk perintah ini</label>}
         <div className="button-row"><button type="button" onClick={() => void fromCommand()} disabled={busy || command.trim().length < 8} data-testid="command-run">{busy ? "Menyusun rencana…" : "Buat rencana dari perintah"}</button></div>
-        <small className="field-hint">{access ? "Satu panggilan AI untuk mengisi brief; urutan adegan disusun di perangkat." : "Perlu kunci AI. Tanpa itu, isi brief di bawah."}</small>
+        <small className="field-hint">{access ? "Satu panggilan AI untuk mengisi brief; urutan adegan disusun di perangkat." : <AiNeeded what="Perintah memakai AI; tanpa itu, isi brief di bawah." />}</small>
         <label className="check-row"><input type="checkbox" checked={autoPhotos} onChange={e => setAutoPhotos(e.target.checked)} data-testid="command-auto-photos" /> Isi foto atau video latar otomatis (Pixabay) setelah rencana dipakai</label>
         {terms.length > 0 && <p data-testid="command-terms"><small>Gambar yang dicari: {terms.map(t => `${t.term} (${t.kind === "video" ? "video" : "foto"})`).join(", ")}. {autoPhotos ? "Setelah rencana dipakai, tiap adegan diberi foto atau video pendek yang cocok; Anda bisa menggantinya per adegan." : "Gambar tidak diisi otomatis; gunakan “Gambar & musik otomatis” bila perlu."}</small></p>}
       </div>

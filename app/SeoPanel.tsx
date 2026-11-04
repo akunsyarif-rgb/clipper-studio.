@@ -6,6 +6,7 @@ import { getAccess } from "@/lib/gemini-access";
 import { makeSeoPack, SEO_PLATFORMS, seoProblem, seoToJson, seoToText, type SeoPlatform, type SeoResult } from "@/lib/seo";
 import { buildCoverPrompt } from "@/lib/cover-prompt";
 import { useGeminiAccess } from "./useGeminiAccess";
+import AiNeeded from "./AiNeeded";
 
 /** Copies text; falls back to a hidden textarea where the clipboard API is missing (older Safari, insecure pages). */
 export async function copyText(text: string): Promise<boolean> {
@@ -106,7 +107,7 @@ export default function SeoPanel({ transcript, topic, language, seed, stored, st
         <small className="field-hint">Aturannya mengurangi tampilan &quot;gambar AI&quot; (kulit plastik, cahaya neon, simbol mengambang), tapi tidak menjamin. Periksa tangan, wajah, dan teks pada hasilnya, dan pilih yang paling wajar.</small>
       </div>
       {access === null
-        ? <small data-testid="seo-needs-key"><b>Belum ada kunci AI.</b> Masuk ke akun lalu simpan kunci di panel AI (atau masukkan di panel transkrip di perangkat ini).</small>
+        ? <AiNeeded testId="seo-needs-key" what="Paket SEO memakai AI." />
         : <div className="range-tools"><button onClick={() => void run()} disabled={busy || !!problem} data-testid="seo-run">{busy ? "AI menulis…" : result ? `Buat ulang untuk ${SEO_PLATFORMS.find(p => p.id === platform)?.label}` : `Buat paket untuk ${SEO_PLATFORMS.find(p => p.id === platform)?.label}`}</button></div>}
       {problem && !busy && access ? <small className="field-hint" data-testid="seo-problem">{problem}</small> : null}
       {error && <div className="notice notice-error" role="alert" data-testid="seo-error">{error}</div>}

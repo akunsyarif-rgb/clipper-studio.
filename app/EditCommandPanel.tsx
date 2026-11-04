@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { isFreeModel } from "@/lib/ai-budget";
+import { allowPaidModel, isPaidAllowed } from "@/lib/paid-consent";
 import { describePlan, MAX_AGENT_SECONDS, MAX_EDIT_COMMAND_CHARS, planEdit, planIsEmpty, type EditPlan } from "@/lib/edit-command";
 import { aiUsage } from "@/lib/gemini";
 import { getAccess } from "@/lib/gemini-access";
 import { useGeminiAccess } from "./useGeminiAccess";
-import AiModelSelect from "./AiModelSelect";
 import AiBusy from "./AiBusy";
+import { focusAiSetup } from "./AiSetupCard";
+import AiNeeded from "./AiNeeded";
 import AiErrorNotice, { toAiError, type AiError } from "./AiErrorNotice";
 
 /**
@@ -41,8 +42,8 @@ export default function EditCommandPanel({ seconds, hasTranscript, lines, disabl
   async function run() {
     setError(""); setNote(""); setPlan(null); setAsked(false); setAiErr(null);
     const settings = await getAccess();
-    if (!settings) return setError("Atur kunci AI dulu di pengaturan AI. Tanpa AI, atur profil dan animasi secara manual di bawah.");
-    if (!isFreeModel(settings.model) && !paidOk) return setError(`Model ${settings.model} bukan model gratis. Centang izin di bawah kolom perintah bila Anda memang ingin memakainya untuk perintah ini.`);
+    if (!settings) { focusAiSetup(); return setError("Belum ada AI. Siapkan AI di bagian atas halaman, atau atur profil dan animasi secara manual di bawah."); }
+    if (!isPaidAllowed(settings.model) && !paidOk) return setError(`Model ${settings.model} bukan model gratis. Centang izin di bawah kolom perintah bila Anda memang ingin memakainya untuk perintah ini.`);
     setBusy(true);
     const ctl = new AbortController(); abort.current = ctl;
     try {
@@ -61,13 +62,12 @@ export default function EditCommandPanel({ seconds, hasTranscript, lines, disabl
       <textarea rows={2} value={command} maxLength={MAX_EDIT_COMMAND_CHARS} onChange={e => setCommand(e.target.value)} disabled={disabled || tooLong} placeholder="Contoh: buat lucu, subtitle gaya pop di bawah, animasi seperlunya" data-testid="edit-command-input" />
     </label>
     {tooLong && <small className="field-hint" data-testid="edit-command-long">Asisten edit untuk video sampai 3 menit. Potong videonya dulu di Potong video.</small>}
-    {access && <AiModelSelect disabled={busy} onPick={m => setPaidOk(!isFreeModel(m))} />}
-    {access && !isFreeModel(access.model) && <label className="check-row"><input type="checkbox" checked={paidOk} onChange={e => setPaidOk(e.target.checked)} data-testid="edit-command-paid-ok" /> Izinkan model berbayar ({access.model}) untuk perintah ini</label>}
+    {access && (!isPaidAllowed(access.model) || paidOk) && <label className="check-row"><input type="checkbox" checked={paidOk} onChange={e => { setPaidOk(e.target.checked); if (e.target.checked && access) allowPaidModel(access.model); }} data-testid="edit-command-paid-ok" /> Izinkan model berbayar ({access.model}) untuk perintah ini</label>}
     <div className="button-row">
       <button type="button" onClick={() => void run()} disabled={disabled || busy || tooLong || command.trim().length < 8} data-testid="edit-command-run">{busy ? "Menyusun rencana…" : "Buat rencana edit"}</button>
       {canUndo && <button type="button" className="text-button" onClick={() => { onUndo(); setNote("Pengaturan dikembalikan seperti sebelum perintah."); setPlan(null); }} data-testid="edit-command-undo">Urungkan perintah terakhir</button>}
     </div>
-    <small className="field-hint">{access ? "Satu panggilan AI; hanya memilih pengaturan yang sudah ada, tidak memotong atau menghapus apa pun." : "Perlu kunci AI."}</small>
+    <small className="field-hint">{access ? "Satu panggilan AI; hanya memilih pengaturan yang sudah ada, tidak memotong atau menghapus apa pun." : <AiNeeded what="Asisten edit memakai AI." />}</small>
     <AiBusy busy={busy} label="AI menyusun rencana" onCancel={() => abort.current?.abort()} />
     <AiErrorNotice error={aiErr} onRetry={() => void run()} onDismiss={() => setAiErr(null)} testId="edit-command-error" />
     {error && <div className="notice notice-error" role="alert" data-testid="edit-command-error">{error}</div>}

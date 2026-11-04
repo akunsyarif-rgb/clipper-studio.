@@ -182,8 +182,7 @@ try {
     // Picking a model in the list is an explicit choice: it is saved for every AI feature and counts as the permission for a paid one.
     await page.getByTestId("ai-model-pick").first().selectOption("gemini-2.5-flash");
     await page.waitForFunction(() => /gemini-2\.5-flash/.test(JSON.parse(localStorage.getItem("clipper:gemini:v1") || "{}").model || ""), null, { timeout: 5000 });
-    await page.waitForFunction(() => document.querySelector('[data-testid="command-paid-ok"]')?.checked === true, null, { timeout: 5000 }); // set right after the save, so wait for it
-    assert(await page.getByTestId("command-paid-ok").isChecked(), "choosing a model in the list is the permission");
+    await page.getByTestId("command-paid-ok").waitFor({ state: "detached", timeout: 5000 }); // the choice is the permission, so the question goes away
     await page.getByTestId("command-run").click();
     await page.getByTestId("command-terms").waitFor({ timeout: 15000 });
     assert(calls === 1, "one AI call for the whole plan: " + calls);
@@ -249,7 +248,8 @@ try {
 
   await step("no horizontal scroll on iPhone-size viewport", async () => {
     const w = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
-    assert(w[0] <= w[1] + 1, `scrollWidth ${w[0]} > ${w[1]}`);
+    const wide = w[0] <= w[1] + 1 ? [] : await page.evaluate(() => [...document.querySelectorAll("body *")].filter(e => e.getBoundingClientRect().right > window.innerWidth + 1 && !e.closest("nav")).slice(0, 6).map(e => `${e.tagName}.${String(e.className).slice(0, 30)}[${e.dataset.testid ?? ""}]`));
+    assert(w[0] <= w[1] + 1, `scrollWidth ${w[0]} > ${w[1]}: ${wide.join(", ")}`);
   });
 
   await step("no uncaught page errors", async () => {

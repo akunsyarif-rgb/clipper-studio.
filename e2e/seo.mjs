@@ -119,7 +119,7 @@ try {
   await step("without an AI key the panel says what is needed", async () => {
     const p = await (await browser.newContext()).newPage();
     await p.goto(BASE);
-    await p.getByTestId("fold-seo").waitFor({ timeout: 8000 });
+    await p.getByTestId("fold-seo").waitFor({ state: "attached", timeout: 8000 });
     await openFolds(p);
     await p.getByTestId("seo-needs-key").waitFor({ timeout: 8000 });
     assert(await p.getByTestId("seo-run").count() === 0, "no run button");
@@ -138,7 +138,7 @@ try {
     const p = await ctxT.newPage();
     p.on("pageerror", e => pageErrors.push(e.message));
     await p.goto(BASE); await openFolds(p);
-    await p.getByTestId("fold-trend").waitFor({ timeout: 8000 }); await openFolds(p);
+    await p.getByTestId("fold-trend").waitFor({ state: "attached", timeout: 8000 }); await openFolds(p);
     const order = await p.evaluate(() => { const a = document.querySelector('[data-testid="fold-trend"]'), b = document.querySelector('[data-testid="script"]'); return !!(a && b && (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)); });
     assert(order, "the trend step comes before the script");
     assert(/tidak punya data tren langsung/.test(await p.getByTestId("fold-trend").innerText()), "says the AI has no live trend data");
@@ -157,7 +157,7 @@ try {
     assert((await p.getByTestId("script").inputValue()).startsWith("Gajian habis tanggal 5?\nCoba pecah jadi tiga pos 2."), "script filled from the chosen idea");
     assert(await p.getByTestId("title").inputValue() === "Gajian Aman 2", "title filled");
     await p.getByTestId("voice-none").click();
-    await p.getByTestId("fold-seo").waitFor({ timeout: 8000 });
+    await p.getByTestId("fold-seo").waitFor({ state: "attached", timeout: 8000 });
     await openFolds(p);
     assert(await p.getByTestId("seo-topic").inputValue() === "tips keuangan" && await p.getByTestId("seo-audience").inputValue() === "pekerja muda, Jakarta" && await p.getByTestId("seo-trends").inputValue() === "Gajian akhir bulan", "SEO pack inherits niche, audience and trend");
     assert(await p.getByTestId("seo-platform-instagram").getAttribute("aria-pressed") === "true", "SEO pack inherits the platform");
@@ -171,20 +171,20 @@ try {
     await ctxF.addInitScript(() => localStorage.setItem("clipper:gemini:v1", JSON.stringify({ apiKey: "k".repeat(30), model: "gemini-flash-latest", consent: true })));
     await ctxF.route("https://generativelanguage.googleapis.com/**", route => route.fulfill({ status: 429, contentType: "application/json", body: JSON.stringify({ error: { status: "RESOURCE_EXHAUSTED", message: "quota" } }) }));
     const p = await ctxF.newPage();
-    await p.goto(BASE); await p.getByTestId("fold-trend").waitFor({ timeout: 8000 }); await openFolds(p);
+    await p.goto(BASE); await p.getByTestId("fold-trend").waitFor({ state: "attached", timeout: 8000 }); await openFolds(p);
     await p.getByTestId("trend-niche").fill("masak hemat");
     await p.getByTestId("trend-text").fill("harga cabai naik");
     await p.getByTestId("trend-write").click();
     await p.getByTestId("trend-error").waitFor({ timeout: 25000 });
     assert(await p.getByTestId("trend-idea").count() === 0, "no ideas after a failure");
-    await p.reload(); await p.getByTestId("fold-trend").waitFor({ timeout: 8000 }); await openFolds(p);
+    await p.reload(); await p.getByTestId("fold-trend").waitFor({ state: "attached", timeout: 8000 }); await openFolds(p);
     assert(await p.getByTestId("trend-niche").inputValue() === "masak hemat" && await p.getByTestId("trend-text").inputValue() === "harga cabai naik", "fields remembered on this device");
     await ctxF.close();
   });
 
   await step("without an AI key the trend step says what is needed", async () => {
     const p = await (await browser.newContext()).newPage();
-    await p.goto(BASE); await p.getByTestId("fold-trend").waitFor({ timeout: 8000 }); await openFolds(p);
+    await p.goto(BASE); await p.getByTestId("fold-trend").waitFor({ state: "attached", timeout: 8000 }); await openFolds(p);
     await p.getByTestId("trend-needs-key").waitFor({ timeout: 8000 });
     assert(await p.getByTestId("trend-write").count() === 0, "no write button");
   });
@@ -223,7 +223,7 @@ try {
     });
     const p = await ctxR.newPage();
     p.on("pageerror", e => pageErrors.push(e.message));
-    await p.goto(BASE); await p.getByTestId("fold-trend").waitFor({ timeout: 8000 }); await openFolds(p);
+    await p.goto(BASE); await p.getByTestId("fold-trend").waitFor({ state: "attached", timeout: 8000 }); await openFolds(p);
     await p.getByTestId("radar-needs-login").waitFor({ timeout: 5000 });
     assert(/bukan jaminan/.test(await p.getByTestId("trend-radar").innerText()), "says a signal is not a promise");
     await p.getByTestId("cloud-open").click();
@@ -277,13 +277,13 @@ try {
     await ctxH.route("https://generativelanguage.googleapis.com/**", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ hookText: "Hook khusus riwayat", voiceoverHook: "Suara pembuka riwayat.", caption: lorem(120), hashtags: ["#riwayat", "#disiplin", "#pagi"], thumbnailText: "RIWAYAT", searchTopics: ["a b", "c d", "e f"], seoReadinessScore: 80, quickFix: "Perbaikan riwayat." }) }] } }] }) }));
     const p = await ctxH.newPage();
     p.on("pageerror", e => pageErrors.push(e.message));
-    await p.goto(BASE); await p.getByTestId("fold-trend").waitFor({ timeout: 8000 }); await openFolds(p);
+    await p.goto(BASE); await p.getByTestId("fold-trend").waitFor({ state: "attached", timeout: 8000 }); await openFolds(p);
     await p.getByTestId("nav-library").waitFor({ timeout: 3000 });
     await p.getByTestId("voice-none").click();
     await p.getByTestId("duration").selectOption("15");
     await p.getByTestId("title").fill("Video A");
     await p.getByTestId("script").fill("Naskah video pertama yang unik.\nKalimat kedua untuk video pertama.");
-    await p.getByTestId("fold-seo").waitFor({ timeout: 8000 }); await openFolds(p);
+    await p.getByTestId("fold-seo").waitFor({ state: "attached", timeout: 8000 }); await openFolds(p);
     await p.getByTestId("seo-run").click();
     await p.getByTestId("seo-result").waitFor({ timeout: 10000 });
     // Another video: the first video's pack must not be shown for it.
@@ -362,15 +362,16 @@ try {
     }
     // Device 1: signs in on the studio, makes a SEO pack.
     const d1 = await device();
-    await d1.p.goto(BASE); await d1.p.getByTestId("fold-seo").waitFor({ timeout: 8000 }).catch(() => undefined);
+    await d1.p.goto(BASE); await d1.p.getByTestId("fold-seo").waitFor({ state: "attached", timeout: 8000 }).catch(() => undefined);
     await d1.p.getByTestId("cloud-open").click();
     await d1.p.getByTestId("cloud-email").fill("saya@contoh.id");
     await d1.p.getByTestId("cloud-password").fill("benar-sekali");
     await d1.p.getByTestId("cloud-signin").click();
+    await openFolds(d1.p);
     await d1.p.getByTestId("voice-none").click();
     await d1.p.getByTestId("title").fill("Video Sinkron");
     await d1.p.getByTestId("script").fill("Naskah untuk uji sinkron antar perangkat.\nKalimat kedua sinkron.");
-    await d1.p.getByTestId("fold-seo").waitFor({ timeout: 8000 }); await openFolds(d1.p);
+    await d1.p.getByTestId("fold-seo").waitFor({ state: "attached", timeout: 8000 }); await openFolds(d1.p);
     await d1.p.getByTestId("seo-run").click();
     await d1.p.getByTestId("seo-result").waitFor({ timeout: 10000 });
     for (let i = 0; i < 80 && ![...table.values()].some(r => !r.deleted); i++) await d1.p.waitForTimeout(100);
@@ -403,7 +404,7 @@ try {
   await step("cover prompt: a plain prompt is always there from the content, the AI's version is cleaned of buzzwords, both copy, and it follows the platform", async () => {
     const p = await (await browser.newContext({ permissions: ["clipboard-read", "clipboard-write"] })).newPage();
     p.on("pageerror", e => pageErrors.push(e.message));
-    await p.goto(BASE); await p.getByTestId("fold-seo").waitFor({ timeout: 8000 }); await openFolds(p);
+    await p.goto(BASE); await p.getByTestId("fold-seo").waitFor({ state: "attached", timeout: 8000 }); await openFolds(p);
     await p.getByTestId("title").fill("Gaji habis tanggal 5?");
     await p.getByTestId("script").fill("Kamu pernah gaji habis tanggal 5? Aku juga. Coba pecah jadi tiga pos.\nPos satu untuk kebutuhan wajib.\nSimpan dan bagikan ya.");
     await p.getByTestId("cover-section").waitFor({ timeout: 5000 });
@@ -428,7 +429,7 @@ try {
       const pack = { hookText: "Gaji habis cepat?", voiceoverHook: "Kamu pernah gaji habis tanggal 5?", caption: lorem(120), hashtags: ["#gaji", "#hemat", "#keuangan"], thumbnailText: "GAJI HABIS?", searchTopics: ["hemat gaji", "atur gaji", "pos keuangan"], coverPrompt: "Ultra-detailed 8k masterpiece photo of a young man counting cash at a cluttered kitchen table, cinematic lighting, glowing phone, natural window light", coverNegative: "blurry", seoReadinessScore: 80, quickFix: "x" };
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(pack) }] } }] }) });
     });
-    await a.goto(BASE); await a.getByTestId("fold-seo").waitFor({ timeout: 8000 }); await openFolds(a);
+    await a.goto(BASE); await a.getByTestId("fold-seo").waitFor({ state: "attached", timeout: 8000 }); await openFolds(a);
     await a.getByTestId("script").fill("Kamu pernah gaji habis tanggal 5? Aku juga. Coba pecah jadi tiga pos.\nPos satu untuk kebutuhan wajib.\nSimpan dan bagikan ya.");
     await a.getByTestId("seo-run").click();
     await a.getByTestId("seo-card-coverPrompt").waitFor({ timeout: 10000 });

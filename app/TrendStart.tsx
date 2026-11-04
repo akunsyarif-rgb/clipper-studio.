@@ -6,6 +6,7 @@ import { getAccess } from "@/lib/gemini-access";
 import { SEO_PLATFORMS } from "@/lib/seo";
 import { addTrendChip, EMPTY_TREND, TREND_CHIPS, TREND_GOALS, trendProblem, writeTrendIdeas, type TrendBrief, type TrendIdea } from "@/lib/trend";
 import { useGeminiAccess } from "./useGeminiAccess";
+import AiNeeded from "./AiNeeded";
 import TrendRadar from "./TrendRadar";
 
 const STORE_KEY = "clipper:trend:v1";
@@ -82,7 +83,7 @@ export default function TrendStart({ onUse, disabled }: {
         {TREND_GOALS.map(g => <button key={g.id} role="radio" aria-checked={f.goal === g.id} className={f.goal === g.id ? "active" : ""} onClick={() => set("goal", g.id)} title={g.hint} data-testid={"trend-goal-" + g.id}>{g.label}</button>)}
       </div>
       {access === null
-        ? <small data-testid="trend-needs-key"><b>Belum ada kunci AI.</b> Masuk ke akun lalu simpan kunci di panel AI (atau masukkan di panel transkrip di perangkat ini).</small>
+        ? <AiNeeded testId="trend-needs-key" what="Ide dari tren memakai AI." />
         : <div className="range-tools"><button onClick={() => void write(false)} disabled={busy || disabled || !!problem} data-testid="trend-write">{busy ? "AI menulis…" : ideas.length ? "Buat ide baru" : "Buat 3 ide"}</button></div>}
       {problem && !busy && access ? <small className="field-hint" data-testid="trend-problem">{problem}</small> : null}
       {error && <div className="notice notice-error" role="alert" data-testid="trend-error">{error}</div>}
