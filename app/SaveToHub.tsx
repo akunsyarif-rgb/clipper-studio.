@@ -64,22 +64,22 @@ export default function SaveToHub({ getBlob, fileName, title, source, seconds, w
   const pct = total ? Math.floor((sent / total) * 100) : 0;
   return <div className={"hub-box" + (tone === "dark" ? " hub-dark" : "")} data-testid="hub-save">
     {phase === "idle" && <>
-      <h3>Simpan ke Content Hub</h3>
+      <h3>Simpan ke Perpustakaan</h3>
       {signedIn
         ? <p>Opsional. Video hanya dikirim ke penyimpanan cloud Anda jika Anda memilihnya di sini. Tanpa itu, video tetap hanya di perangkat.</p>
-        : <p>Content Hub memakai akun. Masuk lewat tautan ☁ di bagian atas halaman. Menyimpan di perangkat tidak memerlukan akun.</p>}
-      <div className="hub-row"><button className="hub-btn" disabled={!signedIn} onClick={() => setPhase("form")} data-testid="hub-open">Simpan ke Content Hub</button></div>
+        : <p>Perpustakaan memakai akun. Masuk lewat tautan ☁ di bagian atas halaman. Menyimpan di perangkat tidak memerlukan akun.</p>}
+      <div className="hub-row"><button className="hub-btn" disabled={!signedIn} onClick={() => setPhase("form")} data-testid="hub-open">Simpan ke Perpustakaan</button></div>
     </>}
 
     {phase === "form" && <form onSubmit={e => { e.preventDefault(); void start(); }}>
-      <h3>Simpan ke Content Hub</h3>
+      <h3>Simpan ke Perpustakaan</h3>
       <label className="hub-field">Judul<input value={name} maxLength={120} onChange={e => setName(e.target.value)} data-testid="hub-title" /></label>
       <div className="hub-two">
         <label className="hub-field">Platform<select value={platform} onChange={e => setPlatform(e.target.value as PlatformId)} data-testid="hub-platform">{PLATFORMS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
         <label className="hub-field">Format<select value={format} onChange={e => setFormat(e.target.value as FormatId)} data-testid="hub-format">{FORMATS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}</select></label>
       </div>
       <label className="hub-consent"><input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} data-testid="hub-consent" />
-        <span>Saya setuju video ini dikirim dan disimpan di penyimpanan cloud privat (Cloudflare R2) milik akun saya. Saya bisa menghapus file kapan saja dari Content Hub.</span></label>
+        <span>Saya setuju video ini dikirim dan disimpan di penyimpanan cloud privat (Cloudflare R2) milik akun saya. Saya bisa menghapus file kapan saja dari Perpustakaan.</span></label>
       <div className="hub-row">
         <button type="submit" className="hub-btn solid" disabled={!agreed} data-testid="hub-upload">Unggah</button>
         <button type="button" className="hub-btn" onClick={() => { setPhase("idle"); setAgreed(false); }}>Batal</button>
@@ -104,8 +104,8 @@ export default function SaveToHub({ getBlob, fileName, title, source, seconds, w
     </div>}
 
     {phase === "done" && <div data-testid="hub-done">
-      <p className="hub-ok">Tersimpan di Content Hub.</p>
-      <div className="hub-row"><Link className="hub-btn solid" href="/hub" data-testid="hub-link">Buka Content Hub</Link></div>
+      <p className="hub-ok">Tersimpan di Perpustakaan.</p>
+      <div className="hub-row"><Link className="hub-btn solid" href="/hub" data-testid="hub-link">Buka Perpustakaan</Link></div>
     </div>}
   </div>;
 }

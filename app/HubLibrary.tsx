@@ -38,7 +38,7 @@ async function loadAll(): Promise<HubAsset[]> {
   return out;
 }
 
-/** The Content Hub: every saved video, grouped by platform, with search, sort, download, move and delete. */
+/** The Perpustakaan: every saved video, grouped by platform, with search, sort, download, move and delete. */
 export default function HubLibrary() {
   const [user, setUser] = useState<string | null>(null);
   const [ready, setReady] = useState(false); // the signed-in state is read after mount
@@ -119,7 +119,7 @@ export default function HubLibrary() {
       <Link className="brand" href="/"><span className="logo">c</span><span>clipper<span className="light">studio</span></span></Link>
     </header>
     <AppNav current="library" />
-    <h1>Library (Content Hub)</h1>
+    <h1>Library: perpustakaan video</h1>
     <p className="hub-note">Video yang Anda simpan sendiri dari Clipper Studio atau Motion Studio disimpan di penyimpanan cloud privat; tidak ada yang diunggah otomatis. Catatan produksi (naskah, paket SEO, riwayat render) ada di tab sebelahnya.</p>
     <CloudAccount />
     <div className="hub-tabs" role="tablist" aria-label="Bagian">
@@ -129,7 +129,7 @@ export default function HubLibrary() {
 
     {tab === "catatan" && <HistoryPanel />}
 
-    {tab === "video" && ready && !user && <div className="hub-empty"><strong>Masuk untuk membuka Content Hub</strong>Video lokal Anda tidak terpengaruh. Content Hub hanya memakai akun yang sama dengan sinkron naskah.</div>}
+    {tab === "video" && ready && !user && <div className="hub-empty"><strong>Masuk untuk membuka Perpustakaan</strong>Video lokal Anda tidak terpengaruh. Perpustakaan hanya memakai akun yang sama dengan sinkron naskah.</div>}
 
     {tab === "video" && user && <>
       {assets && assets.length > 0 && <div className={"hub-usage " + usageLevel(used)} data-testid="hub-usage">
@@ -164,7 +164,7 @@ export default function HubLibrary() {
       {error && <div className="hub-error" role="alert" data-testid="hub-load-error">{error} <button className="hub-btn small" onClick={() => void reload()}>Muat ulang</button></div>}
       {assets === null && <p className="hub-count" data-testid="hub-loading">Memuat video…</p>}
 
-      {empty && !error && <div className="hub-empty" data-testid="hub-empty"><strong>Belum ada video</strong>Ekspor video di Clipper Studio atau Motion Studio, lalu pilih Simpan ke Content Hub.
+      {empty && !error && <div className="hub-empty" data-testid="hub-empty"><strong>Belum ada video</strong>Ekspor video di Clipper Studio atau Motion Studio, lalu pilih Simpan ke Perpustakaan.
         <div className="hub-row"><Link className="hub-btn solid" href="/">Clipper Studio</Link><Link className="hub-btn" href="/motion">Motion Studio</Link></div></div>}
 
       {assets && assets.length > 0 && shown.length === 0 && <div className="hub-empty" data-testid="hub-nomatch"><strong>Tidak ada yang cocok</strong>Coba kata lain atau kategori lain.

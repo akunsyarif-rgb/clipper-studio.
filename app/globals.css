@@ -89,3 +89,5 @@ body{color-scheme:dark}
 .ai-budget-warning button { background: transparent; border: 1px solid currentColor; color: inherit; border-radius: 8px; padding: 6px 10px; min-height: 36px; }
 .ai-model-select { display: grid; gap: 4px; margin: 6px 0; }
 .ai-model-select select { width: 100%; }
+.ai-busy { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.ai-error .button-row { margin-top: 8px; }

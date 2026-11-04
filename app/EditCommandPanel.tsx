@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { isFreeModel } from "@/lib/ai-budget";
 import { describePlan, MAX_AGENT_SECONDS, MAX_EDIT_COMMAND_CHARS, planEdit, planIsEmpty, type EditPlan } from "@/lib/edit-command";
-import { GeminiError, aiUsage } from "@/lib/gemini";
+import { aiUsage } from "@/lib/gemini";
 import { getAccess } from "@/lib/gemini-access";
 import { useGeminiAccess } from "./useGeminiAccess";
 import AiModelSelect from "./AiModelSelect";
+import AiBusy from "./AiBusy";
+import AiErrorNotice, { toAiError, type AiError } from "./AiErrorNotice";
 
 /**
  * Edit assistant for the video already chosen: one sentence becomes a few of the studio's own settings. The creator sees the plan
@@ -29,6 +31,7 @@ export default function EditCommandPanel({ seconds, hasTranscript, lines, disabl
   const [paidOk, setPaidOk] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [aiErr, setAiErr] = useState<AiError | null>(null);
   const [note, setNote] = useState("");
   const [asked, setAsked] = useState(false);
   const abort = useRef<AbortController | null>(null);
@@ -36,7 +39,7 @@ export default function EditCommandPanel({ seconds, hasTranscript, lines, disabl
 
   const tooLong = seconds > MAX_AGENT_SECONDS;
   async function run() {
-    setError(""); setNote(""); setPlan(null); setAsked(false);
+    setError(""); setNote(""); setPlan(null); setAsked(false); setAiErr(null);
     const settings = await getAccess();
     if (!settings) return setError("Atur kunci AI dulu di pengaturan AI. Tanpa AI, atur profil dan animasi secara manual di bawah.");
     if (!isFreeModel(settings.model) && !paidOk) return setError(`Model ${settings.model} bukan model gratis. Centang izin di bawah kolom perintah bila Anda memang ingin memakainya untuk perintah ini.`);
@@ -47,7 +50,7 @@ export default function EditCommandPanel({ seconds, hasTranscript, lines, disabl
       setPlan(out);
       setNote(`Rencana siap (${settings.model}). Belum ada yang diubah. Permintaan sesi ini: ${aiUsage.requests}, token ${aiUsage.tokens}.`);
     } catch (e) {
-      setError((e instanceof GeminiError ? e.message : "Gagal menghubungi AI.") + " Tidak ada yang diubah.");
+      if (ctl.signal.aborted) setNote("Dibatalkan. Tidak ada yang diubah."); else setAiErr(toAiError(e, "Gagal menghubungi AI."));
     } finally { setBusy(false); }
   }
 
@@ -65,6 +68,8 @@ export default function EditCommandPanel({ seconds, hasTranscript, lines, disabl
       {canUndo && <button type="button" className="text-button" onClick={() => { onUndo(); setNote("Pengaturan dikembalikan seperti sebelum perintah."); setPlan(null); }} data-testid="edit-command-undo">Urungkan perintah terakhir</button>}
     </div>
     <small className="field-hint">{access ? "Satu panggilan AI; hanya memilih pengaturan yang sudah ada, tidak memotong atau menghapus apa pun." : "Perlu kunci AI."}</small>
+    <AiBusy busy={busy} label="AI menyusun rencana" onCancel={() => abort.current?.abort()} />
+    <AiErrorNotice error={aiErr} onRetry={() => void run()} onDismiss={() => setAiErr(null)} testId="edit-command-error" />
     {error && <div className="notice notice-error" role="alert" data-testid="edit-command-error">{error}</div>}
     {note && <div className="notice" role="status" data-testid="edit-command-note">{note}</div>}
     {plan && <div data-testid="edit-command-plan">

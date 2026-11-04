@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildCinematic, CINEMATIC_PLAYBOOK, fxChoices, GENRES, GENRE_IDS, isFx, polishCinematic, TONES, validateCinematic, type Brief, type CinePlan, type Genre, type FxId } from "@/lib/cinematic";
-import { GeminiError, aiUsage } from "@/lib/gemini";
+import { aiUsage } from "@/lib/gemini";
 import { isFreeModel } from "@/lib/ai-budget";
 import { MAX_COMMAND_CHARS, planFromCommand, type Visual } from "@/lib/command-agent";
 import { getAccess } from "@/lib/gemini-access";
@@ -10,6 +10,8 @@ import { FPS } from "@/lib/script";
 import { applyPresetToPlan, builtInPresets, loadPresets, presetFromPlan, savePresets, type LibraryPreset } from "@/lib/motion-library";
 import { useGeminiAccess } from "./useGeminiAccess";
 import AiModelSelect from "./AiModelSelect";
+import AiBusy from "./AiBusy";
+import AiErrorNotice, { toAiError, type AiError } from "./AiErrorNotice";
 
 const EMPTY: Brief = { genre: "produk", product: "", tagline: "", problem: "", features: [], proof: "", cta: "", tone: "keynote", seconds: 30, language: "id" };
 
@@ -34,6 +36,8 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
   const [draft, setDraft] = useState<CinePlan | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [aiErr, setAiErr] = useState<AiError | null>(null);
+  const retry = useRef<() => void>(() => {});
   const [note, setNote] = useState("");
   const abort = useRef<AbortController | null>(null);
   const [command, setCommand] = useState("");
@@ -66,7 +70,7 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
   function usePreset() {
     const preset = library.find(p => p.id === presetId);
     if (!shown || !preset) return;
-    setDraft(applyPresetToPlan(shown, preset)); setError(""); setNote(`Preset “${preset.name}” dipasang pada storyboard. ${active ? "Tekan Perbarui untuk memakainya di Motion Studio." : "Tekan Pakai di Motion Studio."}`);
+    setDraft(applyPresetToPlan(shown, preset)); setError(""); setNote(`Preset “${preset.name}” dipasang pada urutan adegan. ${active ? "Tekan Perbarui untuk memakainya di Motion Studio." : "Tekan Pakai di Motion Studio."}`);
   }
   function saveMine() {
     if (!shown || !presetName.trim()) return setError("Beri nama preset dulu.");
@@ -88,18 +92,19 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
 
   /** One sentence from the creator becomes a plan to look at first; nothing is applied until "Pakai di Motion Studio". */
   async function fromCommand() {
-    setError(""); setNote("");
+    retry.current = () => void fromCommand();
+    setError(""); setNote(""); setAiErr(null);
     const settings = await getAccess();
-    if (!settings) return setError("Atur kunci AI dulu di pengaturan AI. Tanpa AI, isi brief di bawah dan susun storyboard secara lokal.");
+    if (!settings) return setError("Atur kunci AI dulu di pengaturan AI. Tanpa AI, isi brief di bawah dan susun urutan adegan secara lokal.");
     if (!isFreeModel(settings.model) && !paidOk) return setError(`Model ${settings.model} bukan model gratis. Centang izin di bawah kolom perintah bila Anda memang ingin memakainya untuk perintah ini.`);
     setBusy(true);
     const ctl = new AbortController(); abort.current = ctl;
     try {
       const out = await planFromCommand(command, { apiKey: settings.apiKey, model: settings.model, language: "id", signal: ctl.signal, transport: settings.transport, format: settings.format });
       setBrief(out.plan.brief); setFeaturesText(out.plan.brief.features.join("\n")); setDraft(out.plan); setTerms(out.visuals);
-      setNote(`Rencana siap (${settings.model}). Periksa storyboard di bawah, ubah bila perlu, lalu tekan “Pakai di Motion Studio”. Belum ada yang diubah. Permintaan sesi ini: ${aiUsage.requests}, token ${aiUsage.tokens}.`);
+      setNote(`Rencana siap (${settings.model}). Periksa urutan adegan di bawah, ubah bila perlu, lalu tekan “Pakai di Motion Studio”. Belum ada yang diubah. Permintaan sesi ini: ${aiUsage.requests}, token ${aiUsage.tokens}.`);
     } catch (e) {
-      setError((e instanceof GeminiError ? e.message : "Gagal menghubungi AI.") + " Tidak ada yang diubah.");
+      if (ctl.signal.aborted) setNote("Dibatalkan. Tidak ada yang diubah."); else setAiErr(toAiError(e, "Gagal menghubungi AI."));
     } finally { setBusy(false); }
   }
 
@@ -107,13 +112,14 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
     if (!shown) return;
     const settings = await getAccess();
     if (!settings) return;
-    setBusy(true); setError(""); setNote("");
+    retry.current = () => void polish();
+    setBusy(true); setError(""); setNote(""); setAiErr(null);
     const ctl = new AbortController(); abort.current = ctl;
     try {
       const out = await polishCinematic(shown, { apiKey: settings.apiKey, model: settings.model, language: brief.language ?? "id", signal: ctl.signal, transport: settings.transport, format: settings.format });
       setDraft(out); setNote(`Kalimat dipoles AI (${settings.model}). Struktur, gerak, dan ketukan tidak berubah. Permintaan sesi ini: ${aiUsage.requests}, token ${aiUsage.tokens}.`);
     } catch (e) {
-      setError((e instanceof GeminiError ? e.message : "Gagal menghubungi AI.") + " Naskah lokal tetap dipakai; Anda bisa memilih model lain di pengaturan AI.");
+      if (ctl.signal.aborted) setNote("Dibatalkan. Naskah lokal tetap dipakai."); else setAiErr(toAiError(e, "Gagal menghubungi AI."));
     } finally { setBusy(false); }
   }
 
@@ -128,7 +134,7 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
         {access && <AiModelSelect disabled={busy} onPick={m => setPaidOk(!isFreeModel(m))} />}
         {access && !isFreeModel(access.model) && <label className="check-row"><input type="checkbox" checked={paidOk} onChange={e => setPaidOk(e.target.checked)} data-testid="command-paid-ok" /> Izinkan model berbayar ({access.model}) untuk perintah ini</label>}
         <div className="button-row"><button type="button" onClick={() => void fromCommand()} disabled={busy || command.trim().length < 8} data-testid="command-run">{busy ? "Menyusun rencana…" : "Buat rencana dari perintah"}</button></div>
-        <small className="field-hint">{access ? "Satu panggilan AI untuk mengisi brief; storyboard disusun di perangkat." : "Perlu kunci AI. Tanpa itu, isi brief di bawah."}</small>
+        <small className="field-hint">{access ? "Satu panggilan AI untuk mengisi brief; urutan adegan disusun di perangkat." : "Perlu kunci AI. Tanpa itu, isi brief di bawah."}</small>
         <label className="check-row"><input type="checkbox" checked={autoPhotos} onChange={e => setAutoPhotos(e.target.checked)} data-testid="command-auto-photos" /> Isi foto atau video latar otomatis (Pixabay) setelah rencana dipakai</label>
         {terms.length > 0 && <p data-testid="command-terms"><small>Gambar yang dicari: {terms.map(t => `${t.term} (${t.kind === "video" ? "video" : "foto"})`).join(", ")}. {autoPhotos ? "Setelah rencana dipakai, tiap adegan diberi foto atau video pendek yang cocok; Anda bisa menggantinya per adegan." : "Gambar tidak diisi otomatis; gunakan “Gambar & musik otomatis” bila perlu."}</small></p>}
       </div>
@@ -144,13 +150,15 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
         <label>Durasi<select value={brief.seconds} onChange={e => set("seconds", Number(e.target.value))} data-testid="cine-seconds">{[15, 30, 45, 60].map(s => <option key={s} value={s}>{s} detik</option>)}</select></label>
       </div>
       <div className="button-row">
-        <button type="button" onClick={build} data-testid="cine-build">Susun storyboard</button>
+        <button type="button" onClick={build} data-testid="cine-build">Susun urutan adegan</button>
         {shown && <button type="button" onClick={() => void polish()} disabled={busy || !access} title={access ? "" : "Atur kunci AI dulu (opsional)"} data-testid="cine-polish">{busy ? "Memoles…" : "Poles kalimat dengan AI (opsional)"}</button>}
       </div>
+      <AiBusy busy={busy} label="AI bekerja" onCancel={() => abort.current?.abort()} />
+      <AiErrorNotice error={aiErr} onRetry={() => retry.current()} onDismiss={() => setAiErr(null)} testId="cine-error" />
       {error && <div className="notice notice-error" role="alert" data-testid="cine-error">{error}</div>}
       {note && <div className="notice" role="status" data-testid="cine-note">{note}</div>}
       {shown && <>
-        <p data-testid="cine-beat"><small>{shown.map.bpm} BPM · satu ketukan {shown.map.beat.toFixed(2)} dtk · satu bar {shown.map.bar.toFixed(1)} dtk · {shown.concept.palette}, {shown.concept.typography}</small></p>
+        <p data-testid="cine-beat"><small>Tempo {shown.map.bpm} ketukan per menit (BPM) · satu ketukan {shown.map.beat.toFixed(2)} dtk · satu birama {shown.map.bar.toFixed(1)} dtk · {shown.concept.palette}, {shown.concept.typography}</small></p>
         <ol className="cine-list" data-testid="cine-list">
           {shown.scenes.map((s, i) => <li key={i} data-act={s.act}>
             <small>{GENRES[shown.brief.genre ?? "produk"].act[s.act]} · {s.seconds.toFixed(1)} dtk ({Math.round(s.seconds / shown.map.beat)} ketukan)</small>
@@ -175,7 +183,7 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
           {mine.length > 0 && <optgroup label="Preset saya">{mine.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</optgroup>}
         </select></label>
         <div className="button-row">
-          <button type="button" onClick={usePreset} disabled={!presetId} data-testid="preset-apply">Pasang pada storyboard</button>
+          <button type="button" onClick={usePreset} disabled={!presetId} data-testid="preset-apply">Pasang pada urutan adegan</button>
           {presetId.startsWith("mine:") && <button type="button" onClick={removeMine} data-testid="preset-delete">Hapus preset</button>}
         </div>
         <div className="field-grid">
