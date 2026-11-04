@@ -248,6 +248,8 @@ function splitScriptText(script: string): string[] {
 
 /** Reading weight of a scene: words plus a small pause per scene. */
 function weight(text: string) { return words(text).length + 1.5; }
+/** How long a scene needs to be read comfortably (the same pace the automatic duration uses). */
+export function readingSeconds(text: string): number { return weight(text) / WORDS_PER_SECOND; }
 
 export type DurationMode =
   | { kind: "audio"; seconds: number }

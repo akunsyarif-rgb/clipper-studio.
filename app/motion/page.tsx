@@ -38,6 +38,11 @@ import PixabayAutoPanel from "../PixabayAutoPanel";
 import EditCommandPanel from "../EditCommandPanel";
 import AiSetupCard from "../AiSetupCard";
 import QuickStart from "../QuickStart";
+import PreRenderChecklist from "../PreRenderChecklist";
+import HeavyWorkNotice from "../HeavyWorkNotice";
+import { useWakeLock } from "../useWakeLock";
+import { prerenderChecks, type FixId } from "@/lib/prerender";
+import { suggestCta } from "@/lib/cta";
 import type { EditPlan } from "@/lib/edit-command";
 import { registerIcon, setCustomIconEntrance } from "@/lib/visuals";
 import type { Entrance } from "@/lib/icon-motion";
@@ -914,6 +919,21 @@ export default function MotionStudio() {
   const videoMode = videoEdit && !!source;
   const activeMode: Mode = videoMode ? "normal" : contentMode;
   const colors = PALETTES[palette];
+  useWakeLock(rendering);
+  const preChecks = timeline.ok ? prerenderChecks({
+    hasMusic: musicMode !== "none", hasVoice: !!narration, hasSourceAudio: !!(videoEdit && source),
+    scenes: timeline.scenes.map(sc => ({ text: sc.text, seconds: sc.durationInFrames / FPS })), totalSeconds: timeline.seconds,
+    durationAdjustable: mode.kind === "target" && !(videoEdit && source) && voiceMode !== "ai",
+    closesWithCta: cineActive && cine!.plan.scenes.at(-1)?.act === "cta",
+  }) : [];
+  function applyFix(id: FixId) {
+    if (id === "music") { setMusicMode("auto"); setMood(moodForStyle(style)); }
+    else if (id === "duration") setTarget("auto");
+    else if (id === "cta") {
+      const line = suggestCta({ text: script, title }).text.slice(0, 100);
+      if (line && !splitScript(script).includes(line)) setScript(prev => `${prev.replace(/\s+$/, "")}\n${line}`.slice(0, 3000));
+    }
+  }
   const studioGrid = (
   <div className="studio-grid">
     <section className="studio-panel" data-mode={activeMode}>
@@ -1155,6 +1175,7 @@ export default function MotionStudio() {
       <div className="step-title" data-testid="step-4"><b>4</b>Render</div>
       {blocker && <p className="field-error" role="alert" data-testid="blocker">{blocker}</p>}
       {timeline.ok && timeline.warnings.map(w => <p className="field-warning" key={w}>{w}</p>)}
+      {timeline.ok && <PreRenderChecklist checks={preChecks} onFix={applyFix} prefix="pre" disabled={rendering} />}
 
       <div className="panel-actions">
         {rendering
@@ -1164,6 +1185,7 @@ export default function MotionStudio() {
       </div>
       <button className="text-link" onClick={copyBrief} disabled={!timeline.ok}>Salin brief teks</button>
       {rendering && <div className="render-progress" data-testid="progress"><div><span>Merender di browser…</span><b>{progress}%</b></div><i><em style={{ width: progress + "%" }} /></i></div>}
+      {rendering && <HeavyWorkNotice what="render" seconds={videoSeconds} />}
       {renderError && <p className="field-error" role="alert" data-testid="render-error">{renderError}</p>}
       {errorDetail && <details className="error-details" open><summary>Detail teknis (kirimkan saat melapor)</summary><code data-testid="error-detail">{errorDetail}</code><button className="text-link" onClick={() => navigator.clipboard?.writeText(errorDetail).then(() => setStatus("Detail teknis disalin."), () => setStatus("Salin manual teks di atas."))}>Salin detail teknis</button></details>}
       {result && <div className="render-result" data-testid="result"><b>✓ MP4 siap</b><small>{WIDTH}×{HEIGHT} · {videoSeconds.toFixed(1)} dtk · {(result.size / 1024 ** 2).toFixed(1)} MB</small><a className="motion-primary" href={result.url} download={result.name} data-testid="download" onClick={() => { void updateHistory(l => logDownload(l, base(), { name: result.name, size: result.size, label: `${WIDTH}×${HEIGHT} · ${videoSeconds.toFixed(0)} dtk` })); }}>Simpan MP4 ↓</a>{srtUrl && <a className="text-link" href={srtUrl} download={result.name.replace(/\.mp4$/i, "") + ".srt"} data-testid="download-srt">Unduh subtitle (.srt)</a>}</div>}
@@ -1271,7 +1293,7 @@ export default function MotionStudio() {
       {activeMode === "normal" && <>
         <CloudAccount onUser={setCloudUser} />
         <AiSetupCard />
-        <QuickStart onApply={applyCinematic} preview={quickPreview} onRender={() => void render()} onCancelRender={() => abort.current?.abort()} rendering={rendering} progress={progress} result={result} renderError={renderError} blocker={blocker ?? ""} onOpenAdvanced={() => { setAdvancedOpen(true); setTimeout(() => document.querySelector("[data-testid=advanced-settings]")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); }} />
+        <QuickStart onApply={applyCinematic} preview={quickPreview} checklist={timeline.ok ? <PreRenderChecklist checks={preChecks} onFix={applyFix} prefix="quick" disabled={rendering} /> : null} renderSeconds={videoSeconds} onRender={() => void render()} onCancelRender={() => abort.current?.abort()} rendering={rendering} progress={progress} result={result} renderError={renderError} blocker={blocker ?? ""} onOpenAdvanced={() => { setAdvancedOpen(true); setTimeout(() => document.querySelector("[data-testid=advanced-settings]")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); }} />
       </>}
       {activeMode === "normal"
         ? <details className="fold advanced-settings" open={advancedOpen} onToggle={e => setAdvancedOpen((e.currentTarget as HTMLDetailsElement).open)} data-testid="advanced-settings"><summary><b>Pengaturan lanjutan</b> <small>naskah, tampilan, suara, musik, AI, dan semua pilihan detail</small></summary>{studioGrid}</details>
