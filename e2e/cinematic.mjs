@@ -162,7 +162,7 @@ try {
       const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "POST, OPTIONS" };
       if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
       calls++;
-      const brief = { genre: "produk", product: "Kopi Pagi", tagline: "Mulai harimu hangat", problem: "", features: ["Biji pilihan", "Seduh tiga menit"], proof: "", cta: "Pesan sekarang", tone: "warm", seconds: 30, searchTerms: ["coffee cup", "morning light"] };
+      const brief = { genre: "produk", product: "Kopi Pagi", tagline: "Mulai harimu hangat", problem: "", features: ["Biji pilihan", "Seduh tiga menit"], proof: "", cta: "Pesan sekarang", tone: "warm", seconds: 30, visuals: [{ term: "coffee cup", kind: "photo" }, { term: "pouring coffee", kind: "video" }, { term: "morning light", kind: "photo" }] };
       await route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(brief) }] } }] }) });
     });
     await page.evaluate(() => { localStorage.setItem("clipper:gemini:v1", JSON.stringify({ apiKey: "K".repeat(30), model: "gemini-2.5-pro", consent: true })); window.dispatchEvent(new Event("clipper:ai-access")); });
@@ -180,7 +180,7 @@ try {
     assert(/Belum ada yang diubah/.test(await page.getByTestId("cine-note").innerText()), "says nothing is applied yet");
     assert((await page.getByTestId("script").inputValue()) === scriptBefore, "the studio's script is untouched before approval");
     assert((await page.getByTestId("cine-product").inputValue()) === "Kopi Pagi" && (await page.getByTestId("cine-list").locator("li").count()) >= 4, "the form and the storyboard are filled from the command");
-    assert(/coffee cup/.test(await page.getByTestId("command-terms").innerText()), "asset search words are offered");
+    assert(/coffee cup \(foto\)/.test(await page.getByTestId("command-terms").innerText()) && /pouring coffee \(video\)/.test(await page.getByTestId("command-terms").innerText()), "what is looked for is offered, with photo or video for each");
     // Pixabay is faked: a real tiny JPEG so the app accepts the "download".
     const jpg = join(dir, "p.jpg");
     execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=0x3377aa:s=320x480", "-frames:v", "1", jpg]);
@@ -189,6 +189,7 @@ try {
     await page.route("**/api/pixabay", async route => {
       const body = JSON.parse(route.request().postData() || "{}");
       pix.push(body);
+      if (body.action === "video-search") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ videos: [{ id: 901, tags: "x", photographer: "Videografer", pageUrl: "https://pixabay.com/v/901", duration: 8, url: "https://cdn.pixabay.com/video/901.mp4", thumbnail: "t", width: 720, height: 1280, size: 1000 }, { id: 902, tags: "y", photographer: "V2", pageUrl: "https://pixabay.com/v/902", duration: 90, url: "https://cdn.pixabay.com/video/902.mp4", thumbnail: "t", width: 720, height: 1280, size: 10 }], totalHits: 2, remaining: 80 }) });
       if (body.action === "search") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ photos: [1, 2, 3, 4, 5, 6].map(n => ({ id: n + pix.length * 10, alt: "x", photographer: "Fotografer", pageUrl: "https://pixabay.com/p/" + n, thumb: "t", image: "https://pixabay.com/img/" + n + ".jpg" })), totalHits: 6, remaining: 90 }) });
       return route.fulfill({ status: 200, contentType: "image/jpeg", body: jpgBytes });
     });
@@ -196,7 +197,11 @@ try {
     await page.waitForFunction(() => /Mulai harimu hangat/.test(document.querySelector('[data-testid="script"]').value), null, { timeout: 5000 });
     // The photos are filled in on their own, from the command's picture words; each can be swapped or removed afterwards.
     await page.waitForFunction(() => document.querySelectorAll('[data-testid="scene-image-remove"]').length >= 3, null, { timeout: 30000 });
-    assert(pix.some(b => b.action === "search" && /coffee cup|morning light/.test(JSON.stringify(b))), "the search used the command's picture words: " + JSON.stringify(pix.find(b => b.action === "search")));
+    assert(pix.some(b => b.action === "search" && /coffee cup|morning light/.test(JSON.stringify(b))), "the photo search used the command's picture words: " + JSON.stringify(pix.find(b => b.action === "search")));
+    assert(pix.some(b => b.action === "video-search" && /pouring coffee/.test(JSON.stringify(b))), "a short clip was looked for where the agent judged it fits: " + JSON.stringify(pix.map(b => b.action)));
+    await page.getByTestId("pixabay-auto-summary").waitFor({ timeout: 30000 });
+    const sum = await page.getByTestId("pixabay-auto-summary").innerText();
+    assert(/\d+ foto/.test(sum) && /\d+ video/.test(sum), "photos and short clips are mixed: " + sum);
     assert(await page.getByTestId("scene-image-pexels").first().isVisible(), "a photo can be swapped scene by scene");
     await page.evaluate(() => localStorage.removeItem("clipper:gemini:v1"));
   });

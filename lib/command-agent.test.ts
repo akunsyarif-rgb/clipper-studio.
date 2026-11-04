@@ -4,13 +4,20 @@ import { resetAiGuards } from "./gemini";
 
 const reply = (obj: unknown) => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] } }] }), { status: 200 });
 const opts = (fn: unknown) => ({ apiKey: "k".repeat(30), model: "openrouter/free", language: "id", fetchImpl: fn as typeof fetch, retryDelaysMs: [] as number[] });
-const answer = { genre: "produk", product: "Kopi Pagi", tagline: "Mulai harimu hangat", problem: "", features: ["Biji pilihan", "Seduh 3 menit"], proof: "", cta: "Pesan sekarang", tone: "warm", seconds: 30, searchTerms: ["coffee cup", "morning light", "Coffee Cup"] };
+const answer = { genre: "produk", product: "Kopi Pagi", tagline: "Mulai harimu hangat", problem: "", features: ["Biji pilihan", "Seduh 3 menit"], proof: "", cta: "Pesan sekarang", tone: "warm", seconds: 30, visuals: [{ term: "coffee cup", kind: "photo" }, { term: "pouring coffee", kind: "video" }, { term: "Coffee Cup", kind: "video" }, { term: "morning light", kind: "weird" }] };
 
 describe("command agent", () => {
+  it("reads older answers with plain search words as photos, and keeps at most 8 pictures", () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({ term: "thing " + i, kind: "video" }));
+    const r = parseCommand({ candidates: [{ content: { parts: [{ text: JSON.stringify({ ...answer, visuals: many }) }] } }] }, "id");
+    expect(r.visuals.length).toBe(8);
+    const old = parseCommand({ candidates: [{ content: { parts: [{ text: JSON.stringify({ ...answer, visuals: undefined, searchTerms: ["a cup", "b tree"] }) }] } }] }, "id");
+    expect(old.visuals).toEqual([{ term: "a cup", kind: "photo" }, { term: "b tree", kind: "photo" }]);
+  });
   it("turns an answer into a brief and search words (deduplicated, lowercase)", () => {
     const r = parseCommand({ candidates: [{ content: { parts: [{ text: JSON.stringify(answer) }] } }] }, "id");
     expect(r.brief).toMatchObject({ genre: "produk", product: "Kopi Pagi", tone: "warm", seconds: 30, features: ["Biji pilihan", "Seduh 3 menit"] });
-    expect(r.searchTerms).toEqual(["coffee cup", "morning light"]);
+    expect(r.visuals).toEqual([{ term: "coffee cup", kind: "photo" }, { term: "pouring coffee", kind: "video" }, { term: "morning light", kind: "photo" }]);
   });
   it("falls back to safe values for unknown genre, tone and length, and refuses an answer without a topic", () => {
     const r = parseCommand({ candidates: [{ content: { parts: [{ text: JSON.stringify({ ...answer, genre: "x", tone: "y", seconds: 99 }) }] } }] }, "id");
@@ -30,7 +37,7 @@ describe("command agent", () => {
     expect(calls).toBe(1);
     expect(a.plan.scenes.length).toBeGreaterThanOrEqual(4);
     expect(a.plan.script).toContain("Mulai harimu hangat");
-    expect(a.searchTerms.length).toBe(2);
+    expect(a.visuals.length).toBe(3);
     await planFromCommand("Buat video produk kopi 30 detik hangat", opts(fn));
     expect(calls).toBe(1);
   });

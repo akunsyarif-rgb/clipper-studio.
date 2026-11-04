@@ -5,9 +5,11 @@ import { answerJson, ask, GeminiError, type CleanupOptions } from "./gemini";
 import { buildCinematic, clean, GENRE_IDS, isGenre, normalizeBrief, TONES, type Brief, type CinePlan } from "./cinematic";
 
 export const MAX_COMMAND_CHARS = 600;
-export const MAX_SEARCH_TERMS = 4;
-/** The brief the model filled in, plus short search words for pictures and video (used by the asset search the studio already has). */
-export type CommandResult = { brief: Brief; searchTerms: string[] };
+export const MAX_VISUALS = 8;
+/** What to look for behind a scene, and whether a still photo or a short clip of a few seconds suits it better. */
+export type Visual = { term: string; kind: "photo" | "video" };
+/** The brief the model filled in, plus the pictures to look for (used by the asset search the studio already has). */
+export type CommandResult = { brief: Brief; visuals: Visual[] };
 
 export function commandPrompt(command: string, language: "id" | "en"): string {
   const en = language === "en";
@@ -15,9 +17,9 @@ export function commandPrompt(command: string, language: "id" | "en"): string {
     `Kamu perencana video pendek vertikal. Ubah permintaan pengguna menjadi brief singkat (${en ? "bahasa Inggris" : "bahasa Indonesia"}). Hanya isi brief; jangan menulis naskah panjang.`,
     "Aturan: jangan mengarang klaim, angka, harga, nama orang, atau fitur yang tidak disebut pengguna; bila tidak disebut, kosongkan isiannya (string kosong atau daftar kosong).",
     `genre salah satu: ${GENRE_IDS.join(", ")}. tone salah satu: ${TONES.map(t => t.id).join(", ")}. seconds salah satu: 15, 30, 45, 60.`,
-    "features: maks. 4 butir pendek (maks. 10 kata). searchTerms: 2-4 kata kunci pendek dalam bahasa Inggris untuk mencari foto/video latar (benda nyata dan tempat, bukan kata abstrak).",
+    "features: maks. 4 butir pendek (maks. 10 kata). visuals: 3-8 objek berisi term dan kind untuk gambar latar, berurutan sesuai alur cerita; term = kata kunci pendek bahasa Inggris (benda nyata atau tempat, bukan kata abstrak). kind video bila adegannya menggambarkan gerakan atau aksi yang lebih hidup sebagai klip beberapa detik (menuang, berjalan, ombak, mengetik); kind photo untuk benda, tempat, atau suasana yang diam.",
     "Kalimat pembuka (tagline) maks. 12 kata, tanpa tanda bintang.",
-    'Balas hanya JSON: {"genre":"","product":"","tagline":"","problem":"","features":[],"proof":"","cta":"","tone":"","seconds":30,"searchTerms":[]}',
+    'Balas hanya JSON: {"genre":"","product":"","tagline":"","problem":"","features":[],"proof":"","cta":"","tone":"","seconds":30,"visuals":[{"term":"","kind":"photo"}]}',
     "Permintaan pengguna:",
     JSON.stringify(command.slice(0, MAX_COMMAND_CHARS)),
   ].join("\n");
@@ -35,8 +37,18 @@ export function parseCommand(response: unknown, language: "id" | "en"): CommandR
     seconds: [15, 30, 45, 60].includes(Number(j.seconds)) ? Number(j.seconds) : 30, language,
   });
   if (!brief.product) throw new GeminiError("format", "AI belum menangkap topik videonya. Tulis perintah dengan menyebut produk atau temanya, lalu coba lagi.");
-  const searchTerms = [...new Set(list(j.searchTerms).map(s => clean(s, 40).toLowerCase()).filter(Boolean))].slice(0, MAX_SEARCH_TERMS);
-  return { brief, searchTerms };
+  // Objects {term, kind}; a plain string (older answers) is a photo. Anything but "video" is a photo.
+  const raw = Array.isArray(j.visuals) ? j.visuals : Array.isArray(j.searchTerms) ? j.searchTerms : [];
+  const seen = new Set<string>();
+  const visuals: Visual[] = [];
+  for (const v of raw) {
+    const term = clean(typeof v === "string" ? v : (v as { term?: unknown } | null)?.term, 40).toLowerCase();
+    if (!term || seen.has(term)) continue;
+    seen.add(term);
+    visuals.push({ term, kind: (v as { kind?: unknown } | null)?.kind === "video" ? "video" : "photo" });
+    if (visuals.length >= MAX_VISUALS) break;
+  }
+  return { brief, visuals };
 }
 
 const SCHEMA = {
@@ -44,16 +56,16 @@ const SCHEMA = {
   properties: {
     genre: { type: "STRING" }, product: { type: "STRING" }, tagline: { type: "STRING" }, problem: { type: "STRING" },
     features: { type: "ARRAY", items: { type: "STRING" } }, proof: { type: "STRING" }, cta: { type: "STRING" }, tone: { type: "STRING" },
-    seconds: { type: "NUMBER" }, searchTerms: { type: "ARRAY", items: { type: "STRING" } },
+    seconds: { type: "NUMBER" }, visuals: { type: "ARRAY", items: { type: "OBJECT", properties: { term: { type: "STRING" }, kind: { type: "STRING" } }, required: ["term"] } },
   },
   required: ["product"],
 };
 
 /** One AI call (cached and counted by `ask`), then the storyboard is built locally. Nothing is applied; the caller shows the plan. */
-export async function planFromCommand(command: string, o: CleanupOptions): Promise<{ plan: CinePlan; searchTerms: string[] }> {
+export async function planFromCommand(command: string, o: CleanupOptions): Promise<{ plan: CinePlan; visuals: Visual[] }> {
   const text = command.replace(/\s+/g, " ").trim();
   if (text.length < 8) throw new GeminiError("format", "Tulis perintah yang lebih jelas, misalnya: video produk kopi 30 detik, suasana hangat.");
   const language = o.language === "en" ? "en" : "id";
-  const { brief, searchTerms } = await ask(o, [{ text: commandPrompt(text, language) }], SCHEMA, json => parseCommand(json, language));
-  return { plan: buildCinematic(brief), searchTerms };
+  const { brief, visuals } = await ask(o, [{ text: commandPrompt(text, language) }], SCHEMA, json => parseCommand(json, language));
+  return { plan: buildCinematic(brief), visuals };
 }
