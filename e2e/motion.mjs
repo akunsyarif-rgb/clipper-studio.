@@ -946,6 +946,8 @@ try {
     await until(async () => (await m.getByTestId("aff-product").inputValue()) === "Botol Termos", "product data remembered too");
     await m.getByTestId("mode-normal").click();
     await m.reload();
+    await m.getByTestId("advanced-settings").waitFor({ state: "attached", timeout: 15000 });
+    await m.getByTestId("advanced-settings").evaluate(d => { d.open = true; });
     await until(async () => (await checked("mode-normal")) === "true" && await m.locator(".field-label.normal-only", { hasText: "Video sumber" }).isVisible(), "ordinary remembered after a reload");
     await ctxM.close();
     return "default ordinary; product data and video source each only in their own mode; script and settings carried over; selling rules only in affiliate mode; last mode remembered; folds closed with summaries";
