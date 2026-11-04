@@ -2,7 +2,7 @@
 // studio (script, look, motion presets, scene lengths), survives a reload, and renders to an MP4 whose length matches the beat plan.
 // Needs `npm run build` first, plus ffmpeg/ffprobe on PATH.
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -181,8 +181,23 @@ try {
     assert((await page.getByTestId("script").inputValue()) === scriptBefore, "the studio's script is untouched before approval");
     assert((await page.getByTestId("cine-product").inputValue()) === "Kopi Pagi" && (await page.getByTestId("cine-list").locator("li").count()) >= 4, "the form and the storyboard are filled from the command");
     assert(/coffee cup/.test(await page.getByTestId("command-terms").innerText()), "asset search words are offered");
+    // Pixabay is faked: a real tiny JPEG so the app accepts the "download".
+    const jpg = join(dir, "p.jpg");
+    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=0x3377aa:s=320x480", "-frames:v", "1", jpg]);
+    const jpgBytes = readFileSync(jpg);
+    const pix = [];
+    await page.route("**/api/pixabay", async route => {
+      const body = JSON.parse(route.request().postData() || "{}");
+      pix.push(body);
+      if (body.action === "search") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ photos: [1, 2, 3, 4, 5, 6].map(n => ({ id: n + pix.length * 10, alt: "x", photographer: "Fotografer", pageUrl: "https://pixabay.com/p/" + n, thumb: "t", image: "https://pixabay.com/img/" + n + ".jpg" })), totalHits: 6, remaining: 90 }) });
+      return route.fulfill({ status: 200, contentType: "image/jpeg", body: jpgBytes });
+    });
     await page.getByTestId("cine-apply").click();
     await page.waitForFunction(() => /Mulai harimu hangat/.test(document.querySelector('[data-testid="script"]').value), null, { timeout: 5000 });
+    // The photos are filled in on their own, from the command's picture words; each can be swapped or removed afterwards.
+    await page.waitForFunction(() => document.querySelectorAll('[data-testid="scene-image-remove"]').length >= 3, null, { timeout: 30000 });
+    assert(pix.some(b => b.action === "search" && /coffee cup|morning light/.test(JSON.stringify(b))), "the search used the command's picture words: " + JSON.stringify(pix.find(b => b.action === "search")));
+    assert(await page.getByTestId("scene-image-pexels").first().isVisible(), "a photo can be swapped scene by scene");
     await page.evaluate(() => localStorage.removeItem("clipper:gemini:v1"));
   });
 

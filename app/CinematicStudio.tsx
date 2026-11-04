@@ -22,7 +22,8 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
   hasMusic: boolean;
   /** Frame lengths of the scenes now in the timeline, to check the cuts against the beat. */
   frames: number[];
-  onApply: (plan: CinePlan) => void;
+  /** `terms`: picture words from a command, present when the creator wants the photos filled in. */
+  onApply: (plan: CinePlan, terms?: string[]) => void;
   onClear: () => void;
   onFx: (text: string, fx: FxId) => void;
 }) {
@@ -37,6 +38,7 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
   const [command, setCommand] = useState("");
   const [terms, setTerms] = useState<string[]>([]);
   const [paidOk, setPaidOk] = useState(false);
+  const [autoPhotos, setAutoPhotos] = useState(true);
   const [mine, setMine] = useState<LibraryPreset[]>([]);
   const [presetId, setPresetId] = useState("");
   const [presetName, setPresetName] = useState("");
@@ -125,7 +127,8 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
         {access && !isFreeModel(access.model) && <label className="check-row"><input type="checkbox" checked={paidOk} onChange={e => setPaidOk(e.target.checked)} data-testid="command-paid-ok" /> Izinkan model berbayar ({access.model}) untuk perintah ini</label>}
         <div className="button-row"><button type="button" onClick={() => void fromCommand()} disabled={busy || command.trim().length < 8} data-testid="command-run">{busy ? "Menyusun rencana…" : "Buat rencana dari perintah"}</button></div>
         <small className="field-hint">{access ? `Model: ${access.model} (${isFreeModel(access.model) ? "gratis" : "berbayar"}). Satu panggilan AI untuk mengisi brief; storyboard disusun di perangkat.` : "Perlu kunci AI. Tanpa itu, isi brief di bawah."}</small>
-        {terms.length > 0 && <p data-testid="command-terms"><small>Kata kunci aset: {terms.join(", ")}. Setelah rencana dipakai, buka “Foto &amp; video otomatis” di Motion Studio untuk mengisi gambarnya.</small></p>}
+        <label className="check-row"><input type="checkbox" checked={autoPhotos} onChange={e => setAutoPhotos(e.target.checked)} data-testid="command-auto-photos" /> Isi foto latar otomatis (Pixabay) setelah rencana dipakai</label>
+        {terms.length > 0 && <p data-testid="command-terms"><small>Kata kunci foto: {terms.join(", ")}. {autoPhotos ? "Setelah rencana dipakai, tiap adegan diberi foto yang cocok; Anda bisa menggantinya per adegan." : "Foto tidak diisi otomatis; gunakan “Gambar & musik otomatis” bila perlu."}</small></p>}
       </div>
       <div className="field-grid">
         <label>Jenis film<select value={brief.genre ?? "produk"} onChange={e => set("genre", e.target.value as Genre)} data-testid="cine-genre">{GENRE_IDS.map(g => <option key={g} value={g}>{GENRES[g].label}</option>)}</select></label>
@@ -158,7 +161,7 @@ export default function CinematicStudio({ active, hasMusic, frames, onApply, onC
         </ol>
         {issues.length > 0 && <ul className="cine-issues" data-testid="cine-issues">{issues.map((m, i) => <li key={i} data-level={m.level}>{m.level === "error" ? "⛔" : "⚠️"} {m.message}</li>)}</ul>}
         <div className="button-row">
-          {draft && <button type="button" onClick={() => onApply(draft)} disabled={issues.some(x => x.level === "error")} data-testid="cine-apply">{active ? "Perbarui di Motion Studio" : "Pakai di Motion Studio"}</button>}
+          {draft && <button type="button" onClick={() => { onApply(draft, autoPhotos && terms.length ? terms : undefined); if (terms.length) { setTerms([]); setNote(autoPhotos ? "Rencana dipakai. Foto latar dicari otomatis; ganti atau hapus per adegan di daftar adegan." : "Rencana dipakai."); } }} disabled={issues.some(x => x.level === "error")} data-testid="cine-apply">{active ? "Perbarui di Motion Studio" : "Pakai di Motion Studio"}</button>}
           {active && <button type="button" onClick={() => { setDraft(active.plan); onClear(); }} data-testid="cine-clear">Lepas mode sinematik</button>}
         </div>
         {active && <p className="preview-disclaimer">Mode aktif: panjang adegan mengikuti ketukan {bpm} BPM dan backsound sinematik otomatis. Mengubah naskah di atas melepas panjang adegan sinematik (gerak tiap adegan tetap bila kalimatnya sama).</p>}

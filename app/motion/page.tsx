@@ -698,8 +698,15 @@ export default function MotionStudio() {
     setCustomIcons(prev => ({ ...prev, [icon.id]: { label: icon.label, node: icon.node as [string, Record<string, string>][] } }));
     setOverrides(prev => ({ ...prev, [text]: { ...prev[text], icon: icon.id } }));
   }
-  function applyCinematic(plan: CinePlan) {
+  /** Words from a command (one per scene, in turn) that say what each scene's picture should show; with them the photos are filled in once. */
+  const [queryHints, setQueryHints] = useState<Record<string, string>>({});
+  const [autoPhotos, setAutoPhotos] = useState(0);
+  function applyCinematic(plan: CinePlan, terms?: string[]) {
     const c = plan.concept;
+    if (terms?.length) {
+      setQueryHints(Object.fromEntries(plan.scenes.map((sc, i) => [sc.text, terms[i % terms.length]])));
+      setAutoPhotos(n => n + 1);
+    }
     setScript(plan.script); setTitle(plan.brief.product.slice(0, 60)); setContentPreset("custom");
     setStyle(c.style); setPalette(c.palette); setTypography(c.typography); setBackdrop(c.backdrop); setGrain(c.grain); setSfxMode(c.sfx);
     setMoodTouched(true); setMood(c.mood); setMusicMode("auto"); setCaptions(false); setVoiceMode("none"); setNarration(null);
@@ -1169,8 +1176,8 @@ export default function MotionStudio() {
               current: timeline.scenes.map(sc => ({ template: overrides[sc.text]?.template, icon: overrides[sc.text]?.icon, cut: cutOverrides[sc.text] })) }} />}
           {timeline.ok && <IconifyPanel entrance={iconEntrance} onEntrance={chooseEntrance} disabled={rendering} accent={PALETTES[palette].accent} onApply={applyIcon}
             scenes={timeline.scenes.map((sc, i) => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery, hasIcon: !!sceneVisuals[i]?.icon || overrides[sc.text]?.icon === "none" }))} />}
-          {timeline.ok && <PixabayAutoPanel disabled={rendering} onApply={putPixabayPhoto} onApplyVideo={putPixabayVideo} musicOn={musicMode === "auto"} onMusic={() => { setMusicMode("auto"); setMood(moodForStyle(style)); }}
-            scenes={timeline.scenes.map((sc, i) => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery, hasImage: !!images[sc.text] || (!!(videoEdit && source) && sceneList[i]?.cut !== "graphic") }))} />}
+          {timeline.ok && <PixabayAutoPanel autoRun={autoPhotos} disabled={rendering} onApply={putPixabayPhoto} onApplyVideo={putPixabayVideo} musicOn={musicMode === "auto"} onMusic={() => { setMusicMode("auto"); setMood(moodForStyle(style)); }}
+            scenes={timeline.scenes.map((sc, i) => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery ?? queryHints[sc.text], hasImage: !!images[sc.text] || (!!(videoEdit && source) && sceneList[i]?.cut !== "graphic") }))} />}
           {timeline.ok && <PexelsPanel disabled={rendering} onApply={putStockPhoto}
             // Over a source video a picture only appears in a full-screen cutaway, so automatic filling covers just those scenes.
             scenes={timeline.scenes.map((sc, i) => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery, hasImage: !!images[sc.text] || (!!(videoEdit && source) && sceneList[i]?.cut !== "graphic") }))} />}
@@ -1216,9 +1223,9 @@ export default function MotionStudio() {
                 {images[s.text] ? <button type="button" className="text-link" disabled={rendering} onClick={() => removeSceneImage(s.text)} data-testid="scene-image-remove">Hapus</button> : null}
                 {images[s.text]?.credit ? <small className="scene-credit" data-testid="scene-credit"><a href={images[s.text].credit!.href} target="_blank" rel="noreferrer noopener">{images[s.text].credit!.text}</a></small> : null}
               </div>}
-              {pickerFor === s.text && pickerSource === "pexels" && <ScenePhotoPicker initialQuery={directorInfo[s.text]?.imageQuery ?? ""} onChoose={(file, photo) => putStockPhoto(s.text, file, photo)} onClose={() => setPickerFor(null)} />}
-              {pickerFor === s.text && pickerSource === "pixabay" && <PixabayPhotoPicker initialQuery={directorInfo[s.text]?.imageQuery ?? ""} onChoose={(file, photo) => putPixabayPhoto(s.text, file, photo)} onClose={() => setPickerFor(null)} />}
-              {pickerFor === s.text && pickerSource === "pixabay-video" && <PixabayVideoPicker initialQuery={directorInfo[s.text]?.imageQuery ?? ""} onChoose={video => putPixabayVideo(s.text, video)} onClose={() => setPickerFor(null)} />}
+              {pickerFor === s.text && pickerSource === "pexels" && <ScenePhotoPicker initialQuery={directorInfo[s.text]?.imageQuery ?? queryHints[s.text] ?? ""} onChoose={(file, photo) => putStockPhoto(s.text, file, photo)} onClose={() => setPickerFor(null)} />}
+              {pickerFor === s.text && pickerSource === "pixabay" && <PixabayPhotoPicker initialQuery={directorInfo[s.text]?.imageQuery ?? queryHints[s.text] ?? ""} onChoose={(file, photo) => putPixabayPhoto(s.text, file, photo)} onClose={() => setPickerFor(null)} />}
+              {pickerFor === s.text && pickerSource === "pixabay-video" && <PixabayVideoPicker initialQuery={directorInfo[s.text]?.imageQuery ?? queryHints[s.text] ?? ""} onChoose={video => putPixabayVideo(s.text, video)} onClose={() => setPickerFor(null)} />}
             </div>); }); })()}</div>
           {timeline.ok && <p className="preview-disclaimer" data-testid="image-note">{imageError ? <span className="scene-image-error" data-testid="image-error">{imageError} </span> : null}{videoEdit && source ? "Di video sumber, gambar tampil sebagai layar penuh (maks. 4 detik) pada scene itu, dan pembicara kembali setelahnya. " : null}Gambar latar hanya dipakai di perangkat ini dan tidak ikut tersimpan atau tersinkron; pilih lagi setelah memuat ulang halaman. Pakai gambar milik Anda, foto Pexels/Pixabay, atau yang boleh dipakai ulang: gambar dari internet (mis. Pinterest) belum tentu bebas hak cipta.</p>}
         </section>
