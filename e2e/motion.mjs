@@ -895,7 +895,7 @@ try {
     });
     const m = await ctxM.newPage();
     m.on("pageerror", e => pageErrors.push(e.message));
-    await m.goto(BASE);
+    await m.goto(BASE); await openFolds(m);
     const checked = id => m.getByTestId(id).getAttribute("aria-checked");
     const runDirector = async () => {
       const n = prompts.length;
