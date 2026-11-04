@@ -5,6 +5,7 @@ import { isFreeModel } from "@/lib/ai-budget";
 import { GeminiError } from "@/lib/gemini";
 import { chooseModel, isOpenRouter, listAvailableModels, notifyAccessChanged, OPENROUTER_FREE_MODEL } from "@/lib/gemini-access";
 import { fetchFreeModels } from "@/lib/openrouter-free";
+import { allowPaidModel } from "@/lib/paid-consent";
 import { useGeminiAccess } from "./useGeminiAccess";
 
 const RECENT_KEY = "clipper:ai-recent-models:v1";
@@ -56,7 +57,7 @@ export default function AiModelSelect({ onPick, disabled }: { onPick?: (model: s
   async function pick(id: string) {
     if (!access || !id || id === model) return;
     setBusy(true); setError("");
-    try { await chooseModel(access, id); notifyAccessChanged(); onPick?.(id); }
+    try { await chooseModel(access, id); allowPaidModel(id); notifyAccessChanged(); onPick?.(id); }
     catch (e) { if (alive.current) setError(e instanceof GeminiError ? e.message : "Model gagal disimpan. Coba lagi."); }
     finally { if (alive.current) setBusy(false); }
   }

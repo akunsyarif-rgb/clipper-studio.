@@ -5,6 +5,7 @@ import { checkClaims, DISCLOSURE_NOTE, EMPTY_BRIEF, MAX_BENEFITS, parseBenefits,
 import { GeminiError } from "@/lib/gemini";
 import { getAccess } from "@/lib/gemini-access";
 import { useGeminiAccess } from "./useGeminiAccess";
+import AiNeeded from "./AiNeeded";
 import ProductResearch from "./ProductResearch";
 
 const STORE_KEY = "clipper:affiliate:v1";
@@ -125,7 +126,7 @@ export default function AffiliatePanel({ script, onUseScript, onRemoveLine, onPr
     <input id="aff-audience" data-testid="aff-audience" value={f.audience} maxLength={80} onChange={e => set("audience", e.target.value)} placeholder="mis. pekerja kantoran" />
 
     {access === null
-      ? <small data-testid="aff-needs-key"><b>Belum ada kunci AI.</b> Masuk ke akun dan simpan kunci OpenRouter agar AI bisa menulis naskah. Pemeriksa klaim tetap jalan tanpa kunci.</small>
+      ? <AiNeeded testId="aff-needs-key" what="Penulisan naskah affiliate memakai AI; pemeriksa klaim tetap jalan tanpa AI." />
       : <div className="range-tools">
         <button onClick={() => void write()} disabled={busy || disabled || !valid || access === undefined} data-testid="aff-write">{busy && !draft ? "AI menulis…" : "Tulis naskah dengan AI"}</button>
         {!valid && f.product.trim() !== "" && <small data-testid="aff-problem">{problem}</small>}

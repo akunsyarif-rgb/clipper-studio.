@@ -5,8 +5,8 @@ import { directVideo, type DirectorInput, type DirectorPlan } from "@/lib/direct
 import { getAccess } from "@/lib/gemini-access";
 import { describeScope, parseScope, restrictPlan } from "@/lib/revision";
 import { useGeminiAccess } from "./useGeminiAccess";
-import AiModelSelect from "./AiModelSelect";
 import AiBusy from "./AiBusy";
+import AiNeeded from "./AiNeeded";
 import AiErrorNotice, { toAiError, type AiError } from "./AiErrorNotice";
 
 /**
@@ -63,9 +63,8 @@ export default function AiDirector({ input, language, active, note, canRedo, ver
     <b>Sutradara AI</b>
     <small>AI menyusun gaya, palet, tampilan tiap scene, ikon{input.videoEdit ? ", dan potongan layar" : ""} dari naskah Anda memakai panduan motion graphics. Hanya teks kalimat yang dikirim; teks Anda tidak diubah. Periksa hasilnya di daftar scene, ubah yang tidak cocok, atau tulis masukan lalu susun ulang.</small>
     {access === null
-      ? <small data-testid="director-needs-key"><b>Belum ada kunci AI.</b> Masuk ke akun lalu simpan kunci OpenRouter di panel AI (atau masukkan di panel transkrip di perangkat ini).</small>
+      ? <AiNeeded testId="director-needs-key" what="Sutradara AI memakai AI." />
       : <>
-        <AiModelSelect disabled={busy} />
         <textarea value={feedback} onChange={e => setFeedback(e.target.value)} rows={2} maxLength={400} disabled={busy} data-testid="director-feedback"
           placeholder={active ? "Masukan Anda, mis. lebih tenang, kurangi animasi, scene 3 pakai angka" : "Opsional: arahan Anda, mis. gaya santai untuk TikTok affiliate. Sebut scene 2 untuk membatasi revisi"} aria-label="Masukan untuk Sutradara AI" />
         <div className="range-tools">
