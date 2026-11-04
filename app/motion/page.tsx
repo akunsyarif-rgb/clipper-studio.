@@ -41,7 +41,6 @@ import type { LoadedIcon } from "@/lib/iconify";
 import { conceptFor, restoreCine, saveCine, type CinePlan, type FxId } from "@/lib/cinematic";
 import SeoPanel, { type SeoSeed } from "../SeoPanel";
 import TrendStart from "../TrendStart";
-import TrimPanel from "../TrimPanel";
 import EditProfilePanel from "../EditProfilePanel";
 import { isEdit, toRenderEdits, type Edit, type EditProfile } from "@/lib/edit-profile";
 import { absoluteWords, clampTrim, handoffTrim, reslice, trimSeconds, type Trim } from "@/lib/trim";
@@ -216,7 +215,6 @@ export default function MotionStudio() {
   const [videoEdit, setVideoEdit] = useState(false);
   // The part of the source video that is used (null = all of it) and the range a Clipper clip came with.
   const [trim, setTrim] = useState<Trim | null>(null);
-  const [clipperTrim, setClipperTrim] = useState<Trim | null>(null);
   const [trimNote, setTrimNote] = useState("");
   // Editing profile over a source video (music / comedy): reviewable picture-only edits and the punchlines' caption emphasis, in file time.
   const [editProfile, setEditProfile] = useState<EditProfile>("standard");
@@ -303,7 +301,7 @@ export default function MotionStudio() {
     // The clip comes with a few seconds of footage on each side: it starts on the clip itself, and the trim can reach into the rest.
     const around = handoffTrim(h.padStart ?? 0, h.padEnd ?? 0, h.seconds);
     setSource({ file, url: URL.createObjectURL(file), seconds: (h.padStart ?? 0) + h.seconds + (h.padEnd ?? 0) });
-    setTrim(around); setClipperTrim(around); setTrimNote(""); setEdits([]); setEmphasis([]);
+    setTrim(around); setTrimNote(""); setEdits([]); setEmphasis([]);
     // A clip the browser cannot read is reported at once, instead of showing a black player.
     void probeVideo(file).then(p => { if (!p.ok) { setSource(null); setVideoEdit(false); setHandoffNote(`Klip yang diterima tidak bisa diputar di browser ini. Kembali ke Clipper lalu ekspor ulang klipnya, atau pilih video langsung di sini. (Detail: ${p.detail})`); } });
     if (h.opening?.trim() || h.title) setTitle((h.opening?.trim() || h.title).slice(0, 60).trim());
@@ -353,7 +351,7 @@ export default function MotionStudio() {
     probe.onloadedmetadata = () => {
       if (!Number.isFinite(probe.duration) || probe.duration <= 0) { URL.revokeObjectURL(url); return setSourceError("Durasi berkas tidak dapat dibaca. Coba MP4 (H.264) atau audio MP3/M4A."); }
       if (probe.duration > MAX_SECONDS) { URL.revokeObjectURL(url); return setSourceError(`Video ${Math.round(probe.duration)} detik melebihi batas ${MAX_SECONDS} detik (3 menit). Potong dulu di Clipper Studio.`); }
-      setSource({ file: f, url, seconds: probe.duration }); setTrim(null); setClipperTrim(null); setTrimNote(""); setEdits([]); setEmphasis([]); makeSourceBase(f);
+      setSource({ file: f, url, seconds: probe.duration }); setTrim(null); setTrimNote(""); setEdits([]); setEmphasis([]); makeSourceBase(f);
     };
     probe.onerror = () => { URL.revokeObjectURL(url); setSourceError("Browser tidak dapat memutar berkas ini. Coba MP4 (H.264) atau audio MP3/M4A/WAV."); };
     probe.src = url;
@@ -482,7 +480,7 @@ export default function MotionStudio() {
     if (rec) {
       const file = rec.blob instanceof File ? rec.blob : new File([rec.blob], rec.name, { type: rec.type, lastModified: rec.lastModified });
       setSource({ file, url: URL.createObjectURL(file), seconds: rec.seconds });
-      setTrim(s.trim ?? null); setClipperTrim(null);
+      setTrim(s.trim ?? null); 
       setEditProfile(s.edit?.profile ?? "standard"); setEdits((s.edit?.edits ?? []).filter(isEdit)); setEmphasis(s.edit?.emphasis ?? []); setComedySfx(!!s.edit?.sfx);
       setVideoEdit(s.videoEdit);
     } else setVideoEdit(false); // editing over the video needs the video itself
@@ -955,8 +953,7 @@ export default function MotionStudio() {
             : <div className="normal-only">
               <video ref={sourceVideo} src={source.url} controls playsInline preload="metadata" style={{ width: "100%", maxHeight: 220, borderRadius: 10, background: "#000" }} data-testid={isAudioFile(source.file) ? "source-audio-only" : undefined} />
               {isAudioFile(source.file) && <small className="field-hint" data-testid="audio-only-note">Audio saja: suaranya dipakai apa adanya, gambarnya latar studio dengan subtitle dan animasi.</small>}
-              <button className="text-button" disabled={asrBusy} onClick={() => { setSource(null); setTrim(null); setClipperTrim(null); setTrimNote(""); setEdits([]); setEmphasis([]); setEditProfile("standard"); setImported(null); setVideoEdit(false); setCutOverrides({}); setClipStarts({}); if (script === VIDEO_ONLY || script === AUDIO_ONLY) { setScript(SAMPLE); setCaptions(true); } }}>Ganti video ({source.file.name})</button>
-              <TrimPanel duration={source.seconds} trim={trim} onChange={applyTrim} video={sourceVideo} words={imported ? absoluteWords(allWords(imported), trim?.start ?? 0) : null} original={clipperTrim} disabled={asrBusy || rendering} />
+              <button className="text-button" disabled={asrBusy} onClick={() => { setSource(null); setTrim(null); setTrimNote(""); setEdits([]); setEmphasis([]); setEditProfile("standard"); setImported(null); setVideoEdit(false); setCutOverrides({}); setClipStarts({}); if (script === VIDEO_ONLY || script === AUDIO_ONLY) { setScript(SAMPLE); setCaptions(true); } }}>Ganti video ({source.file.name})</button>
               {trimNote && <div className="notice normal-only" role="status" data-testid="trim-note">{trimNote}</div>}
               {videoEdit && <EditProfilePanel file={source.file} url={source.url} seconds={source.seconds} trim={trim} words={imported ? absoluteWords(allWords(imported), trim?.start ?? 0) : null} video={sourceVideo}
                 profile={editProfile} onProfile={setEditProfile} edits={edits} onEdits={setEdits} onEmphasis={setEmphasis} comedySfx={comedySfx} onComedySfx={setComedySfx}
