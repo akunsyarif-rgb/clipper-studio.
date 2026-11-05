@@ -823,3 +823,10 @@ Di langkah 4 (Gaya) ada panel **"Posisi dan ukuran subtitle"** (`app/CaptionPosP
 - Subtitle hanya ada di atas video sumber, jadi tanpa video sumber (atau saat subtitle mati) slider nonaktif dengan penjelasan singkat.
 - Keterbatasan: pita gelap di bawah klip pengganti (agar subtitle putih terbaca) tetap di bawah; subtitle yang dipindah ke atas bergantung pada garis tepi dan bayangan hurufnya.
 - Tes: `lib/caption-box.test.ts` dan dua langkah di `e2e/editing.mjs` (slider menggeser dan memperbesar subtitle di pratinjau di dua ukuran, tersimpan dan pulih bersama sesi, reset, nonaktif tanpa video sumber; render MP4 bawaan lawan dipindah berbeda hanya di pita subtitle).
+
+## Rekomendasi model dari aplikasi (tanpa perlu hafal nama)
+Di dropdown model (kartu "Siapkan AI") ada daftar **"Bingung memilih? Rekomendasi, dari termurah ke termahal"** dengan paling banyak **lima pilihan** (`lib/model-recommend.ts`, `app/AiModelSelect.tsx`):
+- **OpenRouter:** pilihan 1 selalu "Gratis" (Otomatis gratis), lalu paling banyak empat model berbayar (Hemat, Seimbang, Cerdas, Terbaik) dari daftar model terkenal yang masih ditawarkan OpenRouter hari ini. Harganya diambil langsung dari daftar publik OpenRouter (USD per 1 juta token masuk / keluar) dan diurutkan dari termurah; bila lebih dari empat model tersedia, yang dipilih tersebar dari yang paling murah sampai yang paling kuat. Harga hanya perkiraan dan bisa berubah.
+- **Kunci Google Gemini:** tiga pilihan dari model yang dapat dipakai kunci itu: Hemat (flash-lite), Seimbang (flash), Terbaik (pro), versi stabil terbaru masing-masing. Daftar model dimuat dari Google hanya saat Anda menekan "Lihat rekomendasi model" (tidak ada panggilan diam-diam saat halaman dibuka).
+- Mengetuk satu pilihan menyimpannya untuk semua fitur AI dan merupakan persetujuan eksplisit untuk model yang bisa ditagih. Kolom "ketik nama" tetap ada untuk model lain.
+- Tes: `lib/model-recommend.test.ts` dan langkah di `e2e/quickstart.mjs` (akun masuk, OpenRouter dan daftar harga dipalsukan: lima pilihan, urutan tingkat, harga tidak turun, tersimpan ke akun).
