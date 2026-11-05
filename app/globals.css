@@ -185,3 +185,10 @@ body{color-scheme:dark}
 .ai-model-custom { margin-top: 6px; }
 .ai-model-custom .button-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
 .ai-model-custom input { flex: 1 1 220px; }
+.model-recs { margin: 8px 0; }
+.model-recs ol { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 6px; }
+.model-recs button { display: grid; gap: 2px; width: 100%; text-align: left; padding: 10px 12px; min-height: 48px; border: 1px solid var(--line); background: #151726; color: var(--ink); border-radius: 12px; }
+.model-recs button.active { border-color: var(--green); box-shadow: inset 0 0 0 1px var(--green); background: #162620; }
+.model-recs .rec-head { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+.model-recs .rec-head em { font-style: normal; color: var(--green); font-size: 12px; }
+.model-recs small { color: var(--muted); }
