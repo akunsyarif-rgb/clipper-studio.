@@ -74,15 +74,16 @@ export default function AiSetupCard({ onSkipChange }: { onSkipChange?: (skipped:
   if (access === undefined) return null;
   const ready = !!access && !skipped;
   return <section id="ai-setup" className="ai-setup" data-testid="ai-setup" tabIndex={-1}>
-    <div className="panel-heading"><div><small>SIAPKAN AI</small><h2>{ready ? "AI siap dipakai" : skipped ? "Tanpa AI" : "Pilih cara memakai AI"}</h2></div></div>
+    <div className="panel-heading"><div><small>SIAPKAN AI</small><h2>{ready ? "AI siap dipakai" : skipped ? (access ? "AI sedang dilewati" : "Tanpa AI") : "Pilih cara memakai AI"}</h2></div></div>
     {ready && !changing && <>
       <p data-testid="ai-setup-ready"><small>Memakai <b>{access!.model}</b> ({isFreeModel(access!.model) ? "gratis" : "bisa ditagih"}). Ganti model kapan saja di bawah.</small></p>
       <AiModelSelect />
       <div className="button-row"><button type="button" className="text-button" onClick={() => setChanging(true)} data-testid="ai-setup-change">Ganti kunci atau cara</button><button type="button" className="text-button" onClick={() => setSkip(true)} data-testid="ai-setup-skip-on">Lewati AI</button></div>
     </>}
     {(!ready || changing) && <>
-      {skipped && <p><small>AI dilewati: semua bisa diisi manual. Pilih salah satu di bawah bila ingin memakai AI lagi.</small></p>}
-      <div className="seg three ai-choices" role="radiogroup" aria-label="Cara memakai AI">
+      {skipped && access && <div className="notice" data-testid="ai-setup-saved"><small>AI Anda masih tersimpan (<b>{access.model}</b>), hanya sedang dilewati.</small> <button type="button" className="motion-primary" onClick={() => setSkip(false)} data-testid="ai-resume">Pakai AI lagi</button></div>}
+      {skipped && !access && <p><small>AI dilewati: semua bisa diisi manual. Pilih salah satu di bawah bila ingin memakai AI.</small></p>}
+      <div className="ai-choices" role="radiogroup" aria-label="Cara memakai AI">
         <button type="button" role="radio" aria-checked={choice === "free"} className={choice === "free" ? "active" : ""} onClick={() => { setChoice("free"); setError(""); }} data-testid="ai-choice-free"><b>Pakai AI gratis</b><small>otomatis, model gratis OpenRouter</small></button>
         <button type="button" role="radio" aria-checked={choice === "own"} className={choice === "own" ? "active" : ""} onClick={() => { setChoice("own"); setError(""); }} data-testid="ai-choice-own"><b>Pakai kunci saya</b><small>Gemini, OpenRouter, dll.</small></button>
         <button type="button" role="radio" aria-checked={skipped} className={skipped ? "active" : ""} onClick={() => { setChoice(null); setSkip(true); setChanging(false); }} data-testid="ai-choice-skip"><b>Lewati AI</b><small>isi sendiri, tanpa kunci</small></button>
