@@ -185,3 +185,6 @@ body{color-scheme:dark}
 .ai-model-custom { margin-top: 6px; }
 .ai-model-custom .button-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
 .ai-model-custom input { flex: 1 1 220px; }
+.caption-pos { margin: 10px 0 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; }
+.caption-pos .cap-slider { display: grid; gap: 4px; margin: 8px 0; }
+.caption-pos input[type="range"] { width: 100%; min-height: 32px; }

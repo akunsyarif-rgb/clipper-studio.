@@ -1,4 +1,5 @@
 // Pure script → timeline logic shared by the UI, the Remotion composition and unit tests.
+import type { CaptionPos } from "./caption-box";
 import type { Music } from "./audio";
 import type { BrandMotion, OverlayPosition } from "./overlay";
 import type { Cut, SceneVisual } from "./visuals";
@@ -122,6 +123,8 @@ export type VideoProps = {
   typography?: TypePackId;
   /** How the spoken words are drawn over a source video; absent means "classic". */
   captionStyle?: CaptionStyleId;
+  /** Where the subtitles over a source video sit and how big they are (percent of the frame); absent = the usual place and size. */
+  captionPos?: CaptionPos;
   /** Background of text scenes: soft moving colour fields from the palette ("mesh") or the plain gradient (default). */
   backdrop?: "plain" | "mesh";
   /** A fine film-grain texture over text scenes. */

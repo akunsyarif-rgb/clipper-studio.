@@ -220,6 +220,81 @@ try {
     await ctx.close();
   });
 
+  await step("subtitle position and size: sliders move and scale the subtitle in the preview at once, in percent of the frame at any preview size, reset returns it, it is saved with the session, and the MP4 follows", async () => {
+    const { ctx, p } = await studio(talkVideo, talkTranscript);
+    await p.getByTestId("caption-pos").waitFor({ timeout: 5000 });
+    assert(!(await p.getByTestId("cap-x").isDisabled()), "the sliders are on when there is a source video with subtitles");
+    const setRange = (id, v) => p.getByTestId(id).evaluate((el, value) => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; set.call(el, String(value)); el.dispatchEvent(new Event("input", { bubbles: true })); }, v);
+    // Grabbing a slider shows a moment with a subtitle in the preview.
+    await p.getByTestId("cap-x").dispatchEvent("pointerdown");
+    const geo = () => p.evaluate(() => {
+      const c = document.querySelector(".player-wrap [data-caption-style]");
+      if (!c) return null;
+      const frame = c.parentElement.getBoundingClientRect(), r = c.getBoundingClientRect();
+      return { cx: (r.left + r.width / 2 - frame.left) / frame.width, bottom: (r.bottom - frame.top) / frame.height, font: parseFloat(getComputedStyle(c).fontSize) / frame.width * 1080, custom: c.dataset.captionCustom === "1" };
+    });
+    await p.waitForFunction(() => !!document.querySelector(".player-wrap [data-caption-style]"), null, { timeout: 8000 });
+    const base = await geo();
+    assert(Math.abs(base.cx - 0.5) < 0.03 && !base.custom, "by default the subtitle is centred: " + JSON.stringify(base));
+    await setRange("cap-x", 30); await setRange("cap-y", 60); await setRange("cap-scale", 150);
+    await p.waitForFunction(() => document.querySelector(".player-wrap [data-caption-style]")?.dataset.captionCustom === "1", null, { timeout: 5000 });
+    const moved = await geo();
+    assert(Math.abs(moved.cx - 0.3) < 0.04 && Math.abs(moved.bottom - 0.6) < 0.04, "x 30 % and y 60 % of the frame: " + JSON.stringify(moved));
+    assert(Math.abs(moved.font / base.font - 1.5) < 0.1, "size 150 %: " + base.font + " -> " + moved.font);
+    // The same percentages at another preview size: the picture is the same.
+    await p.setViewportSize({ width: 820, height: 1400 });
+    await p.waitForTimeout(600);
+    await p.getByTestId("cap-x").dispatchEvent("pointerdown");
+    await p.waitForFunction(() => !!document.querySelector(".player-wrap [data-caption-style]"), null, { timeout: 5000 });
+    const small = await geo();
+    assert(Math.abs(small.cx - moved.cx) < 0.02 && Math.abs(small.bottom - moved.bottom) < 0.02 && Math.abs(small.font - moved.font) < 6, "preview size does not change the placement: " + JSON.stringify(small));
+    await p.setViewportSize({ width: 1280, height: 1600 });
+    // Saved with the session and brought back with it.
+    await p.waitForTimeout(2500);
+    await p.reload();
+    await p.getByTestId("restore-session").click();
+    await p.getByTestId("caption-pos").waitFor({ timeout: 10000 });
+    await p.waitForFunction(() => document.querySelector('[data-testid="cap-x-value"]')?.textContent === "30%", null, { timeout: 10000 });
+    assert((await p.getByTestId("cap-scale-value").innerText()) === "150%", "size restored with the session");
+    // Reset goes back to the usual place.
+    await p.getByTestId("cap-reset").click();
+    await p.waitForFunction(() => document.querySelector('[data-testid="cap-x-value"]')?.textContent === "50%" && document.querySelector('[data-testid="cap-scale-value"]')?.textContent === "100%", null, { timeout: 5000 });
+    await ctx.close();
+    // Without a source video the sliders wait, with a reason, and nothing is drawn differently.
+    const bare = await ctx.browser().newContext();
+    const q = await bare.newPage();
+    await q.goto(BASE + "/motion");
+    await q.getByTestId("advanced-settings").waitFor({ state: "attached", timeout: 15000 });
+    await q.waitForTimeout(1500);
+    await q.evaluate(() => document.querySelectorAll("details.fold").forEach(d => { d.open = true; }));
+    await q.getByTestId("caption-pos-note").waitFor({ timeout: 8000 });
+    assert(await q.getByTestId("cap-x").isDisabled() && await q.getByTestId("cap-reset").isDisabled(), "no sliders without a source video");
+    await bare.close();
+  });
+
+  await step("subtitle position in the MP4: the full-size render draws the subtitle where the preview does (default vs moved differ in the caption band, the rest is untouched)", async () => {
+    const bandDiff = (a, b, t, crop) => {
+      const grab = f => spawnSync("ffmpeg", ["-v", "error", "-ss", String(t), "-i", f, "-frames:v", "1", "-vf", `crop=${crop},scale=108:96,format=gray`, "-f", "rawvideo", "-"], { encoding: "buffer" }).stdout;
+      const x = grab(a), y = grab(b);
+      if (!x.length || x.length !== y.length) throw new Error("frame grab failed");
+      let s = 0; for (let i = 0; i < x.length; i++) s += Math.abs(x[i] - y[i]);
+      return s / x.length;
+    };
+    const run = async pos => {
+      const { ctx, p } = await studio(talkVideo, talkTranscript);
+      if (pos) { await p.getByTestId("cap-x").dispatchEvent("pointerdown"); for (const [id, v] of Object.entries(pos)) await p.getByTestId(id).evaluate((el, value) => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; set.call(el, String(value)); el.dispatchEvent(new Event("input", { bubbles: true })); }, v); }
+      const out = await render(p, pos ? "sub-pindah.mp4" : "sub-bawaan.mp4");
+      await ctx.close();
+      return out;
+    };
+    const a = await run(null), b = await run({ "cap-x": 30, "cap-y": 45, "cap-scale": 150 });
+    assert(Math.abs(seconds(a) - seconds(b)) < 0.2, "same length");
+    const lower = bandDiff(a, b, 1.0, "iw:ih*0.35:0:ih*0.55");   // where the default subtitle is
+    const top = bandDiff(a, b, 1.0, "iw:ih*0.18:0:0");            // far from both: untouched
+    assert(lower > top * 1.5 && lower > 1, `the subtitle moved in the render: caption band ${lower.toFixed(2)} vs untouched ${top.toFixed(2)}`);
+    return `band diff ${lower.toFixed(1)}, untouched ${top.toFixed(2)}`;
+  });
+
   await step("no uncaught page errors", async () => {
     const real = pageErrors.filter(m => m !== "Failed to fetch"); // remotion.pro telemetry is unreachable here; harmless
     assert(real.length === 0, real.join(" | "));
