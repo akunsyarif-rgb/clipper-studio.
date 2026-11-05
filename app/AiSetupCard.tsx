@@ -73,6 +73,8 @@ export default function AiSetupCard({ onSkipChange }: { onSkipChange?: (skipped:
 
   if (access === undefined) return null;
   const ready = !!access && !skipped;
+  /** AI is saved but skipped: show only the way back, not the setup form (the key is already there). */
+  const resumeOnly = !!access && skipped && !changing;
   return <section id="ai-setup" className="ai-setup" data-testid="ai-setup" tabIndex={-1}>
     <div className="panel-heading"><div><small>SIAPKAN AI</small><h2>{ready ? "AI siap dipakai" : skipped ? (access ? "AI sedang dilewati" : "Tanpa AI") : "Pilih cara memakai AI"}</h2></div></div>
     {ready && !changing && <>
@@ -80,8 +82,11 @@ export default function AiSetupCard({ onSkipChange }: { onSkipChange?: (skipped:
       <AiModelSelect />
       <div className="button-row"><button type="button" className="text-button" onClick={() => setChanging(true)} data-testid="ai-setup-change">Ganti kunci atau cara</button><button type="button" className="text-button" onClick={() => setSkip(true)} data-testid="ai-setup-skip-on">Lewati AI</button></div>
     </>}
-    {(!ready || changing) && <>
-      {skipped && access && <div className="notice" data-testid="ai-setup-saved"><small>AI Anda masih tersimpan (<b>{access.model}</b>), hanya sedang dilewati.</small> <button type="button" className="motion-primary" onClick={() => setSkip(false)} data-testid="ai-resume">Pakai AI lagi</button></div>}
+    {resumeOnly && <div className="notice ai-resume" data-testid="ai-setup-saved">
+      <p><small>Kunci AI Anda masih tersimpan{access ? <> (<b>{access.model}</b>)</> : null}. Anda tidak perlu memasukkannya lagi; AI hanya sedang dilewati.</small></p>
+      <div className="button-row"><button type="button" className="motion-primary" onClick={() => setSkip(false)} data-testid="ai-resume">Pakai AI lagi</button><button type="button" className="text-button" onClick={() => setChanging(true)} data-testid="ai-setup-change">Ganti kunci atau cara</button></div>
+    </div>}
+    {!resumeOnly && (!ready || changing) && <>
       {skipped && !access && <p><small>AI dilewati: semua bisa diisi manual. Pilih salah satu di bawah bila ingin memakai AI.</small></p>}
       <div className="ai-choices" role="radiogroup" aria-label="Cara memakai AI">
         <button type="button" role="radio" aria-checked={choice === "free"} className={choice === "free" ? "active" : ""} onClick={() => { setChoice("free"); setError(""); }} data-testid="ai-choice-free"><b>Pakai AI gratis</b><small>otomatis, model gratis OpenRouter</small></button>

@@ -27,6 +27,7 @@ export default function AiModelSelect({ onPick, disabled }: { onPick?: (model: s
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loadedList, setLoadedList] = useState(false);
+  const [custom, setCustom] = useState("");
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => { setRecent(readRecent()); }, []);
@@ -78,6 +79,13 @@ export default function AiModelSelect({ onPick, disabled }: { onPick?: (model: s
       </select>
     </label>
     <small className="field-hint" data-testid="ai-model-hint">{isFreeModel(model) ? "Model gratis kadang lambat atau penuh. Bila terlalu lama menjawab, pilih model lain di sini lalu coba lagi." : "Model ini bisa ditagih penyedia; pemakaiannya masuk anggaran AI."} Berlaku untuk semua fitur AI.</small>
+    <details className="ai-model-custom"><summary><small>Model berbayar atau model lain (ketik nama)</small></summary>
+      <div className="button-row">
+        <input value={custom} onChange={e => setCustom(e.target.value.slice(0, 120))} placeholder={openRouter ? "contoh: anthropic/claude-sonnet-4" : "nama model dari layanan Anda"} disabled={disabled || busy} data-testid="ai-model-custom" />
+        <button type="button" onClick={() => { const id = custom.trim(); if (id) { void pick(id); setCustom(""); } }} disabled={disabled || busy || !custom.trim()} data-testid="ai-model-custom-set">Pakai model ini</button>
+      </div>
+      <small className="field-hint">Memilih model yang bisa ditagih berarti Anda setuju memakainya; pemakaiannya masuk anggaran AI.</small>
+    </details>
     {error && <small className="notice notice-error" role="alert" data-testid="ai-model-error">{error}</small>}
   </div>;
 }

@@ -173,3 +173,15 @@ body{color-scheme:dark}
 .ai-setup label.check-row { display: flex; gap: 8px; align-items: center; }
 .ai-setup input:not([type="checkbox"]), .ai-setup select { width: 100%; max-width: 100%; }
 @media (max-width: 640px) { .ai-setup .ai-choices { grid-template-columns: 1fr; } }
+
+/* Perbaikan setelah uji iPad: isian Mulai Cepat, kontras tombol, contoh */
+.quick-start label { display: grid; gap: 4px; margin: 8px 0; }
+.quick-start label.check-row { display: flex; }
+.quick-start input:not([type="checkbox"]), .quick-start select, .quick-start textarea { width: 100%; max-width: 100%; }
+.quick-examples .quick-example { background: #151726; color: var(--ink); border: 1px solid var(--line); border-radius: 12px; }
+.quick-examples .quick-example small { color: var(--muted); }
+.ai-setup .motion-primary, .quick-start .motion-primary { color: #06201a; font-weight: 700; }
+.ai-resume p { margin: 0 0 8px; }
+.ai-model-custom { margin-top: 6px; }
+.ai-model-custom .button-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
+.ai-model-custom input { flex: 1 1 220px; }

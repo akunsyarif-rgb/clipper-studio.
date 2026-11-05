@@ -142,8 +142,14 @@ try {
     await page.getByTestId("ai-setup-skip-on").click();
     await page.getByTestId("ai-setup-saved").waitFor({ timeout: 5000 });
     assert(/AI sedang dilewati/.test(await page.getByTestId("ai-setup").innerText()), "the heading says AI is being skipped, not that there is none");
+    assert(/tidak perlu memasukkannya lagi/.test(await page.getByTestId("ai-setup-saved").innerText()) && await page.getByTestId("ai-key").count() === 0 && await page.getByTestId("ai-choice-free").count() === 0, "the saved key is not asked for again: no form, only the way back");
     await page.getByTestId("ai-resume").click();
     await page.getByTestId("ai-setup-ready").waitFor({ timeout: 5000 });
+    // Any model can be typed (a paid one, for example); it is saved for every AI feature.
+    await page.getByTestId("ai-model-custom").evaluate(el => { el.closest("details").open = true; });
+    await page.getByTestId("ai-model-custom").fill("gemini-2.5-pro");
+    await page.getByTestId("ai-model-custom-set").click();
+    await page.waitForFunction(() => /gemini-2\.5-pro/.test(JSON.parse(localStorage.getItem("clipper:gemini:v1") || "{}").model || ""), null, { timeout: 5000 });
     await page.getByTestId("quick-example-produk").click();
     assert(/kopi susu/i.test(await page.getByTestId("quick-command").inputValue()), "an example fills the command");
     await page.getByTestId("quick-plan").click();
