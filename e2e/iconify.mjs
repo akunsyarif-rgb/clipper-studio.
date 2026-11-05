@@ -26,7 +26,7 @@ try {
   if (await fetch(BASE).then(() => true, () => false)) throw new Error(`Port ${PORT} is already in use; stop the old server first.`);
   for (let i = 0; i < 60; i++) { try { await fetch(BASE); break; } catch { await new Promise(r => setTimeout(r, 500)); } }
   const browser = await chromium.launch();
-  const page = await (await browser.newContext({ acceptDownloads: true, viewport: { width: 390, height: 844 } })).newPage();
+  const page = await (await browser.newContext({ acceptDownloads: true, viewport: { width: 820, height: 1180 } })).newPage();
   const pageErrors = [];
   let telemetryBlocked = false;
   page.on("pageerror", e => pageErrors.push(e.message));
@@ -96,6 +96,8 @@ try {
   });
 
   await step("no horizontal scroll on iPhone-size viewport", async () => {
+    await page.setViewportSize({ width: 390, height: 844 }); // the phone layout shows one step at a time
+    await page.waitForTimeout(300);
     const w = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
     assert(w[0] <= w[1] + 1, `scrollWidth ${w[0]} > ${w[1]}`);
   });

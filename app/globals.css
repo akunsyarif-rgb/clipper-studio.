@@ -125,3 +125,39 @@ body{color-scheme:dark}
 .prerender li small { opacity: .8; }
 @media (max-width: 640px) { .prerender li { grid-template-columns: 22px 1fr; } .prerender li button { grid-column: 2; justify-self: start; } }
 .heavy-notice { margin: 8px 0; }
+
+/* Tahap 4: satu alur bernomor 1-5, tampilan satu langkah per layar di HP, pratinjau gaya, aksi pasca-render */
+.studio-grid.flow { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 18px; align-items: start; }
+.studio-grid.flow .preview-column { position: sticky; top: 12px; }
+.flow-step { margin: 0 0 18px; padding-top: 4px; }
+.flow-stepper, .flow-nav { display: none; }
+.flow-stepper { position: sticky; top: 0; z-index: 5; padding: 10px 0; background: var(--bg, #0e1020); }
+.flow-stepper-title { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.flow-dots { display: flex; gap: 8px; margin-top: 8px; }
+.flow-dots button { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line, #2a3558); background: transparent; color: inherit; }
+.flow-dots button.active { background: var(--accent, #8fe8cf); color: #06201a; font-weight: 700; }
+.flow-dots button.done { border-color: var(--accent, #8fe8cf); }
+.flow-nav { justify-content: space-between; gap: 10px; margin-top: 14px; }
+@media (max-width: 900px) { .studio-grid.flow { grid-template-columns: 1fr; } .studio-grid.flow .preview-column { position: static; } }
+@media (max-width: 640px) {
+  .flow-stepper { display: block; }
+  .flow-nav { display: flex; }
+  .flow[data-flow-step="1"] .flow-step:not([data-step="1"]),
+  .flow[data-flow-step="2"] .flow-step:not([data-step="2"]),
+  .flow[data-flow-step="3"] .flow-step:not([data-step="3"]),
+  .flow[data-flow-step="4"] .flow-step:not([data-step="4"]),
+  .flow[data-flow-step="5"] .flow-step:not([data-step="5"]) { display: none; }
+}
+.style-picker { margin: 8px 0 12px; }
+.style-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 6px 0 10px; }
+.style-cards button { display: grid; justify-items: center; gap: 4px; padding: 8px 4px; border: 1px solid var(--line, #2a3558); border-radius: 12px; background: transparent; color: inherit; font-size: 12px; }
+.style-cards button.active, .palette-chips button.active { border-color: var(--accent, #8fe8cf); box-shadow: 0 0 0 2px var(--accent, #8fe8cf) inset; }
+.palette-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 10px; }
+.palette-chips button { position: relative; width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line, #2a3558); padding: 0; }
+.palette-chips button i { position: absolute; right: 6px; bottom: 6px; width: 14px; height: 14px; border-radius: 50%; }
+@media (max-width: 640px) { .style-cards { grid-template-columns: repeat(3, 1fr); } }
+.post-render { display: grid; gap: 8px; }
+.post-primary { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.post-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.post-actions button { min-height: 48px; }
+@media (max-width: 640px) { .post-actions { grid-template-columns: 1fr; } }

@@ -68,7 +68,7 @@ try {
   });
 
   await step("studio: the next step points to the Library and the menu gets there", async () => {
-    assert(/Library|Content Hub/.test(await page.getByTestId("next-steps").innerText()), "the hint names the Library");
+    assert(/Perpustakaan/.test(await page.getByTestId("post-actions").innerText()), "the three next moves name the Library");
     await page.getByTestId("nav-library").click();
     await page.waitForURL(/\/hub/, { timeout: 10000 });
     await page.getByTestId("app-nav").waitFor();
