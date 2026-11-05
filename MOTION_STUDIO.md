@@ -805,3 +805,8 @@ Bagian atas Studio kreatif (mode Konten biasa) sekarang berisi, berurutan: tauta
 ## Perbaikan kartu Siapkan AI (setelah uji di iPad)
 - Memilih "Lewati AI" tidak lagi menyembunyikan AI yang sudah tersimpan: kartu berjudul "AI sedang dilewati", menyebut model yang tersimpan, dan satu tombol "Pakai AI lagi" mengaktifkannya tanpa mengisi kunci.
 - Tiga pilihan dan kolom isian dirapikan di iPad (tidak lagi melebar keluar layar, kontras aktif diperbaiki, kolom selebar kartu).
+
+## Perbaikan kartu AI (putaran kedua, dari uji iPad)
+- Bila kunci AI sudah tersimpan tetapi sedang dilewati, kartu hanya menampilkan jalan kembali: "Kunci AI Anda masih tersimpan (model). Anda tidak perlu memasukkannya lagi" dan tombol **Pakai AI lagi**; formulir kunci tidak muncul kecuali Anda memilih "Ganti kunci atau cara".
+- Dropdown model punya bagian "Model berbayar atau model lain (ketik nama)": untuk OpenRouter daftar hanya memuat model gratis, jadi model berbayar (misalnya `anthropic/claude-sonnet-4`) diketik di sini. Memilihnya adalah persetujuan eksplisit dan tersimpan untuk semua fitur AI.
+- Isian Mulai Cepat tanpa AI, kartu contoh, dan tombol utama dirapikan (label di atas isian, isian selebar kartu, teks tombol gelap di atas hijau).
