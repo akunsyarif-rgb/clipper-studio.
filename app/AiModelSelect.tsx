@@ -57,17 +57,11 @@ export default function AiModelSelect({ onPick, disabled }: { onPick?: (model: s
     fetchPrices({ signal: ctl.signal }).then(p => { if (alive.current) setRecs(recommendOpenRouter(p)); }).catch(() => { /* the recommendations are a convenience */ });
     return () => ctl.abort();
   }, [openRouter]);
-  useEffect(() => {
-    if (!access || openRouter || access.provider !== "google") return;
-    let live = true;
-    listAvailableModels(access).then(list => { if (live && alive.current) { setListed(list); setLoadedList(true); setRecs(recommendGoogle(list)); } }).catch(() => { /* optional */ });
-    return () => { live = false; };
-  }, [access?.provider, access?.where, openRouter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadList() {
     if (!access || loadedList || busy) return;
     setBusy(true); setError("");
-    try { const list = await listAvailableModels(access); if (alive.current) { setListed(list); setLoadedList(true); } }
+    try { const list = await listAvailableModels(access); if (alive.current) { setListed(list); setLoadedList(true); if (!openRouter && access.provider === "google") setRecs(recommendGoogle(list)); } }
     catch (e) { if (alive.current) setError(e instanceof GeminiError ? e.message : "Daftar model gagal diambil."); }
     finally { if (alive.current) setBusy(false); }
   }
@@ -106,6 +100,10 @@ export default function AiModelSelect({ onPick, disabled }: { onPick?: (model: s
         </li>)}
       </ol>
       <small className="field-hint">{openRouter ? "Harga perkiraan dari OpenRouter dan bisa berubah. " : ""}Memilih model berbayar berarti Anda setuju memakainya; pemakaiannya masuk anggaran AI.</small>
+    </div>}
+    {!openRouter && access.provider === "google" && recs.length === 0 && <div className="model-recs">
+      <button type="button" className="text-button" onClick={() => void loadList()} disabled={disabled || busy} data-testid="model-recs-load">{busy ? "Memuat…" : "Lihat rekomendasi model (dari termurah ke termahal)"}</button>
+      <small className="field-hint">Daftar model dimuat dari Google hanya saat Anda menekan tombol ini.</small>
     </div>}
     <details className="ai-model-custom"><summary><small>Model berbayar atau model lain (ketik nama)</small></summary>
       <div className="button-row">

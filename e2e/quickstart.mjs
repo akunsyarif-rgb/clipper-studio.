@@ -124,7 +124,7 @@ try {
     await page.route("https://generativelanguage.googleapis.com/**", async route => {
       const req = route.request();
       if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors }).catch(() => {});
-      if (req.method() === "GET") return route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ models: [{ name: "models/gemini-2.5-flash", supportedGenerationMethods: ["generateContent"] }] }) }).catch(() => {});
+      if (req.method() === "GET") return route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ models: ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"].map(n => ({ name: "models/" + n, supportedGenerationMethods: ["generateContent"] })) }) }).catch(() => {});
       calls++;
       const brief = { genre: "produk", product: "Teh Melati", tagline: "Tenang di setiap seduhan", problem: "", features: ["Daun pilihan"], proof: "", cta: "Cicipi sekarang", tone: "warm", seconds: 30, visuals: [{ term: "tea cup", kind: "photo" }] };
       return route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(brief) }] } }] }) }).catch(() => {});
@@ -138,6 +138,11 @@ try {
     await page.getByTestId("ai-setup-ready").waitFor({ timeout: 8000 });
     assert(await page.getByTestId("ai-model-pick").isVisible(), "the model list lives in the AI card");
     assert(!(await page.content()).includes("K".repeat(30)), "the key is never shown on the page");
+    // For a Google key the model list is read only when asked for; then three choices, cheapest first.
+    assert(await page.getByTestId("model-recs").count() === 0, "no recommendations (and no call to Google) until they are asked for");
+    await page.getByTestId("model-recs-load").click();
+    await page.getByTestId("model-recs").waitFor({ timeout: 5000 });
+    assert(/1\.\s*Hemat/.test(await page.getByTestId("model-rec-0").innerText()) && /Terbaik/.test(await page.locator('[data-testid^="model-rec-"]').last().innerText()), "cheapest first, the strongest last");
     // Skipping AI never hides the fact that a key is saved: the card says so and one tap brings AI back.
     await page.getByTestId("ai-setup-skip-on").click();
     await page.getByTestId("ai-setup-saved").waitFor({ timeout: 5000 });
