@@ -161,3 +161,15 @@ body{color-scheme:dark}
 .post-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .post-actions button { min-height: 48px; }
 @media (max-width: 640px) { .post-actions { grid-template-columns: 1fr; } }
+
+/* Kartu Siapkan AI: pilihan dan isian rapi di iPad (pembaruan) */
+.ai-setup { overflow: hidden; }
+.ai-setup .ai-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 8px 0; }
+.ai-setup .ai-choices button { text-align: left; padding: 10px 12px; min-height: 64px; border: 1px solid var(--line); background: #151726; color: var(--ink); border-radius: 12px; overflow-wrap: anywhere; min-width: 0; }
+.ai-setup .ai-choices button b { display: block; }
+.ai-setup .ai-choices button small { color: var(--muted); }
+.ai-setup .ai-choices button[aria-checked="true"] { border-color: var(--green); box-shadow: inset 0 0 0 1px var(--green); background: #162620; }
+.ai-setup label { display: grid; gap: 4px; margin: 8px 0; }
+.ai-setup label.check-row { display: flex; gap: 8px; align-items: center; }
+.ai-setup input:not([type="checkbox"]), .ai-setup select { width: 100%; max-width: 100%; }
+@media (max-width: 640px) { .ai-setup .ai-choices { grid-template-columns: 1fr; } }
