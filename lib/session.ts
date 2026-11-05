@@ -35,6 +35,8 @@ export type SessionData = {
   storyVisuals?: boolean;
   typography?: TypePackId;
   captionStyle?: CaptionStyleId;
+  /** Subtitle position and size (percent of the frame); absent in older sessions = the usual place. Read through normalizeCaptionPos. */
+  captionPos?: { x: number; y: number; scale: number };
   /** The part of the source video that is used (seconds into the file); absent = the whole video. */
   trim?: { start: number; end: number };
   /** Editing profile over a source video and its reviewed edits (file time); absent = standard. */

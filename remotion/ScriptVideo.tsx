@@ -11,6 +11,7 @@ import { overlayWindows } from "../lib/overlay";
 import { watermarkInsets } from "../lib/watermark";
 import { resolveTypePack } from "../lib/fonts";
 import { useFonts } from "./fonts";
+import { captionBox, captionShift, isDefaultCaptionPos, type CaptionPos } from "../lib/caption-box";
 import { GrainOverlay, Glow, MeshBackdrop } from "./Backdrops";
 import { measureWatermark, WatermarkLayer } from "./Watermark";
 import { FamilyView } from "./Families";
@@ -52,7 +53,7 @@ function outlineShadow(px: number, color = "#000"): string {
 }
 
 /** Caption over the speaker (source-video edits): short phrase, spoken word highlighted, stable layout. */
-function VideoCaption({ scene, captionStyle, colors, emphasis }: { scene: Scene; captionStyle: CaptionStyleId; colors: Colors; /** Comedy: punchline ranges (output seconds) and where this scene starts (frame). */ emphasis?: { ranges: { from: number; to: number }[]; sceneStart: number } }) {
+function VideoCaption({ scene, captionStyle, colors, emphasis, pos }: { scene: Scene; captionStyle: CaptionStyleId; colors: Colors; /** Where and how big (percent of the frame); absent = the usual place. */ pos?: CaptionPos; /** Comedy: punchline ranges (output seconds) and where this scene starts (frame). */ emphasis?: { ranges: { from: number; to: number }[]; sceneStart: number } }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const punch = !!emphasis && emphasis.ranges.some(r => (emphasis.sceneStart + frame) / fps >= r.from && (emphasis.sceneStart + frame) / fps <= r.to + 0.3);
@@ -60,14 +61,16 @@ function VideoCaption({ scene, captionStyle, colors, emphasis }: { scene: Scene;
   if (!state) return null;
   const pop = Math.min(1, spring({ frame: state.since, fps, config: { damping: 16, stiffness: 220, mass: 0.5 } }));
   const words = state.line.words, activeIn = state.line.activeInLine;
-  const wrap = { maxWidth: CONTENT_WIDTH, textAlign: "center" as const, lineHeight: 1.12, opacity: Math.min(1, 0.2 + pop), transform: `translateY(${(1 - pop) * 18}px) scale(${0.94 + 0.06 * pop})` };
+  const custom = !!pos && !isDefaultCaptionPos(pos);
+  const box = captionBox(custom ? pos : undefined);
+  const wrap = { maxWidth: box.maxWidth, ...(custom ? { width: box.maxWidth } : {}), textAlign: "center" as const, lineHeight: 1.12, opacity: Math.min(1, 0.2 + pop), transform: `translateY(${(1 - pop) * 18}px) scale(${0.94 + 0.06 * pop})` };
   const base = { classic: { fontFamily: "Arial, sans-serif", fontWeight: 800, fontSize: 76, letterSpacing: -1 }, pop: { fontFamily: TYPE.display, fontWeight: 900, fontSize: 88, letterSpacing: TYPE.tracking }, outline: { fontFamily: TYPE.sans, fontWeight: 800, fontSize: 74, letterSpacing: -0.5 }, box: { fontFamily: TYPE.display, fontWeight: 800, fontSize: 72, letterSpacing: TYPE.tracking } }[captionStyle];
   const cap = (captionStyle === "pop" || captionStyle === "box") && TYPE.caps;
   const text = (w: string) => (cap ? w.toLocaleUpperCase("id") : w);
   const gap = (i: number) => (i < words.length - 1 ? " " : "");
   return (
-    <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", paddingBottom: CAPTION_BOTTOM }}>
-      <div data-caption-style={captionStyle} data-punch={punch ? "1" : undefined} style={{ ...wrap, ...base, ...(punch ? { fontSize: Math.round(base.fontSize * 1.18), transform: `${wrap.transform} rotate(-2deg)` } : {}), color: "#fff", textShadow: captionStyle === "classic" ? "0 4px 22px #000d, 0 0 3px #000c" : captionStyle === "box" ? "0 3px 14px #000c" : outlineShadow(captionStyle === "pop" ? 6 : 4) }}>
+    <AbsoluteFill style={custom ? { justifyContent: "flex-end", alignItems: "flex-start", paddingBottom: HEIGHT - box.bottom, paddingLeft: box.centerX - box.maxWidth / 2 } : { justifyContent: "flex-end", alignItems: "center", paddingBottom: CAPTION_BOTTOM }}>
+      <div data-caption-style={captionStyle} data-caption-custom={custom ? "1" : undefined} data-punch={punch ? "1" : undefined} style={{ ...wrap, ...base, fontSize: Math.round(base.fontSize * box.fontScale), ...(punch ? { fontSize: Math.round(base.fontSize * box.fontScale * 1.18), transform: `${wrap.transform} rotate(-2deg)` } : {}), color: "#fff", textShadow: captionStyle === "classic" ? "0 4px 22px #000d, 0 0 3px #000c" : captionStyle === "box" ? "0 3px 14px #000c" : outlineShadow(captionStyle === "pop" ? 6 : 4) }}>
         {words.map((w, i) => {
           const on = i === activeIn;
           if (captionStyle === "classic") return <span key={i} style={{ color: on ? "#ffe066" : "#fff" }}>{w}{gap(i)}</span>;
@@ -95,13 +98,14 @@ function ClipCutaway({ src, startFrame, length }: { src: string; startFrame: num
 }
 
 /** Graphic cutaway over the speaker: centred visual for the scene's template/icon with the phrase caption beneath. */
-function Cutaway({ scene, colors, length, index }: { scene: Scene; colors: Colors; length: number; index: number }) {
+function Cutaway({ scene, colors, length, index, pos }: { scene: Scene; colors: Colors; length: number; index: number; pos?: CaptionPos }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const visual = scene.visual ?? detectVisual(scene.text);
   const state = captionState(scene, frame);
   const enter = spring({ frame, fps, config: { damping: 15, stiffness: 140, mass: 0.6 } });
   const fade = Math.min(interpolate(frame, [0, 6], [0, 1], { extrapolateRight: "clamp" }), interpolate(frame, [length - 6, length], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }));
+  const shift = captionShift(pos);
   const bottom = visual.template === "compare" || visual.template === "cta" || (visual.template === "statement" && !!visual.icon);
   return (
     <AbsoluteFill style={{ background: `linear-gradient(145deg, ${colors.bg1} 0%, ${colors.bg2} 100%)`, opacity: fade }}>
@@ -109,7 +113,7 @@ function Cutaway({ scene, colors, length, index }: { scene: Scene; colors: Color
       <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", padding: `0 ${SAFE.side}px`, color: colors.text, transform: `scale(${0.92 + 0.08 * Math.min(1, enter)})` }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", width: "100%" }}>
           {bottom ? <div style={{ transform: "scale(1.35)", margin: "0 0 40px" }}><BottomVisual visual={{ ...visual, template: visual.template }} colors={colors} /></div> : <TopVisual visual={visual} colors={colors} sceneFrames={length} />}
-          <div style={{ minHeight: 190, display: "flex", alignItems: "center", justifyContent: "center", maxWidth: CONTENT_WIDTH, fontFamily: "Arial, sans-serif", fontWeight: 800, fontSize: 72, lineHeight: 1.12, letterSpacing: -1, marginTop: bottom ? 30 : 10 }}>
+          <div style={{ minHeight: Math.round(190 * shift.fontScale), display: "flex", alignItems: "center", justifyContent: "center", maxWidth: CONTENT_WIDTH, fontFamily: "Arial, sans-serif", fontWeight: 800, fontSize: Math.round(72 * shift.fontScale), ...(shift.dx || shift.dy ? { transform: `translate(${Math.round(shift.dx)}px, ${Math.round(shift.dy)}px)` } : {}), lineHeight: 1.12, letterSpacing: -1, marginTop: bottom ? 30 : 10 }}>
             {state?.line.words.map((w, i) => <span key={i} style={{ color: i === state.line.activeInLine ? colors.accent : colors.text }}>{w}{i < state.line.words.length - 1 ? "\u00a0" : ""}</span>)}
           </div>
         </div>
@@ -175,7 +179,7 @@ function SceneView({ scene, index, count, title, style, colors, layout, insets, 
   );
 }
 
-export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, music, speech, video, overlay, brandMotion, watermark, storyVisuals, typography, captionStyle, backdrop, grain, sfx, edits, captionEmphasis }) => {
+export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palette, audioSrc, captions, captionPos, music, speech, video, overlay, brandMotion, watermark, storyVisuals, typography, captionStyle, backdrop, grain, sfx, edits, captionEmphasis }) => {
   // The type pack is set before anything below draws or measures text, and the frame waits for its fonts.
   const pack = resolveTypePack(typography);
   setActiveType(pack);
@@ -240,9 +244,9 @@ export const ScriptVideo: React.FC<VideoProps> = ({ title, scenes, style, palett
             {video
               ? <>
                 {clip && video ? <Sequence from={0} durationInFrames={clip.lengthFrames}><ClipCutaway src={video.src} startFrame={clip.startFrame} length={clip.lengthFrames} /></Sequence> : null}
-                {captions ? <VideoCaption scene={scene} captionStyle={captionStyle ?? "classic"} colors={colors} emphasis={captionEmphasis?.length ? { ranges: captionEmphasis, sceneStart: start } : undefined} /> : null}
+                {captions ? <VideoCaption pos={captionPos} scene={scene} captionStyle={captionStyle ?? "classic"} colors={colors} emphasis={captionEmphasis?.length ? { ranges: captionEmphasis, sceneStart: start } : undefined} /> : null}
                 {/* Cutaway: an opaque graphic over the speaker (at most 4 s); the video underneath keeps playing, so audio never breaks. */}
-                {scene.cut === "graphic" ? <Sequence from={0} durationInFrames={Math.min(scene.durationInFrames, 120)}><Cutaway scene={scene} colors={colors} length={Math.min(scene.durationInFrames, 120)} index={i} /></Sequence> : null}
+                {scene.cut === "graphic" ? <Sequence from={0} durationInFrames={Math.min(scene.durationInFrames, 120)}><Cutaway pos={captionPos} scene={scene} colors={colors} length={Math.min(scene.durationInFrames, 120)} index={i} /></Sequence> : null}
               </>
               : <SceneView scene={scene} index={i} count={scenes.length} title={title} style={style} colors={colors} layout={layouts[i]} insets={insets} storyVisuals={storyVisuals !== false} />}
           </Sequence>

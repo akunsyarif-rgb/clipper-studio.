@@ -42,6 +42,8 @@ import PreRenderChecklist from "../PreRenderChecklist";
 import { FlowStepNav, FlowStepperBar } from "../FlowStepper";
 import StylePicker from "../StylePicker";
 import PostRenderActions from "../PostRenderActions";
+import CaptionPosPanel from "../CaptionPosPanel";
+import { normalizeCaptionPos, type CaptionPos } from "@/lib/caption-box";
 import HeavyWorkNotice from "../HeavyWorkNotice";
 import { useWakeLock } from "../useWakeLock";
 import { prerenderChecks, type FixId } from "@/lib/prerender";
@@ -179,6 +181,11 @@ export default function MotionStudio() {
     replayTimer.current = setTimeout(() => { for (const r of [player, quickPlayer]) { try { r.current?.pause(); } catch { /* not on screen */ } } }, 3200);
   }
   useEffect(() => () => { if (replayTimer.current) clearTimeout(replayTimer.current); }, []);
+  /** Grabbing a subtitle slider: stop, and show a moment of the first scene where a subtitle is on screen, so the change is visible as it is made. */
+  function showCaptionFrame() {
+    const pl = player.current; if (!pl || !timeline.ok) return;
+    try { pl.pause(); pl.seekTo(Math.max(0, Math.min(timeline.scenes[0].durationInFrames - 1, Math.round(timeline.scenes[0].durationInFrames * 0.4)))); } catch { /* not on screen */ }
+  }
   const audioInput = useRef<HTMLInputElement>(null);
   const musicInput = useRef<HTMLInputElement>(null);
   const abort = useRef<AbortController | null>(null);
@@ -263,6 +270,8 @@ export default function MotionStudio() {
   const [customIcons, setCustomIcons] = useState<Record<string, { label: string; node: [string, Record<string, string>][] }>>({});
   const [cine, setCine] = useState<{ plan: CinePlan; fx: Record<string, string> } | null>(null);
   const [captionStyle, setCaptionStyle] = useState<CaptionStyleId>("classic");
+  /** Subtitle position and size over a source video (percent of the frame); undefined = the usual place and size. */
+  const [captionPos, setCaptionPos] = useState<CaptionPos | undefined>(undefined);
   const [typography, setTypography] = useState<TypePackId>(DEFAULT_TYPE_PACK);
   // Fonts of the chosen pack are fetched as soon as it is chosen, so the preview never shows a fallback face for long.
   useEffect(() => { void ensureFonts(resolveTypePack(typography)); }, [typography]);
@@ -452,14 +461,14 @@ export default function MotionStudio() {
   useEffect(() => () => { if (sfxSrc) URL.revokeObjectURL(sfxSrc); }, [sfxSrc]);
   const props: VideoProps | null = timeline.ok ? {
     title: title.trim(), scenes: sceneList, style, palette, audioSrc: narration?.url ?? null, captions, video: videoEdit && source ? { src: source.url, seconds: source.seconds, ...(trim ? { trimStart: trim.start } : {}), ...(isAudioFile(source.file) ? { audioOnly: true } : {}) } : null, ...(renderEdits.length ? { edits: renderEdits } : {}), ...(renderEmphasis.length ? { captionEmphasis: renderEmphasis } : {}), overlay: overlayPos, brandMotion,
-    music, speech: narration?.speech ?? null, ...(isWatermarkActive(watermark) ? { watermark } : {}), ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}), ...(sfxSrc ? { sfx: { src: sfxSrc, volume: SFX_VOLUME } } : {}),
+    music, speech: narration?.speech ?? null, ...(isWatermarkActive(watermark) ? { watermark } : {}), ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(captionPos ? { captionPos } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}), ...(sfxSrc ? { sfx: { src: sfxSrc, volume: SFX_VOLUME } } : {}),
   } : null;
   const usedIcons = (() => { const ids = new Set(Object.values(overrides).map(o => o.icon).filter((x): x is string => !!x && x in customIcons)); return ids.size ? { icons: Object.fromEntries([...ids].map(id => [id, customIcons[id]])) } : {}; })();
   const snapshot = useMemo<SessionData>(() => ({
-    v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlay: overlayPos, density, brandMotion, ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(trim ? { trim } : {}), ...(editProfile !== "standard" ? { edit: { profile: editProfile, edits, emphasis, sfx: comedySfx } } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}), ...(cine ? { cine: saveCine(cine) } : {}), ...usedIcons, ...(iconEntrance !== "pop" ? { iconMotion: iconEntrance } : {}), ...(stickerMode !== "off" ? { stickerMode } : {}), ...(Object.keys(stickerOverrides).length ? { stickerOverrides } : {}), ...(sfxMode !== "off" ? { sfx: sfxMode } : {}), imported,
+    v: SESSION_VERSION, savedAt: 0, script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlay: overlayPos, density, brandMotion, ...(storyVisuals ? {} : { storyVisuals: false }), ...(typography !== DEFAULT_TYPE_PACK ? { typography } : {}), ...(captionStyle !== "classic" ? { captionStyle } : {}), ...(captionPos ? { captionPos } : {}), ...(trim ? { trim } : {}), ...(editProfile !== "standard" ? { edit: { profile: editProfile, edits, emphasis, sfx: comedySfx } } : {}), ...(backdrop === "mesh" ? { backdrop } : {}), ...(grain ? { grain } : {}), ...(cine ? { cine: saveCine(cine) } : {}), ...usedIcons, ...(iconEntrance !== "pop" ? { iconMotion: iconEntrance } : {}), ...(stickerMode !== "off" ? { stickerMode } : {}), ...(Object.keys(stickerOverrides).length ? { stickerOverrides } : {}), ...(sfxMode !== "off" ? { sfx: sfxMode } : {}), imported,
     voiceMode: voiceMode === "ai" ? "ai" : "none", ttsLang, ttsVoice, ttsSpeed,
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlayPos, density, brandMotion, storyVisuals, typography, captionStyle, backdrop, grain, stickerMode, stickerOverrides, sfxMode, cine, customIcons, iconEntrance, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed, trim, editProfile, edits, emphasis, comedySfx]);
+  }), [script, title, style, palette, contentPreset, target, captions, overrides, cutOverrides, clipStarts, videoEdit, captionOffset, overlayPos, density, brandMotion, storyVisuals, typography, captionStyle, backdrop, grain, stickerMode, stickerOverrides, sfxMode, cine, customIcons, iconEntrance, imported, voiceMode, ttsLang, ttsVoice, ttsSpeed, trim, editProfile, edits, emphasis, comedySfx, captionPos]);
   useEffect(() => {
     if (!autosave || isPristine(snapshot, SAMPLE, !!source)) return;
     const t = setTimeout(() => { const s = { ...snapshot, savedAt: Date.now() }; void saveSession(s); void cloud.pushSession(s); }, 1000);
@@ -494,7 +503,7 @@ export default function MotionStudio() {
     chooseEntrance(s.iconMotion ?? "pop");
     for (const [id, i] of Object.entries(s.icons ?? {})) registerIcon(id, i.label, i.node as never);
     setCustomIcons(s.icons ?? {});
-    setOverrides(s.overrides); setCutOverrides(s.cutOverrides); setClipStarts(s.clipStarts); setCaptionOffset(s.captionOffset); setOverlayPos(s.overlay ?? "top"); setDensity(s.density ?? "balanced"); setBrandMotion(s.brandMotion ?? "simple"); setStoryVisuals(s.storyVisuals !== false); setTypography(s.typography ?? DEFAULT_TYPE_PACK); setCaptionStyle(s.captionStyle ?? "classic"); setBackdrop(s.backdrop ?? "plain"); setGrain(s.grain === true); setStickerMode(s.stickerMode ?? "off"); setStickerOverrides(s.stickerOverrides ?? {}); setSfxMode(s.sfx ?? "off"); setCine(s.cine ? restoreCine(s.cine) : null); setImported(s.imported);
+    setOverrides(s.overrides); setCutOverrides(s.cutOverrides); setClipStarts(s.clipStarts); setCaptionOffset(s.captionOffset); setOverlayPos(s.overlay ?? "top"); setDensity(s.density ?? "balanced"); setBrandMotion(s.brandMotion ?? "simple"); setStoryVisuals(s.storyVisuals !== false); setTypography(s.typography ?? DEFAULT_TYPE_PACK); setCaptionStyle(s.captionStyle ?? "classic"); setCaptionPos(normalizeCaptionPos(s.captionPos)); setBackdrop(s.backdrop ?? "plain"); setGrain(s.grain === true); setStickerMode(s.stickerMode ?? "off"); setStickerOverrides(s.stickerOverrides ?? {}); setSfxMode(s.sfx ?? "off"); setCine(s.cine ? restoreCine(s.cine) : null); setImported(s.imported);
     if (s.cine) { setMoodTouched(true); setMood(conceptFor(s.cine.tone).mood); setMusicMode("auto"); }
     setVoiceMode(s.voiceMode); setTtsLang(s.ttsLang); setTtsVoice(s.ttsVoice); setTtsSpeed(s.ttsSpeed);
     const rec = savedSource ? await loadSource() : null;
@@ -532,7 +541,7 @@ export default function MotionStudio() {
   const srtText = result && timeline.ok && captions && !videoEdit ? scenesToSrt(sceneList) : null;
   const srtUrl = useMemo(() => srtText ? URL.createObjectURL(new Blob([srtText], { type: "text/plain;charset=utf-8" })) : null, [srtText]);
   useEffect(() => () => { if (srtUrl) URL.revokeObjectURL(srtUrl); }, [srtUrl]);
-  useEffect(() => { setResult(null); }, [script, title, style, palette, target, captions, narration, musicMode, musicTrack, musicVolume, duck, watermark]);
+  useEffect(() => { setResult(null); }, [script, title, style, palette, target, captions, narration, musicMode, musicTrack, musicVolume, duck, watermark, captionStyle, captionPos]);
 
   // Production history (text only, on this device): renders and downloads are logged, and the SEO packs of the video being
   // worked on are restored when its script is back, so making many videos and downloading them loses nothing.
@@ -1230,6 +1239,7 @@ export default function MotionStudio() {
     <section className="flow-step" data-step="4" data-testid="flow-step-4">
       <div className="step-title" data-testid="step-4"><b>4</b>Gaya</div>
       <StylePicker style={style} palette={palette} onStyle={s => { rememberStyle(); setStyle(s); setContentPreset("custom"); replayPreview(); }} onPalette={pl => { rememberStyle(); setPalette(pl); setContentPreset("custom"); replayPreview(); }} onTryOther={tryOtherStyle} onUndo={undoStyle} canUndo={!!styleUndo} disabled={rendering} />
+      <CaptionPosPanel value={captionPos} onChange={setCaptionPos} active={!!(videoEdit && source)} captionsOn={captions} disabled={rendering} onTouch={showCaptionFrame} />
       <details className="fold" data-testid="fold-look"><summary><b>Tampilan dan tema</b> <small>pilihan lengkap</small> <small>{STYLES.find(x => x.id === style)?.label} · {PALETTES[palette].label}{contentPreset !== "custom" ? ` · ${CONTENT_PRESETS.find(p => p.id === contentPreset)?.label}` : ""}</small></summary>
       <label className="field-label" htmlFor="motion-preset">Template konten</label>
       <select id="motion-preset" data-testid="content-preset" value={contentPreset} onChange={e => {
