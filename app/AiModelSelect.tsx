@@ -5,6 +5,7 @@ import { isFreeModel } from "@/lib/ai-budget";
 import { GeminiError } from "@/lib/gemini";
 import { chooseModel, isOpenRouter, listAvailableModels, notifyAccessChanged, OPENROUTER_FREE_MODEL } from "@/lib/gemini-access";
 import { fetchFreeModels } from "@/lib/openrouter-free";
+import { fetchPrices, formatPrice, recommendGoogle, recommendOpenRouter, type Rec } from "@/lib/model-recommend";
 import { allowPaidModel } from "@/lib/paid-consent";
 import { useGeminiAccess } from "./useGeminiAccess";
 
@@ -28,6 +29,7 @@ export default function AiModelSelect({ onPick, disabled }: { onPick?: (model: s
   const [error, setError] = useState("");
   const [loadedList, setLoadedList] = useState(false);
   const [custom, setCustom] = useState("");
+  const [recs, setRecs] = useState<Rec[]>([]);
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => { setRecent(readRecent()); }, []);
@@ -47,6 +49,20 @@ export default function AiModelSelect({ onPick, disabled }: { onPick?: (model: s
     fetchFreeModels({ signal: ctl.signal }).then(m => { if (alive.current) setFree(m.map(x => ({ id: x.id, name: x.name }))); }).catch(() => { /* the list is a convenience */ });
     return () => ctl.abort();
   }, [openRouter]);
+
+  // Recommendations: OpenRouter prices come live from its public list; for a Google key the models the key can use are read once.
+  useEffect(() => {
+    if (!openRouter) return;
+    const ctl = new AbortController();
+    fetchPrices({ signal: ctl.signal }).then(p => { if (alive.current) setRecs(recommendOpenRouter(p)); }).catch(() => { /* the recommendations are a convenience */ });
+    return () => ctl.abort();
+  }, [openRouter]);
+  useEffect(() => {
+    if (!access || openRouter || access.provider !== "google") return;
+    let live = true;
+    listAvailableModels(access).then(list => { if (live && alive.current) { setListed(list); setLoadedList(true); setRecs(recommendGoogle(list)); } }).catch(() => { /* optional */ });
+    return () => { live = false; };
+  }, [access?.provider, access?.where, openRouter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadList() {
     if (!access || loadedList || busy) return;
@@ -79,6 +95,18 @@ export default function AiModelSelect({ onPick, disabled }: { onPick?: (model: s
       </select>
     </label>
     <small className="field-hint" data-testid="ai-model-hint">{isFreeModel(model) ? "Model gratis kadang lambat atau penuh. Bila terlalu lama menjawab, pilih model lain di sini lalu coba lagi." : "Model ini bisa ditagih penyedia; pemakaiannya masuk anggaran AI."} Berlaku untuk semua fitur AI.</small>
+    {recs.length > 0 && <div className="model-recs" data-testid="model-recs">
+      <div className="field-label">Bingung memilih? Rekomendasi, dari termurah ke termahal</div>
+      <ol>
+        {recs.map((r, i) => <li key={r.id}>
+          <button type="button" aria-pressed={r.id === model} className={r.id === model ? "active" : ""} disabled={disabled || busy} onClick={() => void pick(r.id)} data-testid={`model-rec-${i}`}>
+            <span className="rec-head"><b>{i + 1}. {r.tier}</b> <span>{r.name}</span>{r.id === model ? <em>dipakai sekarang</em> : null}</span>
+            <small>{r.note}{r.price ? ` · ${formatPrice(r.price)}` : ""}</small>
+          </button>
+        </li>)}
+      </ol>
+      <small className="field-hint">{openRouter ? "Harga perkiraan dari OpenRouter dan bisa berubah. " : ""}Memilih model berbayar berarti Anda setuju memakainya; pemakaiannya masuk anggaran AI.</small>
+    </div>}
     <details className="ai-model-custom"><summary><small>Model berbayar atau model lain (ketik nama)</small></summary>
       <div className="button-row">
         <input value={custom} onChange={e => setCustom(e.target.value.slice(0, 120))} placeholder={openRouter ? "contoh: anthropic/claude-sonnet-4" : "nama model dari layanan Anda"} disabled={disabled || busy} data-testid="ai-model-custom" />

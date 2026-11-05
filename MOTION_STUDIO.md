@@ -810,3 +810,10 @@ Bagian atas Studio kreatif (mode Konten biasa) sekarang berisi, berurutan: tauta
 - Bila kunci AI sudah tersimpan tetapi sedang dilewati, kartu hanya menampilkan jalan kembali: "Kunci AI Anda masih tersimpan (model). Anda tidak perlu memasukkannya lagi" dan tombol **Pakai AI lagi**; formulir kunci tidak muncul kecuali Anda memilih "Ganti kunci atau cara".
 - Dropdown model punya bagian "Model berbayar atau model lain (ketik nama)": untuk OpenRouter daftar hanya memuat model gratis, jadi model berbayar (misalnya `anthropic/claude-sonnet-4`) diketik di sini. Memilihnya adalah persetujuan eksplisit dan tersimpan untuk semua fitur AI.
 - Isian Mulai Cepat tanpa AI, kartu contoh, dan tombol utama dirapikan (label di atas isian, isian selebar kartu, teks tombol gelap di atas hijau).
+
+## Rekomendasi model dari aplikasi (tanpa perlu hafal nama)
+Di dropdown model (kartu "Siapkan AI") ada daftar **"Bingung memilih? Rekomendasi, dari termurah ke termahal"** dengan paling banyak **lima pilihan** (`lib/model-recommend.ts`, `app/AiModelSelect.tsx`):
+- **OpenRouter:** pilihan 1 selalu "Gratis" (Otomatis gratis), lalu paling banyak empat model berbayar (Hemat, Seimbang, Cerdas, Terbaik) dari daftar model terkenal yang masih ditawarkan OpenRouter hari ini. Harganya diambil langsung dari daftar publik OpenRouter (USD per 1 juta token masuk / keluar) dan diurutkan dari termurah; bila lebih dari empat model tersedia, yang dipilih tersebar dari yang paling murah sampai yang paling kuat. Harga hanya perkiraan dan bisa berubah.
+- **Kunci Google Gemini:** tiga pilihan dari model yang dapat dipakai kunci itu: Hemat (flash-lite), Seimbang (flash), Terbaik (pro), versi stabil terbaru masing-masing.
+- Mengetuk satu pilihan menyimpannya untuk semua fitur AI dan merupakan persetujuan eksplisit untuk model yang bisa ditagih. Kolom "ketik nama" tetap ada untuk model lain.
+- Tes: `lib/model-recommend.test.ts` dan langkah di `e2e/quickstart.mjs` (akun masuk, OpenRouter dan daftar harga dipalsukan: lima pilihan, urutan tingkat, harga tidak turun, tersimpan ke akun).

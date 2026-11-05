@@ -160,6 +160,41 @@ try {
     await page.getByTestId("quick-step-1").waitFor({ timeout: 3000 });
   });
 
+  await step("model recommendations: five choices from the cheapest to the most expensive, priced live; choosing one saves it as the creator's explicit choice", async () => {
+    const ctx2 = await browser.newContext({ viewport: { width: 820, height: 1180 } });
+    await ctx2.addInitScript(() => localStorage.setItem("clipper:cloud:v1", JSON.stringify({ accessToken: "AT", refreshToken: "RT", expiresAt: Date.now() + 36e5, email: "saya@contoh.id" })));
+    const saved = [];
+    await ctx2.route("**/*supabase.co/**", async route => {
+      const u = route.request().url(), h = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "POST, OPTIONS, GET" };
+      if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: h });
+      if (/functions\/v1\/gemini/.test(u)) {
+        const body = JSON.parse(route.request().postData() || "{}");
+        if (body.action === "set-model") { saved.push(body.model); return route.fulfill({ status: 200, headers: h, contentType: "application/json", body: "{}" }); }
+        return route.fulfill({ status: 200, headers: h, contentType: "application/json", body: JSON.stringify({ ok: true, hasKey: true, model: "openrouter/free", provider: "openai", baseUrl: "https://openrouter.ai/api/v1" }) });
+      }
+      return route.fulfill({ status: 200, headers: h, contentType: "application/json", body: "[]" });
+    });
+    const e = (id, a, b) => ({ id, name: id, pricing: { prompt: String(a / 1e6), completion: String(b / 1e6) } });
+    await ctx2.route("https://openrouter.ai/api/v1/models", route => route.fulfill({ status: 200, headers: { "access-control-allow-origin": "*" }, contentType: "application/json", body: JSON.stringify({ data: [
+      e("google/gemini-2.5-flash-lite", 0.1, 0.4), e("openai/gpt-4o-mini", 0.15, 0.6), e("google/gemini-2.5-flash", 0.3, 2.5), e("openai/gpt-4.1", 2, 8), e("anthropic/claude-sonnet-4", 3, 15), e("anthropic/claude-opus-4.1", 15, 75), e("x/y:free", 0, 0),
+    ] }) }));
+    const p = await ctx2.newPage();
+    await p.goto(BASE);
+    await p.getByTestId("model-recs").waitFor({ timeout: 15000 });
+    const items = p.locator('[data-testid^="model-rec-"]');
+    assert(await items.count() === 5, "at most five choices: " + await items.count());
+    const texts = await items.allInnerTexts();
+    assert(/1\.\s*Gratis/.test(texts[0]) && /2\.\s*Hemat/.test(texts[1]) && /5\.\s*Terbaik/.test(texts[4]), "tiers run from free to the strongest: " + texts.map(t => t.split("\n")[0]).join(" | "));
+    const price = t => Number(/\$(\d+(?:,\d+)?) \/ \$/.exec(t)?.[1].replace(",", ".") ?? 0);
+    const paid = texts.slice(1).map(price);
+    assert(paid.every((v, i) => i === 0 || v >= paid[i - 1]) && paid[0] > 0, "prices only go up: " + paid);
+    assert(/dipakai sekarang/.test(texts[0]), "the model in use is marked");
+    await items.nth(4).click();
+    await p.waitForFunction(() => /anthropic\/claude-opus-4\.1/.test(localStorage.getItem("clipper:ai-paid-ok:v1") || ""), null, { timeout: 5000 });
+    assert(saved.includes("anthropic/claude-opus-4.1"), "the choice was saved to the account: " + saved);
+    await ctx2.close();
+  });
+
   await step("an AI problem in the quick start has a way forward", async () => {
     await page.unroute("https://generativelanguage.googleapis.com/**");
     await page.route("https://generativelanguage.googleapis.com/**", async route => {
