@@ -170,6 +170,15 @@ async function audioDuration(file: File, url: string): Promise<number> {
 
 export default function MotionStudio() {
   const player = useRef<PlayerRef>(null);
+  const quickPlayer = useRef<PlayerRef>(null);
+  const replayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** A new style or palette is shown moving: the preview restarts from the first frame and plays a few seconds (a still frame hides what a style changes). Called from the tap itself so the browser allows playback. */
+  function replayPreview() {
+    for (const r of [player, quickPlayer]) { try { r.current?.seekTo(0); r.current?.play(); } catch { /* a player that is not on screen */ } }
+    if (replayTimer.current) clearTimeout(replayTimer.current);
+    replayTimer.current = setTimeout(() => { for (const r of [player, quickPlayer]) { try { r.current?.pause(); } catch { /* not on screen */ } } }, 3200);
+  }
+  useEffect(() => () => { if (replayTimer.current) clearTimeout(replayTimer.current); }, []);
   const audioInput = useRef<HTMLInputElement>(null);
   const musicInput = useRef<HTMLInputElement>(null);
   const abort = useRef<AbortController | null>(null);
@@ -946,9 +955,9 @@ export default function MotionStudio() {
     rememberStyle();
     const styles = STYLES.map(x => x.id), palettes = Object.keys(PALETTES) as PaletteId[];
     const si = (styles.indexOf(style) + 1) % styles.length, pi = (palettes.indexOf(palette) + (si === 0 ? 1 : 2)) % palettes.length;
-    setStyle(styles[si]); setPalette(palettes[pi]); setContentPreset("custom");
+    setStyle(styles[si]); setPalette(palettes[pi]); setContentPreset("custom"); replayPreview();
   }
-  function undoStyle() { if (!styleUndo) return; setStyle(styleUndo.style); setPalette(styleUndo.palette); setContentPreset(styleUndo.contentPreset); setStyleUndo(null); }
+  function undoStyle() { if (!styleUndo) return; setStyle(styleUndo.style); setPalette(styleUndo.palette); setContentPreset(styleUndo.contentPreset); setStyleUndo(null); replayPreview(); }
   const [saveOpen, setSaveOpen] = useState(false);
   useEffect(() => { setSaveOpen(false); }, [result]);
   const openAdvanced = (then: () => void) => { setAdvancedOpen(true); setTimeout(then, 60); };
@@ -1220,7 +1229,7 @@ export default function MotionStudio() {
     </section>
     <section className="flow-step" data-step="4" data-testid="flow-step-4">
       <div className="step-title" data-testid="step-4"><b>4</b>Gaya</div>
-      <StylePicker style={style} palette={palette} onStyle={s => { rememberStyle(); setStyle(s); setContentPreset("custom"); }} onPalette={pl => { rememberStyle(); setPalette(pl); setContentPreset("custom"); }} onTryOther={tryOtherStyle} onUndo={undoStyle} canUndo={!!styleUndo} disabled={rendering} />
+      <StylePicker style={style} palette={palette} onStyle={s => { rememberStyle(); setStyle(s); setContentPreset("custom"); replayPreview(); }} onPalette={pl => { rememberStyle(); setPalette(pl); setContentPreset("custom"); replayPreview(); }} onTryOther={tryOtherStyle} onUndo={undoStyle} canUndo={!!styleUndo} disabled={rendering} />
       <details className="fold" data-testid="fold-look"><summary><b>Tampilan dan tema</b> <small>pilihan lengkap</small> <small>{STYLES.find(x => x.id === style)?.label} · {PALETTES[palette].label}{contentPreset !== "custom" ? ` · ${CONTENT_PRESETS.find(p => p.id === contentPreset)?.label}` : ""}</small></summary>
       <label className="field-label" htmlFor="motion-preset">Template konten</label>
       <select id="motion-preset" data-testid="content-preset" value={contentPreset} onChange={e => {
@@ -1234,8 +1243,8 @@ export default function MotionStudio() {
       </select>
       <p className="field-hint preset-hint">{CONTENT_PRESETS.find(p => p.id === contentPreset)?.description ?? "Pilih gaya animasi dan palet warna secara manual."}</p>
       <div className="field-row">
-        <div><label className="field-label" htmlFor="motion-style">Gaya animasi</label><select id="motion-style" data-testid="style" value={style} onChange={e => { setStyle(e.target.value as StyleId); setContentPreset("custom"); }}>{STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></div>
-        <div><label className="field-label" htmlFor="motion-palette">Palet warna</label><select id="motion-palette" data-testid="palette" value={palette} onChange={e => { setPalette(e.target.value as PaletteId); setContentPreset("custom"); }}>{(Object.keys(PALETTES) as PaletteId[]).map(p => <option key={p} value={p}>{PALETTES[p].label}</option>)}</select></div>
+        <div><label className="field-label" htmlFor="motion-style">Gaya animasi</label><select id="motion-style" data-testid="style" value={style} onChange={e => { setStyle(e.target.value as StyleId); setContentPreset("custom"); replayPreview(); }}>{STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></div>
+        <div><label className="field-label" htmlFor="motion-palette">Palet warna</label><select id="motion-palette" data-testid="palette" value={palette} onChange={e => { setPalette(e.target.value as PaletteId); setContentPreset("custom"); replayPreview(); }}>{(Object.keys(PALETTES) as PaletteId[]).map(p => <option key={p} value={p}>{PALETTES[p].label}</option>)}</select></div>
       </div>
       
         <label className="field-label" htmlFor="typography">Tipografi <span className="field-hint">{resolveTypePack(typography).description}</span>
@@ -1307,7 +1316,7 @@ export default function MotionStudio() {
     </section>
   </div>
   );
-  const quickPreview = props ? <Player component={ScriptVideo} inputProps={props} durationInFrames={totalFrames(props.scenes)} fps={FPS} compositionWidth={WIDTH} compositionHeight={HEIGHT} controls style={{ width: "100%", aspectRatio: "9 / 16" }} acknowledgeRemotionLicense /> : null;
+  const quickPreview = props ? <Player ref={quickPlayer} component={ScriptVideo} inputProps={props} durationInFrames={totalFrames(props.scenes)} fps={FPS} compositionWidth={WIDTH} compositionHeight={HEIGHT} controls style={{ width: "100%", aspectRatio: "9 / 16" }} acknowledgeRemotionLicense /> : null;
   const [advancedOpen, setAdvancedOpen] = useState(false);
   // Anything that needs the full controls (a clip handed over, a saved session, a chosen video) opens them by itself.
   useEffect(() => { if (handoffNote || saved || source || offer) setAdvancedOpen(true); }, [handoffNote, saved, source, offer]);

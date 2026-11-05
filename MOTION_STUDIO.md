@@ -805,3 +805,6 @@ Bagian atas Studio kreatif (mode Konten biasa) sekarang berisi, berurutan: tauta
 ## Perbaikan kartu Siapkan AI (setelah uji di iPad)
 - Memilih "Lewati AI" tidak lagi menyembunyikan AI yang sudah tersimpan: kartu berjudul "AI sedang dilewati", menyebut model yang tersimpan, dan satu tombol "Pakai AI lagi" mengaktifkannya tanpa mengisi kunci.
 - Tiga pilihan dan kolom isian dirapikan di iPad (tidak lagi melebar keluar layar, kontras aktif diperbaiki, kolom selebar kartu).
+
+## Pratinjau gaya langsung bergerak
+Memilih gaya animasi atau palet (kartu, chip, dropdown, "Coba gaya lain", "Urungkan gaya", dan "Buat Versi Lain" di Mulai Cepat) kini memulai ulang pratinjau dari frame pertama dan memutarnya sekitar 3 detik. Sebelumnya pratinjau berhenti di frame pertama, dan perbedaan antargaya baru terlihat saat bergerak, sehingga seolah tidak bereaksi. Pemutaran dipicu dari ketukan itu sendiri agar diizinkan peramban.
