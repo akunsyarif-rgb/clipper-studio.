@@ -78,10 +78,23 @@ try {
     const { ctx, p } = await newPage({ width: 1100, height: 1400 });
     for (const id of ["hybrid", "kinetic", "popup", "cinematic", "editorial"]) assert(await p.getByTestId(`style-card-${id}`).locator("svg").count() === 1, `${id} has a small drawing`);
     assert(await p.locator('[data-testid^="palette-chip-"]').count() === 12, "twelve palette chips");
+    const clock = () => p.locator(".player-wrap").first().innerText().then(t => { const m = /(\d+):(\d\d)\s*\/\s*\d+:\d\d/.exec(t); return m ? Number(m[1]) * 60 + Number(m[2]) : -1; });
+    assert(await clock() === 0, "the preview starts paused on the first frame");
     await p.getByTestId("style-card-kinetic").click();
     assert(await p.getByTestId("style").inputValue() === "kinetic", "the style card sets the style");
+    await p.waitForFunction(() => { const m = /(\d+):(\d\d)\s*\/\s*\d+:\d\d/.exec(document.querySelector(".player-wrap")?.innerText ?? ""); return !!m && Number(m[1]) * 60 + Number(m[2]) >= 1; }, null, { timeout: 4000 });
+    await p.waitForFunction(() => document.querySelector(".player-wrap video, .player-wrap [data-visual], .player-wrap div") !== null, null, { timeout: 2000 });
     await p.getByTestId("palette-chip-gold").click();
     assert(await p.getByTestId("palette").inputValue() === "gold", "the palette chip sets the palette");
+    // The preview itself changes colour at once (the picture inside the player is redrawn with the new palette).
+    const hashOf = () => p.locator(".player-wrap").first().screenshot().then(b => b.toString("base64").length + ":" + b.subarray(1000, 1400).toString("hex"));
+    await p.getByTestId("palette-chip-obsidian").click();
+    await p.waitForTimeout(500);
+    const dark = await hashOf();
+    await p.getByTestId("palette-chip-pearl").click();
+    await p.waitForTimeout(500);
+    assert((await hashOf()) !== dark, "choosing another palette redraws the preview");
+    await p.getByTestId("palette-chip-gold").click();
     const before = [await p.getByTestId("style").inputValue(), await p.getByTestId("palette").inputValue()];
     await p.getByTestId("style-try-other").click();
     const after = [await p.getByTestId("style").inputValue(), await p.getByTestId("palette").inputValue()];
