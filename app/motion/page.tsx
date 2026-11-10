@@ -3,48 +3,32 @@
 import { Player, type PlayerRef } from "@remotion/player";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { DEFAULT_MUSIC_VOLUME, encodeWav, MAX_RECORDING_SECONDS, MOODS, moodForStyle, normalize, speechEnvelope, type Mood, type Music } from "@/lib/audio";
-import { analyseNarration, decodeToMono, explainMicError, NarrationRecorder, recordingSupported, type Narration } from "@/lib/recorder";
+import { DEFAULT_MUSIC_VOLUME, encodeWav, moodForStyle, normalize, speechEnvelope, type Mood, type Music } from "@/lib/audio";
+import { analyseNarration, explainMicError, NarrationRecorder, recordingSupported, type Narration } from "@/lib/recorder";
 import { checkBrowserRender, environmentReport, RenderFailure, renderMp4 } from "@/lib/render";
-import {
-  type CaptionStyleId, buildTimeline, CONTENT_PRESETS, explainRenderError, fitScenesToVideo, FPS, HEIGHT, MAX_SECONDS, MIN_SCENE_SECONDS, CAPTION_STYLES, PALETTES, slug, splitScript, splitScriptWithPauses, STYLES, totalFrames, validateAudioFile, validateTitle, WIDTH,
-  type ContentPresetId, type DurationMode, type PaletteId, type StyleId, type VideoProps,
-} from "@/lib/script";
-import { explainVoiceError, loadVoiceEngine, MODEL_BYTES, VOICE_PROFILES, VOICES } from "@/lib/tts/browser";
-import { assembleNarration, SPEEDS } from "@/lib/tts/narration";
+import { type CaptionStyleId, buildTimeline, explainRenderError, fitScenesToVideo, FPS, HEIGHT, MAX_SECONDS, MIN_SCENE_SECONDS, PALETTES, slug, splitScript, splitScriptWithPauses, STYLES, totalFrames, validateAudioFile, validateTitle, WIDTH, type ContentPresetId, type DurationMode, type PaletteId, type StyleId, type VideoProps } from "@/lib/script";
+import { explainVoiceError, loadVoiceEngine, MODEL_BYTES } from "@/lib/tts/browser";
+import { assembleNarration } from "@/lib/tts/narration";
 import { spokenText } from "@/lib/tts/numbers";
 import { analyzeVoiceScript, applyOverrides, narrationKey, scenePause, segmentKeys, spokenForDirection, type DirectionOverrides } from "@/lib/voice-director";
-import VoiceDirectorPanel from "../VoiceDirectorPanel";
 import { ClipCache } from "@/lib/tts/clip-cache";
 import { SynthesisCancelled, synthesizeDirected } from "@/lib/tts/direct-synthesis";
-import { TTS_LANGS, type TtsLang } from "@/lib/tts/supertonic";
+import { type TtsLang } from "@/lib/tts/supertonic";
 import { allWords, shiftWords, HANDOFF_KEY, parseHandoff, sceneTimings, scriptFromTranscript, mergeShortScenes, type Transcript } from "@/lib/transcript";
-import { ICONS, resolveVisual, sceneTopics, type Cut, stripMarks, TEMPLATES, type Template, type VisualOverride } from "@/lib/visuals";
-import { chooseFamily, FAMILY_LABELS } from "@/lib/composition";
+import { resolveVisual, sceneTopics, type Cut, stripMarks, type VisualOverride } from "@/lib/visuals";
 import { planNarrative } from "@/lib/narrative";
 import { releaseAsr } from "@/lib/asr/client";
-import { DENSITIES, explainScene, planAnimations, type Density } from "@/lib/importance";
+import { planAnimations, type Density } from "@/lib/importance";
 import type { BrandMotion, OverlayPosition } from "@/lib/overlay";
 import { isPristine, SESSION_VERSION, type SessionData } from "@/lib/session";
 import { clearSession, deleteSource, loadSession, loadSource, saveSession, saveSource, takeClipHandoff, type ClipHandoff } from "@/lib/session-store";
 import { scenesToSrt } from "@/lib/srt";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
-import TranscriptPanel from "../TranscriptPanel";
-import AiDirector from "../AiDirector";
 import AppNav from "../AppNav";
-import CinematicStudio from "../CinematicStudio";
-import IconifyPanel from "../IconifyPanel";
-import PixabayAutoPanel from "../PixabayAutoPanel";
-import EditCommandPanel from "../EditCommandPanel";
 import AiSetupCard from "../AiSetupCard";
 import QuickStart from "../QuickStart";
 import PreRenderChecklist from "../PreRenderChecklist";
-import { FlowStepNav, FlowStepperBar } from "../FlowStepper";
-import StylePicker from "../StylePicker";
-import PostRenderActions from "../PostRenderActions";
-import CaptionPosPanel from "../CaptionPosPanel";
 import { normalizeCaptionPos, type CaptionPos } from "@/lib/caption-box";
-import HeavyWorkNotice from "../HeavyWorkNotice";
 import { useWakeLock } from "../useWakeLock";
 import { prerenderChecks, type FixId } from "@/lib/prerender";
 import { suggestCta } from "@/lib/cta";
@@ -52,54 +36,45 @@ import type { EditPlan } from "@/lib/edit-command";
 import { registerIcon, setCustomIconEntrance } from "@/lib/visuals";
 import type { Entrance } from "@/lib/icon-motion";
 import type { LoadedIcon } from "@/lib/iconify";
-import { conceptFor, restoreCine, saveCine, type CinePlan, type FxId } from "@/lib/cinematic";
-import SeoPanel, { type SeoSeed } from "../SeoPanel";
-import TrendStart from "../TrendStart";
-import EditProfilePanel from "../EditProfilePanel";
+import { conceptFor, restoreCine, saveCine, type CinePlan } from "@/lib/cinematic";
+import { type SeoSeed } from "../SeoPanel";
 import { isEdit, toRenderEdits, type Edit, type EditProfile } from "@/lib/edit-profile";
-import { absoluteWords, clampTrim, handoffTrim, reslice, trimSeconds, type Trim } from "@/lib/trim";
-import { logDownload, logRender, logSeo, logTrend, scriptId, type HistoryEntry } from "@/lib/history";
+import { handoffTrim, reslice, trimSeconds, type Trim } from "@/lib/trim";
+import { logRender, logSeo, scriptId, type HistoryEntry } from "@/lib/history";
 import { loadHistory, onHistoryChange, startHistorySync, updateHistory } from "@/lib/history-store";
 import type { SeoPlatform, SeoResult } from "@/lib/seo";
-import { planStickers, STICKERS, STICKER_BY_ID, STICKER_CREDIT, matchSticker, type StickerMode } from "@/lib/stickers";
-import { planSfx, SFX_LABELS, SFX_MODES, SFX_VOLUME, type SfxMode } from "@/lib/sfx";
+import { planStickers, STICKER_CREDIT, type StickerMode } from "@/lib/stickers";
+import { planSfx, SFX_VOLUME, type SfxMode } from "@/lib/sfx";
 import { sfxWav } from "@/lib/sfx-synth";
-import { DEFAULT_TYPE_PACK, resolveTypePack, TYPE_PACK_IDS, TYPE_PACKS, type TypePackId } from "@/lib/fonts";
+import { DEFAULT_TYPE_PACK, resolveTypePack, type TypePackId } from "@/lib/fonts";
 import { ensureFonts } from "../../remotion/fonts";
-import WatermarkPanel from "../WatermarkPanel";
 import { DEFAULT_WATERMARK, isWatermarkActive, loadWatermark, saveWatermark, type Watermark } from "@/lib/watermark";
-import { CAPTION_BOTTOM, contentBox, SAFE, SQUARE_CROP } from "@/lib/layout";
-import { STORY_VISUAL_LABELS } from "@/lib/story-visual";
 import { buildStoryboard, validateExport, validateStoryboard, type Issue } from "@/lib/storyboard";
 import { emptyHistory, record, redo, undo, type History } from "@/lib/revision";
-import PexelsPanel from "../PexelsPanel";
-import AffiliatePanel from "../AffiliatePanel";
-import { removeLine, scenesForProductPhoto, type AffiliateBrief } from "@/lib/affiliate";
-import ScenePhotoPicker from "../ScenePhotoPicker";
-import PixabayPhotoPicker from "../PixabayPhotoPicker";
-import PixabayVideoPicker from "../PixabayVideoPicker";
+import { scenesForProductPhoto, type AffiliateBrief } from "@/lib/affiliate";
 import type { PixabayPhoto, PixabayVideo } from "@/lib/pixabay";
 import { pixabayCredit, pixabayVideoCredit } from "@/lib/pixabay";
 import { creditText, type PexelsPhoto } from "@/lib/pexels";
 import type { Visual } from "@/lib/command-agent";
 import { planToOverrides, type DirectorPlan } from "@/lib/director";
 import CloudAccount from "../CloudAccount";
-import SaveToHub from "../SaveToHub";
 import { cloud } from "@/lib/cloud";
 import type { SceneScore } from "@/lib/gemini";
-import { isAudioFile, probeVideo, SOURCE_ACCEPT, validateFile } from "@/lib/clip";
+import { isAudioFile, probeVideo, validateFile } from "@/lib/clip";
 import { imageProblem, prepareImage } from "@/lib/scene-image";
-import "./motion.css";
-import { AUDIO_ONLY, CONFIDENCE_LABELS, MODE_KEY, MOTION_INTENSITY_LABELS, NARRATIVE_INTENT_LABELS, NARRATIVE_ROLE_LABELS, SAMPLE, VIDEO_ONLY, VISUAL_STRATEGY_LABELS } from "./_components/constants";
+import { AUDIO_ONLY, MODE_KEY, SAMPLE, VIDEO_ONLY } from "./_components/constants";
 import { audioDuration, probeRendered } from "./_components/media-probe";
-import SafeGuide from "./_components/SafeGuide";
-import SceneVisualControls from "./_components/SceneVisualControls";
-import type { AiNarration, DirectorSnap, Generated, Mode, MusicMode, SceneImageFile, Track, VoiceMode, VoiceProgress } from "./_components/types"; import FxFold from "./_components/FxFold"; import DurationFold from "./_components/DurationFold"; import MusicFold from "./_components/MusicFold"; import ManualVoicePanel from "./_components/ManualVoicePanel"; import AiVoicePanel from "./_components/AiVoicePanel"; import VoiceStep from "./_components/VoiceStep"; import SceneItem from "./_components/SceneItem"; import ImagesStep from "./_components/ImagesStep"; import SourceVideoSection from "./_components/SourceVideoSection"; import TimingNotices from "./_components/TimingNotices"; import VideoEditOptions from "./_components/VideoEditOptions"; import TranscriptNotices from "./_components/TranscriptNotices"; import ScriptStep from "./_components/ScriptStep";
+import type { AiNarration, DirectorSnap, Generated, Mode, MusicMode, SceneImageFile, Track, VoiceMode, VoiceProgress } from "./_components/types";
+import VoiceStep from "./_components/VoiceStep";
+import ImagesStep from "./_components/ImagesStep";
+import ScriptStep from "./_components/ScriptStep";
+import RemotionNote from "./_components/RemotionNote";
+import ModeSwitch from "./_components/ModeSwitch";
+import StudioPanelHeader from "./_components/StudioPanelHeader";
 import StyleStep from "./_components/StyleStep";
-import LookFold from "./_components/LookFold";
 import RenderStep from "./_components/RenderStep";
-import StoryboardFold from "./_components/StoryboardFold";
 import PreviewColumn from "./_components/PreviewColumn";
+import "./motion.css";
 
 
 export default function MotionStudio() {
@@ -912,20 +887,10 @@ export default function MotionStudio() {
   const studioGrid = (
   <div className="studio-grid flow" data-flow-step={flowStep}>
     <section className="studio-panel flow-steps" data-mode={activeMode}>
-      <div className="panel-heading"><div><small>PENGATURAN LANJUTAN</small><h2>Atur video</h2></div><span className="local-tag">{cloudUser ? "Tersinkron · tanpa media" : "Lokal · tanpa server"}</span></div>
-      {activeMode !== "normal" && <CloudAccount onUser={setCloudUser} />}
-      {handoffNote && <div className="notice" role="status" data-testid="handoff-note">{handoffNote}</div>}
-      {saved && <div className="notice" data-testid="restore-offer">
-        Sesi terakhir ditemukan: <strong>{saved.title || "tanpa judul"}</strong> · {splitScript(saved.script).length} scene{savedSource ? ` · video ${savedSource.name}` : ""}. {savedCloud ? "Dari akun Anda (perangkat lain); pilih lagi videonya setelah Lanjutkan." : "Disimpan di perangkat ini saja."}{" "}
-        <button className="text-button" data-testid="restore-session" onClick={() => void restoreSession()}>Lanjutkan</button>{" "}
-        <button className="text-button" data-testid="restore-discard" onClick={() => void discardSession()}>Mulai baru</button>
-      </div>}
-      <TrendStart disabled={rendering || videoMode} onUse={(text, t, b) => {
-        setScript(text.slice(0, 3000)); if (t) setTitle(t.slice(0, 60)); setContentPreset("custom");
-        void updateHistory(l => logTrend(l, { id: scriptId(text), kind: "motion", title: t, script: text, now: Date.now() }, { platform: b.platform, niche: b.niche, audience: b.audience, trend: b.trend }));
-        setSeoSeed({ platform: b.platform, niche: b.niche, audience: b.audience, trends: b.trend.slice(0, 300), nonce: Date.now() });
-      }} />
-      <FlowStepperBar step={flowStep} onGo={goFlow} />
+      <StudioPanelHeader
+        activeMode={activeMode} cloudUser={cloudUser} discardSession={discardSession} flowStep={flowStep} goFlow={goFlow} handoffNote={handoffNote}
+        rendering={rendering} restoreSession={restoreSession} saved={saved} savedCloud={savedCloud} savedSource={savedSource} setCloudUser={setCloudUser}
+        setContentPreset={setContentPreset} setScript={setScript} setSeoSeed={setSeoSeed} setTitle={setTitle} videoMode={videoMode} />
     <ScriptStep
       activeMode={activeMode} applyCinematic={applyCinematic} applyEditPlan={applyEditPlan} applyTrim={applyTrim} asrBusy={asrBusy} asrStart={asrStart}
       brandMotion={brandMotion} captionOffset={captionOffset} cine={cine} comedySfx={comedySfx} density={density} editProfile={editProfile} edits={edits}
@@ -995,15 +960,7 @@ export default function MotionStudio() {
       </header>
       <AppNav current="studio" />
 
-      <section className="motion-intro compact">
-        <div className="seg two mode-switch" role="radiogroup" aria-label="Jenis konten">
-          <button role="radio" aria-checked={activeMode === "normal"} className={activeMode === "normal" ? "active" : ""} onClick={() => chooseMode("normal")} data-testid="mode-normal">Konten biasa</button>
-          <button role="radio" aria-checked={activeMode === "affiliate"} className={activeMode === "affiliate" ? "active" : ""} disabled={videoMode} onClick={() => chooseMode("affiliate")} data-testid="mode-affiliate">Affiliate</button>
-        </div>
-        <p className="mode-hint" data-testid="mode-hint">{videoMode ? "Affiliate tidak tersedia saat mengedit di atas video sumber. Lepas videonya (Ganti video) untuk memakainya."
-          : activeMode === "affiliate" ? "Isi data produk, AI menulis naskah dari data itu, dan klaim berisiko ditandai. Naskah dan pengaturan tetap ada saat Anda pindah ke Konten biasa."
-          : "Tulis naskah sendiri, atau mulai dari video sumber. Naskah dan pengaturan tetap ada saat Anda pindah ke Affiliate."}</p>
-      </section>
+      <ModeSwitch activeMode={activeMode} chooseMode={chooseMode} videoMode={videoMode} />
 
 
       {activeMode === "normal" && <>
@@ -1015,8 +972,7 @@ export default function MotionStudio() {
         ? <details className="fold advanced-settings" open={advancedOpen} onToggle={e => setAdvancedOpen((e.currentTarget as HTMLDetailsElement).open)} data-testid="advanced-settings"><summary><b>Pengaturan lanjutan</b> <small>naskah, tampilan, suara, musik, AI, dan semua pilihan detail</small></summary>{studioGrid}</details>
         : studioGrid}
 
-      <section className="remotion-note"><span className="remotion-icon">R</span><div><b>Render di browser, tanpa biaya server</b><p>MP4 dibuat di perangkat Anda dengan Remotion Web Renderer (WebCodecs). Naskah, rekaman, dan musik tidak diunggah. Hasil MP4 baru dikirim ke Perpustakaan (penyimpanan cloud privat) jika Anda memilih dan menyetujuinya. Backsound otomatis disintesis di perangkat dengan Tone.js.</p></div><span className="status-chip">NO PAID RENDER</span></section>
-      <footer className="motion-footer"><span>CLIPPER STUDIO / MOTION LAB</span><span>Built with Remotion</span></footer>
+      <RemotionNote  />
     </main>
   );
 }
