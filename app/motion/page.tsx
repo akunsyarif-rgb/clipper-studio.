@@ -94,7 +94,7 @@ import { AUDIO_ONLY, CONFIDENCE_LABELS, MODE_KEY, MOTION_INTENSITY_LABELS, NARRA
 import { audioDuration, probeRendered } from "./_components/media-probe";
 import SafeGuide from "./_components/SafeGuide";
 import SceneVisualControls from "./_components/SceneVisualControls";
-import type { AiNarration, DirectorSnap, Generated, Mode, MusicMode, SceneImageFile, Track, VoiceMode, VoiceProgress } from "./_components/types";
+import type { AiNarration, DirectorSnap, Generated, Mode, MusicMode, SceneImageFile, Track, VoiceMode, VoiceProgress } from "./_components/types"; import FxFold from "./_components/FxFold"; import DurationFold from "./_components/DurationFold"; import MusicFold from "./_components/MusicFold"; import ManualVoicePanel from "./_components/ManualVoicePanel"; import AiVoicePanel from "./_components/AiVoicePanel"; import VoiceStep from "./_components/VoiceStep";
 import StyleStep from "./_components/StyleStep";
 import LookFold from "./_components/LookFold";
 import RenderStep from "./_components/RenderStep";
@@ -1046,127 +1046,20 @@ export default function MotionStudio() {
       {timeline.ok && <p className="preview-disclaimer" data-testid="image-note">{imageError ? <span className="scene-image-error" data-testid="image-error">{imageError} </span> : null}{videoEdit && source ? "Di video sumber, gambar tampil sebagai layar penuh (maks. 4 detik) pada scene itu, dan pembicara kembali setelahnya. " : null}Gambar latar hanya dipakai di perangkat ini dan tidak ikut tersimpan atau tersinkron; pilih lagi setelah memuat ulang halaman. Pakai gambar milik Anda, foto Pexels/Pixabay, atau yang boleh dipakai ulang: gambar dari internet (mis. Pinterest) belum tentu bebas hak cipta.</p>}
       <FlowStepNav step={2} onGo={goFlow} />
     </section>
-    <section className="flow-step" data-step="3" data-testid="flow-step-3">
-      <div className="step-title" data-testid="step-3"><b>3</b>Suara dan musik</div>
-      <label className="field-label">Voice over / narasi</label>
-      <div className="seg" role="radiogroup" aria-label="Voice over">
-        {([["ai", "🤖 Otomatis"], ["manual", "🎙 Rekam / unggah"], ["none", "Tanpa"]] as [VoiceMode, string][]).map(([id, label]) =>
-          <button key={id} role="radio" aria-checked={voiceMode === id} className={voiceMode === id ? "active" : ""} disabled={busy} data-testid={"voice-" + id} onClick={() => setVoiceMode(id)}>{label}</button>)}
-      </div>
-      {voiceMode === "ai" && <div className="audio-box" data-testid="ai-voice">
-        <div className="field-row tight">
-          <div><label className="field-label" htmlFor="tts-lang">Bahasa</label>
-            <select id="tts-lang" data-testid="tts-lang" value={ttsLang} disabled={voiceBusy} onChange={e => setTtsLang(e.target.value as TtsLang)}>{TTS_LANGS.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}</select></div>
-          <div><label className="field-label" htmlFor="tts-voice">Suara</label>
-            <select id="tts-voice" data-testid="tts-voice" value={ttsVoice} disabled={voiceBusy} onChange={e => setTtsVoice(Number(e.target.value))}>{VOICE_PROFILES.map(p => <optgroup key={p.id} label={p.label}>{p.ids.map(id => <option key={id} value={id}>{VOICES[id].label}{id === p.suggested ? " ★" : ""}</option>)}</optgroup>)}</select></div>
-        </div>
-        <small className="field-hint" data-testid="voice-hint">★ = titik awal yang disarankan dari ukuran nada (paling dinamis di profilnya). Kualitas suara belum dinilai dengan mendengar: pilih dengan telinga Anda.</small>
-        <label className="field-label" htmlFor="tts-speed">Kecepatan bicara</label>
-        <select id="tts-speed" data-testid="tts-speed" value={ttsSpeed} disabled={voiceBusy} onChange={e => setTtsSpeed(Number(e.target.value))}>{SPEEDS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
-        <VoiceDirectorPanel directions={voiceDirections} auto={autoDirections} keys={voiceSegmentKeys} overrides={voiceDirectionOverrides} onChange={setVoiceDirectionOverrides} baseSpeed={ttsSpeed} disabled={voiceBusy} />
-        {voiceProgress ? <div className="render-progress" data-testid="voice-progress">
-          <div><span>{voiceProgress.label}</span><b>{voiceProgress.phase === "download" ? `${(voiceProgress.loaded / 1e6).toFixed(0)} / ${(voiceProgress.total / 1e6).toFixed(0)} MB` : `${Math.round((voiceProgress.loaded / voiceProgress.total) * 100)}%`}</b></div>
-          <i><em style={{ width: Math.min(100, (voiceProgress.loaded / Math.max(1, voiceProgress.total)) * 100) + "%" }} /></i>
-          <button className="motion-secondary" onClick={cancelVoice} disabled={voiceProgress.phase === "download"}>Batal</button>
-        </div> : <button className="motion-primary" onClick={() => void generateVoice()} disabled={busy || !timeline.ok && !aiNarration} data-testid="voice-generate">{aiFresh ? "↻ Buat ulang suara" : "🤖 Buat suara otomatis"}</button>}
-        {!aiFresh && aiNarration && voiceMode === "ai" && <div className="audio-previous" data-testid="ai-previous">
-          <small>Versi sebelumnya (belum sesuai pengaturan sekarang; dipakai lagi bila perubahan dibatalkan, diganti setelah suara baru jadi)</small>
-          <audio src={aiNarration.narration.url} controls preload="none" data-testid="ai-audio-previous" />
-        </div>}
-        {aiFresh && <>
-          <audio src={aiFresh.narration.url} controls preload="metadata" data-testid="ai-audio" />
-          <div className="audio-meta"><b>Suara otomatis · {TTS_LANGS.find(l => l.id === ttsLang)?.label} · {VOICES[ttsVoice]?.label}</b><small>{aiFresh.narration.seconds.toFixed(1)} dtk · durasi tiap scene mengikuti ucapannya</small></div>
-          <a className="text-link" href={aiFresh.narration.url} download={aiFresh.narration.file.name}>Unduh suara (WAV)</a>
-        </>}
-        <small>Dibuat di perangkat dengan model Supertonic 3 (gratis, tanpa server). Unduhan pertama ±{Math.round(MODEL_BYTES / 1e6)} MB, lalu tersimpan di browser. Ini suara buatan AI: jangan dipakai untuk meniru orang lain, dan sebutkan bahwa suaranya buatan AI.</small>
-        {voiceError && <p className="field-error" role="alert" data-testid="voice-error">{voiceError}</p>}
-      </div>}
-      {voiceMode === "manual" && <div className="audio-box">
-        <input ref={audioInput} type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg" onChange={onAudio} className="file-hidden" data-testid="audio-input" />
-        {recording ? <div className="rec-live" data-testid="recording">
-          <span className="rec-dot" /><b>Merekam {recordingSeconds!.toFixed(1)} dtk</b><small>maks. {MAX_RECORDING_SECONDS} dtk</small>
-          <div className="rec-actions"><button className="motion-primary" onClick={() => void stopRecording()} data-testid="record-stop">■ Selesai</button><button className="motion-secondary" onClick={cancelRecording}>Batal</button></div>
-        </div> : narration ? <>
-          <audio src={narration.url} controls preload="metadata" />
-          <div className="audio-meta"><b>{narration.recorded ? "Rekaman mikrofon" : narration.file.name}</b><small>{narration.seconds.toFixed(1)} dtk · durasi video mengikuti narasi{narration.speech ? "" : " · ducking memakai level tetap (audio tidak dapat dianalisis)"}</small></div>
-          <div className="rec-actions">
-            <button className="motion-secondary" onClick={() => setNarration(null)} disabled={busy} data-testid="audio-remove">Hapus</button>
-            <button className="motion-secondary" onClick={() => void startRecording()} disabled={busy}>🎙 Rekam ulang</button>
-            {narration.recorded && <a className="motion-secondary as-button" href={narration.url} download={narration.file.name}>Unduh WAV</a>}
-          </div>
-        </> : <>
-          <div className="rec-actions">
-            <button className="motion-primary" onClick={() => void startRecording()} disabled={busy} data-testid="record-start">🎙 Rekam narasi</button>
-            <button className="motion-secondary" onClick={() => audioInput.current?.click()} disabled={busy}>＋ Unggah audio</button>
-          </div>
-          <small>Rekam langsung dari mikrofon iPad sambil membaca naskah, atau unggah MP3/M4A/WAV. Audio diproses di perangkat dan tidak diunggah.</small>
-        </>}
-        {narrationBusy && <small data-testid="narration-busy">Memproses audio…</small>}
-        {audioError && <p className="field-error" role="alert" data-testid="audio-error">{audioError}</p>}
-      </div>}
-      <details className="fold" data-testid="fold-music"><summary><b>Backsound</b> <small>{musicMode === "none" ? "Tanpa" : musicMode === "auto" ? `Otomatis · ${MOODS.find(m => m.id === mood)?.label}` : "Unggahan Anda"}</small></summary>
-      <div className="audio-box">
-        <input ref={musicInput} type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg" onChange={e => void onMusic(e)} className="file-hidden" data-testid="music-input" />
-        <div className="seg" role="radiogroup" aria-label="Backsound">
-          {([["none", "Tanpa"], ["auto", "Otomatis"], ["upload", "Unggah"]] as [MusicMode, string][]).map(([id, label]) =>
-            <button key={id} role="radio" aria-checked={musicMode === id} className={musicMode === id ? "active" : ""} disabled={rendering} data-testid={"music-" + id}
-              onClick={() => { if (id === "upload" && !uploadedMusic) musicInput.current?.click(); else setMusicMode(id); }}>{label}</button>)}
-        </div>
-        {musicMode === "auto" && <>
-          <div className="field-row tight">
-            <div><label className="field-label" htmlFor="motion-mood">Mood</label>
-              <select id="motion-mood" data-testid="mood" value={mood} onChange={e => { setMood(e.target.value as Mood); setMoodTouched(true); }}>{MOODS.map(m => <option key={m.id} value={m.id}>{m.label} · {m.hint}</option>)}</select></div>
-            <div><label className="field-label">&nbsp;</label><button className="motion-secondary full" onClick={() => setSeed(s => s + 1)} disabled={musicBusy || rendering}>↻ Variasi lain</button></div>
-          </div>
-          <small data-testid="music-status">{musicBusy ? "Membuat backsound di perangkat…" : generatedFresh ? `Backsound ${generatedFresh.seconds.toFixed(1)} dtk siap · dibuat di perangkat, bebas royalti.` : timeline.ok ? "Menunggu…" : "Lengkapi naskah dulu."}</small>
-          {generatedFresh && <a className="text-link" href={generatedFresh.url} download={generatedFresh.file.name}>Unduh backsound (WAV)</a>}
-        </>}
-        {musicMode === "upload" && uploadedMusic && <>
-          <div className="audio-meta"><b>{uploadedMusic.file.name}</b><small>{uploadedMusic.seconds.toFixed(1)} dtk · {uploadedMusic.seconds < videoSeconds ? "diulang (loop) sampai video selesai" : "dipotong sesuai durasi video"}, fade in/out otomatis</small></div>
-          <button className="motion-secondary" onClick={() => musicInput.current?.click()} disabled={rendering}>Ganti musik</button>
-          <small>Pastikan Anda punya izin memakai musik ini (mis. Pixabay Music, YouTube Audio Library).</small>
-        </>}
-        {musicMode !== "none" && <>
-          <label className="field-label" htmlFor="motion-music-volume">Volume backsound <span className="field-hint">{musicVolume}%</span></label>
-          <input id="motion-music-volume" type="range" min={0} max={100} step={5} value={musicVolume} onChange={e => setMusicVolume(Number(e.target.value))} data-testid="music-volume" />
-          <label className="check-row"><input type="checkbox" checked={duck} onChange={e => setDuck(e.target.checked)} /><span>Kecilkan otomatis saat narasi berbicara (ducking){narration ? "" : " · aktif jika ada narasi"}</span></label>
-        </>}
-        {musicError && <p className="field-error" role="alert" data-testid="music-error">{musicError}</p>}
-      </div>
-      </details>
-      <details className="fold" data-testid="fold-duration"><summary><b>Durasi dan subtitle</b> <small>{narration ? "Ikuti narasi" : voiceMode === "ai" ? "Ikuti suara otomatis" : target === "auto" ? "Otomatis" : `${target} detik`} · {captions ? "Subtitle tampil" : "Tanpa subtitle"}</small></summary>
-      {videoEdit && source && <label className="field-label" htmlFor="caption-style">Gaya subtitle <span className="field-hint">{CAPTION_STYLES.find(c => c.id === captionStyle)?.description}</span>
-        <select id="caption-style" value={captionStyle} onChange={e => setCaptionStyle(e.target.value as CaptionStyleId)} data-testid="caption-style">
-          {CAPTION_STYLES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-        </select>
-      </label>}
-      <div className="field-row">
-        <div><label className="field-label" htmlFor="motion-duration">Durasi</label>
-          <select id="motion-duration" data-testid="duration" value={narration ? "audio" : voiceMode === "ai" ? "auto" : target} disabled={!!narration || voiceMode === "ai"} onChange={e => setTarget(e.target.value)}>
-            {narration ? <option value="audio">Ikuti narasi ({narration.seconds.toFixed(1)} dtk)</option> : voiceMode === "ai" ? <option value="auto">Ikuti suara otomatis</option> : <>
-              <option value="auto">Otomatis (kecepatan baca)</option><option value="15">15 detik</option><option value="30">30 detik</option><option value="45">45 detik</option><option value="60">60 detik</option>
-            </>}
-          </select></div>
-        <div><label className="field-label" htmlFor="motion-captions">Subtitle</label>
-          <select id="motion-captions" value={captions ? "on" : "off"} onChange={e => setCaptions(e.target.value === "on")}><option value="on">Tampilkan, sorot kata</option><option value="off">Tanpa subtitle</option></select></div>
-      </div>
-      </details>
-      <details className="fold" data-testid="fold-fx"><summary><b>Efek suara &amp; stiker</b> <small>{SFX_LABELS[sfxMode]} · {stickerMode === "auto" ? "stiker otomatis" : "tanpa stiker"}</small></summary>
-        <label className="field-label" htmlFor="sfx-mode">Efek suara <span className="field-hint">whoosh saat pindah scene, pop saat stiker muncul, dentang di ajakan; dibuat di perangkat, di bawah suara narasi</span>
-          <select id="sfx-mode" value={sfxMode} onChange={e => setSfxMode(e.target.value as SfxMode)} data-testid="sfx-mode">
-            {SFX_MODES.map(m => <option key={m} value={m}>{SFX_LABELS[m]}</option>)}
-          </select>
-        </label>
-        {!(videoEdit && source) && <label className="field-label" htmlFor="sticker-mode">Stiker <span className="field-hint">emoji kecil yang muncul di atas teks sesuai makna kalimat (maksimal 60% scene); bisa diganti per scene di daftar scene</span>
-          <select id="sticker-mode" value={stickerMode} onChange={e => setStickerMode(e.target.value as StickerMode)} data-testid="sticker-mode">
-            <option value="off">Mati</option>
-            <option value="auto">Otomatis (sesuai makna)</option>
-          </select>
-        </label>}
-        {stickerMode === "auto" && !(videoEdit && source) && <small className="field-hint" data-testid="sticker-credit">{STICKER_CREDIT}. Sebutkan kredit ini di deskripsi video Anda.</small>}
-      </details>
-      <FlowStepNav step={3} onGo={goFlow} />
-    </section>
+    <VoiceStep
+      aiFresh={aiFresh} aiNarration={aiNarration} audioError={audioError} audioInput={audioInput} autoDirections={autoDirections} busy={busy}
+      cancelRecording={cancelRecording} cancelVoice={cancelVoice} captions={captions} captionStyle={captionStyle} duck={duck}
+      generatedFresh={generatedFresh} generateVoice={generateVoice} goFlow={goFlow} mood={mood} musicBusy={musicBusy} musicError={musicError}
+      musicInput={musicInput} musicMode={musicMode} musicVolume={musicVolume} narration={narration} narrationBusy={narrationBusy} onAudio={onAudio}
+      onMusic={onMusic} recording={recording} recordingSeconds={recordingSeconds} rendering={rendering} setCaptions={setCaptions}
+      setCaptionStyle={setCaptionStyle} setDuck={setDuck} setMood={setMood} setMoodTouched={setMoodTouched} setMusicMode={setMusicMode}
+      setMusicVolume={setMusicVolume} setNarration={setNarration} setSeed={setSeed} setSfxMode={setSfxMode} setStickerMode={setStickerMode}
+      setTarget={setTarget} setTtsLang={setTtsLang} setTtsSpeed={setTtsSpeed} setTtsVoice={setTtsVoice}
+      setVoiceDirectionOverrides={setVoiceDirectionOverrides} setVoiceMode={setVoiceMode} sfxMode={sfxMode} source={source} startRecording={startRecording}
+      stickerMode={stickerMode} stopRecording={stopRecording} target={target} timeline={timeline} ttsLang={ttsLang} ttsSpeed={ttsSpeed} ttsVoice={ttsVoice}
+      uploadedMusic={uploadedMusic} videoEdit={videoEdit} videoSeconds={videoSeconds} voiceBusy={voiceBusy}
+      voiceDirectionOverrides={voiceDirectionOverrides} voiceDirections={voiceDirections} voiceError={voiceError} voiceMode={voiceMode}
+      voiceProgress={voiceProgress} voiceSegmentKeys={voiceSegmentKeys} />
     <StyleStep
       activeMode={activeMode} affiliateBrief={affiliateBrief} applyDirector={applyDirector} backdrop={backdrop} captionPos={captionPos} captions={captions}
       contentPreset={contentPreset} cutOverrides={cutOverrides} directorHistory={directorHistory} directorInfo={directorInfo} directorNote={directorNote}
