@@ -94,7 +94,7 @@ import { AUDIO_ONLY, CONFIDENCE_LABELS, MODE_KEY, MOTION_INTENSITY_LABELS, NARRA
 import { audioDuration, probeRendered } from "./_components/media-probe";
 import SafeGuide from "./_components/SafeGuide";
 import SceneVisualControls from "./_components/SceneVisualControls";
-import type { AiNarration, DirectorSnap, Generated, Mode, MusicMode, SceneImageFile, Track, VoiceMode, VoiceProgress } from "./_components/types"; import FxFold from "./_components/FxFold"; import DurationFold from "./_components/DurationFold"; import MusicFold from "./_components/MusicFold"; import ManualVoicePanel from "./_components/ManualVoicePanel"; import AiVoicePanel from "./_components/AiVoicePanel"; import VoiceStep from "./_components/VoiceStep"; import SceneItem from "./_components/SceneItem"; import ImagesStep from "./_components/ImagesStep";
+import type { AiNarration, DirectorSnap, Generated, Mode, MusicMode, SceneImageFile, Track, VoiceMode, VoiceProgress } from "./_components/types"; import FxFold from "./_components/FxFold"; import DurationFold from "./_components/DurationFold"; import MusicFold from "./_components/MusicFold"; import ManualVoicePanel from "./_components/ManualVoicePanel"; import AiVoicePanel from "./_components/AiVoicePanel"; import VoiceStep from "./_components/VoiceStep"; import SceneItem from "./_components/SceneItem"; import ImagesStep from "./_components/ImagesStep"; import SourceVideoSection from "./_components/SourceVideoSection"; import TimingNotices from "./_components/TimingNotices"; import VideoEditOptions from "./_components/VideoEditOptions"; import TranscriptNotices from "./_components/TranscriptNotices"; import ScriptStep from "./_components/ScriptStep";
 import StyleStep from "./_components/StyleStep";
 import LookFold from "./_components/LookFold";
 import RenderStep from "./_components/RenderStep";
@@ -926,73 +926,18 @@ export default function MotionStudio() {
         setSeoSeed({ platform: b.platform, niche: b.niche, audience: b.audience, trends: b.trend.slice(0, 300), nonce: Date.now() });
       }} />
       <FlowStepperBar step={flowStep} onGo={goFlow} />
-    <section className="flow-step" data-step="1" data-testid="flow-step-1">
-      <div className="step-title" data-testid="step-1"><b>1</b>{activeMode === "affiliate" ? "Produk dan naskah" : "Naskah"}</div>
-      {offer && !imported && <div className="notice normal-only" data-testid="transcript-offer">
-        Transkrip dari Clipper tersedia: <strong>{offer.source}</strong> ({allWords(offer.transcript).length} kata, {Math.round(offer.transcript.duration)} dtk).{" "}
-        <button className="text-button" data-testid="transcript-import" onClick={() => { setScript(scriptFromTranscript(offer.transcript, FPS)); setImported(offer.transcript); setVoiceMode("manual"); setOffer(null); }}>Impor ke naskah</button>
-      </div>}
-      {imported && <div className="notice normal-only" data-testid="transcript-status">
-        {timed ? (videoEdit ? "Mode edit video: video asli (dengan suaranya) jadi dasar; subtitle mengikuti waktu kata, dan scene dengan kata kunci/angka berganti ke grafis. Atur per scene lewat \"Layar\"." : "Subtitle mengikuti waktu kata dari transkrip. Unggah audio asli video pada Voice over → Rekam / unggah agar suara dan subtitle sama.")
-          : timings ? "Audio yang dipilih tidak sama panjang dengan transkrip, jadi waktu dibagi otomatis. Unggah audio asli klip yang sama."
-          : "Naskah sudah diubah dari transkrip, jadi waktu kata tidak dipakai lagi. Subtitle dibagi otomatis."}
-      </div>}
-      {imported && videoEdit && <label className="field-label">Geser waktu subtitle: {captionOffset > 0 ? "+" : ""}{captionOffset.toFixed(1)} dtk <span className="field-hint">kurangi jika teks muncul terlambat, tambah jika terlalu cepat</span>
-        <input type="range" min={-1} max={1} step={0.1} value={captionOffset} onChange={e => setCaptionOffset(Number(e.target.value))} data-testid="caption-offset" />
-      </label>}
-      {videoEdit && <label className="field-label" htmlFor="overlay-position">Posisi animasi di atas video <span className="field-hint">atas = di ruang kosong di atas kepala; bawah = tepat di atas subtitle</span>
-        <select id="overlay-position" value={overlayPos} onChange={e => setOverlayPos(e.target.value as OverlayPosition)} data-testid="overlay-position">
-          <option value="top">Atas (di atas kepala)</option>
-          <option value="lower">Bawah (di atas subtitle)</option>
-        </select>
-      </label>}
-      {videoEdit && <label className="field-label" htmlFor="animation-density">Berapa banyak animasi <span className="field-hint">{DENSITIES.find(d => d.id === density)?.hint}</span>
-        <select id="animation-density" value={density} onChange={e => setDensity(e.target.value as Density)} data-testid="animation-density">
-          {DENSITIES.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
-        </select>
-      </label>}
-      {videoEdit && <small className="field-hint" data-testid="unified-importance-note">Penilaian kepentingan scene kini dilakukan bersamaan dengan Sutradara AI, lalu digabung dengan aturan lokal. Tidak ada permintaan Gemini Judge terpisah.</small>}
-      {videoEdit && <label className="field-label" htmlFor="brand-motion">Gaya animasi istilah populer <span className="field-hint">sederhana = ikon dan nama dengan satu denyut halus; lengkap = adegan kecil khas tiap layanan</span>
-        <select id="brand-motion" value={brandMotion} onChange={e => setBrandMotion(e.target.value as BrandMotion)} data-testid="brand-motion">
-          <option value="simple">Sederhana (elegan)</option>
-          <option value="full">Lengkap (meriah)</option>
-        </select>
-      </label>}
-      {imported && !timed && voiceMode !== "ai" && <div className="notice notice-error normal-only" data-testid="timing-lost">
-        Naskah sudah berbeda terlalu jauh dari transkrip, sehingga waktu subtitle memakai <b>perkiraan</b> (bukan waktu ucapan sebenarnya) dan video bisa lebih panjang dari sumbernya.{" "}
-        <button className="text-button" data-testid="timing-restore" onClick={() => setScript(scriptFromTranscript(imported, FPS))}>Kembalikan naskah dari transkrip</button>
-      </div>}
-      {timed && timed.aligned && <div className="notice normal-only" data-testid="aligned-notice">Naskah sudah diedit setelah transkripsi; kata-katanya diselaraskan dengan ucapan asli, jadi waktu caption mungkin bergeser sedikit di bagian yang diubah.</div>}
-      {timed && timed.tooShort > 0 && <div className="notice normal-only" data-testid="short-warning">{timed.tooShort} scene lebih pendek dari {MIN_SCENE_SECONDS} dtk. Waktu subtitle tetap tepat dengan ucapan, tetapi teks scene itu tampil sebentar saja. Gabungkan barisnya di kolom Naskah (kata-katanya tidak diubah) bila ingin lebih nyaman dibaca.</div>}
-      <div className="field-label normal-only">Video sumber <span className="field-hint">opsional · unggah video atau audio saja, ucapannya jadi naskah &amp; subtitle otomatis (maks. 3 menit)</span></div>
-      {!source
-        ? <label className="upload-source normal-only"><input type="file" accept={SOURCE_ACCEPT} onChange={onSourceVideo} data-testid="source-video" /></label>
-        : <div className="normal-only">
-          <video ref={sourceVideo} src={source.url} controls playsInline preload="metadata" style={{ width: "100%", maxHeight: 220, borderRadius: 10, background: "#000" }} data-testid={isAudioFile(source.file) ? "source-audio-only" : undefined} />
-          {isAudioFile(source.file) && <small className="field-hint" data-testid="audio-only-note">Audio saja: suaranya dipakai apa adanya, gambarnya latar studio dengan subtitle dan animasi.</small>}
-          <button className="text-button" disabled={asrBusy} onClick={() => { setSource(null); setTrim(null); setTrimNote(""); setEdits([]); setEmphasis([]); setEditProfile("standard"); setImported(null); setVideoEdit(false); setCutOverrides({}); setClipStarts({}); if (script === VIDEO_ONLY || script === AUDIO_ONLY) { setScript(SAMPLE); setCaptions(true); } }}>Ganti video ({source.file.name})</button>
-          {trimNote && <div className="notice normal-only" role="status" data-testid="trim-note">{trimNote}</div>}
-          {videoEdit && <EditProfilePanel file={source.file} url={source.url} seconds={source.seconds} trim={trim} words={imported ? absoluteWords(allWords(imported), trim?.start ?? 0) : null} video={sourceVideo}
-            profile={editProfile} onProfile={setEditProfile} edits={edits} onEdits={setEdits} onEmphasis={setEmphasis} comedySfx={comedySfx} onComedySfx={setComedySfx}
-            onTrim={t => applyTrim(clampTrim(t, source.seconds))} audioOnly={isAudioFile(source.file)} disabled={asrBusy || rendering} />}
-          <EditCommandPanel seconds={trimSeconds(trim, source.seconds)} hasTranscript={!!imported} lines={splitScript(script)} disabled={asrBusy || rendering} onApply={applyEditPlan} onUndo={undoEditPlan} canUndo={!!editUndo} onStartTranscript={() => setAsrStart(n => n + 1)} />
-          <TranscriptPanel startNonce={asrStart} key={`${source.url}:${trim?.start ?? 0}:${trim?.end ?? 0}`} file={source.file} video={sourceVideo} range={{ start: trim?.start ?? 0, duration: trimSeconds(trim, source.seconds) }} locked={false} onWorking={setAsrBusy} onCopy={setScript} onUseTiming={useTimingOnly} preciseTiming={!!imported && imported.granularity !== "word" && videoEdit}
-            onUse={t => { setScript(scriptFromTranscript(t, FPS)); setImported(t); setVoiceMode("none"); setNarration(null); setVideoEdit(true); setCaptions(true); setCaptionOffset(0); setPalette("pearl"); setContentPreset("custom"); setOffer(null); }} />
-        </div>}
-      {sourceError && <p className="field-error normal-only" role="alert">{sourceError}</p>}
-      <AffiliatePanel script={script} disabled={rendering} onBrief={setAffiliateBrief} onProductPhoto={placeProductPhoto}
-        onUseScript={(text, t) => { setScript(text); if (t) setTitle(t.slice(0, 60)); setContentPreset("custom"); }} onRemoveLine={i => setScript(removeLine(script, i))} />
-      <label className="field-label" htmlFor="motion-script">Naskah <span className="field-hint">satu baris/kalimat = satu scene · *kata* untuk menonjolkan</span></label>
-      <textarea id="motion-script" data-testid="script" value={script} onChange={e => setScript(e.target.value)} rows={7} placeholder="Tulis naskah video…" />
-      <div className="char-count">{script.length} / 3000</div>
-      <small className="field-hint" data-testid="pause-hint">Jeda: tulis <code>[jeda 1s]</code> setelah kalimat (0,1–10 dtk). Tidak dibacakan dan tidak tampil.</small>
-      <label className="field-label" htmlFor="motion-title">Judul / teks pembuka</label>
-      <input id="motion-title" data-testid="title" value={title} onChange={e => setTitle(e.target.value)} maxLength={60} />
-      {titleError && <p className="field-error">{titleError}</p>}
-      <CinematicStudio active={cine} hasMusic={musicMode !== "none"} frames={timeline.ok ? timeline.scenes.map(x => x.durationInFrames) : []} onApply={applyCinematic} onClear={() => setCine(null)}
-        onFx={(text, fx: FxId) => setCine(c => c ? { ...c, fx: { ...c.fx, [text]: fx }, plan: { ...c.plan, scenes: c.plan.scenes.map(x => x.text === text ? { ...x, fx } : x), fxByText: { ...c.plan.fxByText, [text]: fx } } } : c)} />
-      <FlowStepNav step={1} onGo={goFlow} />
-    </section>
+    <ScriptStep
+      activeMode={activeMode} applyCinematic={applyCinematic} applyEditPlan={applyEditPlan} applyTrim={applyTrim} asrBusy={asrBusy} asrStart={asrStart}
+      brandMotion={brandMotion} captionOffset={captionOffset} cine={cine} comedySfx={comedySfx} density={density} editProfile={editProfile} edits={edits}
+      editUndo={editUndo} goFlow={goFlow} imported={imported} musicMode={musicMode} offer={offer} onSourceVideo={onSourceVideo} overlayPos={overlayPos}
+      placeProductPhoto={placeProductPhoto} rendering={rendering} script={script} setAffiliateBrief={setAffiliateBrief} setAsrBusy={setAsrBusy}
+      setAsrStart={setAsrStart} setBrandMotion={setBrandMotion} setCaptionOffset={setCaptionOffset} setCaptions={setCaptions} setCine={setCine}
+      setClipStarts={setClipStarts} setComedySfx={setComedySfx} setContentPreset={setContentPreset} setCutOverrides={setCutOverrides}
+      setDensity={setDensity} setEditProfile={setEditProfile} setEdits={setEdits} setEmphasis={setEmphasis} setImported={setImported}
+      setNarration={setNarration} setOffer={setOffer} setOverlayPos={setOverlayPos} setPalette={setPalette} setScript={setScript} setSource={setSource}
+      setTitle={setTitle} setTrim={setTrim} setTrimNote={setTrimNote} setVideoEdit={setVideoEdit} setVoiceMode={setVoiceMode} source={source}
+      sourceError={sourceError} sourceVideo={sourceVideo} timed={timed} timeline={timeline} timings={timings} title={title} titleError={titleError}
+      trim={trim} trimNote={trimNote} undoEditPlan={undoEditPlan} useTimingOnly={useTimingOnly} videoEdit={videoEdit} voiceMode={voiceMode} />
     <ImagesStep
       animationPlan={animationPlan} applyIcon={applyIcon} autoPhotos={autoPhotos} chooseEntrance={chooseEntrance} clipStarts={clipStarts}
       cutOverrides={cutOverrides} directorInfo={directorInfo} goFlow={goFlow} iconEntrance={iconEntrance} imageError={imageError} images={images}
