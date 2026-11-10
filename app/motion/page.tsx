@@ -95,6 +95,8 @@ import { audioDuration, probeRendered } from "./_components/media-probe";
 import SafeGuide from "./_components/SafeGuide";
 import SceneVisualControls from "./_components/SceneVisualControls";
 import type { AiNarration, DirectorSnap, Generated, Mode, MusicMode, SceneImageFile, Track, VoiceMode, VoiceProgress } from "./_components/types";
+import StyleStep from "./_components/StyleStep";
+import LookFold from "./_components/LookFold";
 import RenderStep from "./_components/RenderStep";
 import StoryboardFold from "./_components/StoryboardFold";
 import PreviewColumn from "./_components/PreviewColumn";
@@ -1165,51 +1167,15 @@ export default function MotionStudio() {
       </details>
       <FlowStepNav step={3} onGo={goFlow} />
     </section>
-    <section className="flow-step" data-step="4" data-testid="flow-step-4">
-      <div className="step-title" data-testid="step-4"><b>4</b>Gaya</div>
-      <StylePicker style={style} palette={palette} onStyle={s => { rememberStyle(); setStyle(s); setContentPreset("custom"); replayPreview(); }} onPalette={pl => { rememberStyle(); setPalette(pl); setContentPreset("custom"); replayPreview(); }} onTryOther={tryOtherStyle} onUndo={undoStyle} canUndo={!!styleUndo} disabled={rendering} />
-      <CaptionPosPanel value={captionPos} onChange={setCaptionPos} active={!!(videoEdit && source)} captionsOn={captions} disabled={rendering} onTouch={showCaptionFrame} />
-      <details className="fold" data-testid="fold-look"><summary><b>Tampilan dan tema</b> <small>pilihan lengkap</small> <small>{STYLES.find(x => x.id === style)?.label} · {PALETTES[palette].label}{contentPreset !== "custom" ? ` · ${CONTENT_PRESETS.find(p => p.id === contentPreset)?.label}` : ""}</small></summary>
-      <label className="field-label" htmlFor="motion-preset">Template konten</label>
-      <select id="motion-preset" data-testid="content-preset" value={contentPreset} onChange={e => {
-        const id = e.target.value as ContentPresetId | "custom";
-        setContentPreset(id);
-        const preset = CONTENT_PRESETS.find(p => p.id === id);
-        if (preset) { setStyle(preset.style); setPalette(preset.palette); }
-      }}>
-        <option value="custom">Kustom · atur sendiri</option>
-        {CONTENT_PRESETS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-      </select>
-      <p className="field-hint preset-hint">{CONTENT_PRESETS.find(p => p.id === contentPreset)?.description ?? "Pilih gaya animasi dan palet warna secara manual."}</p>
-      <div className="field-row">
-        <div><label className="field-label" htmlFor="motion-style">Gaya animasi</label><select id="motion-style" data-testid="style" value={style} onChange={e => { setStyle(e.target.value as StyleId); setContentPreset("custom"); replayPreview(); }}>{STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></div>
-        <div><label className="field-label" htmlFor="motion-palette">Palet warna</label><select id="motion-palette" data-testid="palette" value={palette} onChange={e => { setPalette(e.target.value as PaletteId); setContentPreset("custom"); replayPreview(); }}>{(Object.keys(PALETTES) as PaletteId[]).map(p => <option key={p} value={p}>{PALETTES[p].label}</option>)}</select></div>
-      </div>
-      
-        <label className="field-label" htmlFor="typography">Tipografi <span className="field-hint">{resolveTypePack(typography).description}</span>
-          <select id="typography" value={typography} onChange={e => setTypography(e.target.value as TypePackId)} data-testid="typography">
-            {TYPE_PACK_IDS.map(id => <option key={id} value={id}>{TYPE_PACKS[id].label}</option>)}
-          </select>
-        </label>
-        {!(videoEdit && source) && <>
-          <label className="field-label" htmlFor="backdrop">Latar <span className="field-hint">mesh: bidang warna palet yang bergeser pelan</span>
-            <select id="backdrop" value={backdrop} onChange={e => setBackdrop(e.target.value as "plain" | "mesh")} data-testid="backdrop">
-              <option value="plain">Polos (gradasi palet)</option>
-              <option value="mesh">Mesh bergerak</option>
-            </select>
-          </label>
-          <label className="check-row" data-testid="grain-toggle"><input type="checkbox" checked={grain} onChange={e => setGrain(e.target.checked)} data-testid="grain" /> Tekstur film (grain halus)</label>
-        </>}
-        {!(videoEdit && source) && <label className="check-row" data-testid="story-visuals-toggle"><input type="checkbox" checked={storyVisuals} onChange={e => setStoryVisuals(e.target.checked)} data-testid="story-visuals" /> Objek visual 3D di atas teks <span className="field-hint">titik fokus untuk pembuka, langkah bertumbuh, orbit untuk renungan, satu titik untuk penutup; tanpa teks tambahan</span></label>}
-      </details>
-      {timeline.ok && <AiDirector language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"} active={Object.keys(directorInfo).length > 0} note={directorNote} onPlan={applyDirector} onUndo={undoDirector} onRedo={redoDirector} canRedo={directorHistory.future.length > 0} versions={directorHistory.past.length}
-        input={{ scenes: timeline.scenes.map(sc => ({ text: sc.text, seconds: sc.durationInFrames / FPS })), videoEdit: !!(videoEdit && source), style, palette, affiliate: activeMode === "affiliate" && affiliateBrief ? { product: affiliateBrief.product } : undefined,
-          current: timeline.scenes.map(sc => ({ template: overrides[sc.text]?.template, icon: overrides[sc.text]?.icon, cut: cutOverrides[sc.text] })) }} />}
-      <details className="fold" data-testid="fold-watermark"><summary><b>Watermark video</b> <small>{isWatermarkActive(watermark) ? `${watermark.text} · ${watermark.position.replace("-", " ")}` : "Nonaktif"}</small></summary>
-        <WatermarkPanel value={watermark} onChange={setWatermark} disabled={rendering} note="Terlihat langsung di pratinjau." />
-      </details>
-      <FlowStepNav step={4} onGo={goFlow} />
-    </section>
+    <StyleStep
+      activeMode={activeMode} affiliateBrief={affiliateBrief} applyDirector={applyDirector} backdrop={backdrop} captionPos={captionPos} captions={captions}
+      contentPreset={contentPreset} cutOverrides={cutOverrides} directorHistory={directorHistory} directorInfo={directorInfo} directorNote={directorNote}
+      goFlow={goFlow} grain={grain} imported={imported} overrides={overrides} palette={palette} redoDirector={redoDirector} rememberStyle={rememberStyle}
+      rendering={rendering} replayPreview={replayPreview} setBackdrop={setBackdrop} setCaptionPos={setCaptionPos} setContentPreset={setContentPreset}
+      setGrain={setGrain} setPalette={setPalette} setStoryVisuals={setStoryVisuals} setStyle={setStyle} setTypography={setTypography}
+      setWatermark={setWatermark} showCaptionFrame={showCaptionFrame} source={source} storyVisuals={storyVisuals} style={style} styleUndo={styleUndo}
+      timeline={timeline} tryOtherStyle={tryOtherStyle} typography={typography} undoDirector={undoDirector} undoStyle={undoStyle} videoEdit={videoEdit}
+      watermark={watermark} />
     <RenderStep
       abort={abort} applyFix={applyFix} base={base} blocker={blocker} copyBrief={copyBrief} entrySeo={entrySeo} errorDetail={errorDetail}
       exportProject={exportProject} goFlow={goFlow} goSave={goSave} goSeo={goSeo} historyId={historyId} imported={imported} makeAnother={makeAnother}
