@@ -90,85 +90,15 @@ import type { SceneScore } from "@/lib/gemini";
 import { isAudioFile, probeVideo, SOURCE_ACCEPT, validateFile } from "@/lib/clip";
 import { imageProblem, prepareImage } from "@/lib/scene-image";
 import "./motion.css";
+import { AUDIO_ONLY, CONFIDENCE_LABELS, MODE_KEY, MOTION_INTENSITY_LABELS, NARRATIVE_INTENT_LABELS, NARRATIVE_ROLE_LABELS, SAMPLE, VIDEO_ONLY, VISUAL_STRATEGY_LABELS } from "./_components/constants";
+import { audioDuration, probeRendered } from "./_components/media-probe";
+import SafeGuide from "./_components/SafeGuide";
+import SceneVisualControls from "./_components/SceneVisualControls";
+import type { AiNarration, DirectorSnap, Generated, Mode, MusicMode, SceneImageFile, Track, VoiceMode, VoiceProgress } from "./_components/types";
+import RenderStep from "./_components/RenderStep";
+import StoryboardFold from "./_components/StoryboardFold";
+import PreviewColumn from "./_components/PreviewColumn";
 
-const VIDEO_ONLY = "Video Anda";
-const AUDIO_ONLY = "Audio Anda";
-const SAMPLE = "Jangan tunggu semangat datang.\nMulailah, meski langkahmu kecil.\nDisiplin membuatmu tetap bergerak.\nSatu langkah hari ini lebih baik dari rencana sempurna.\nMulai sekarang.";
-
-const NARRATIVE_ROLE_LABELS: Record<string, string> = {
-  hook: "Pembuka", tension: "Konflik", explanation: "Penjelasan", reveal: "Insight",
-  application: "Penerapan", resolution: "Kesimpulan", continuation: "Lanjutan",
-};
-const VISUAL_STRATEGY_LABELS: Record<string, string> = {
-  typography: "Tipografi", comparison: "Perbandingan", diagram: "Diagram",
-  metaphor: "Metafora", footage: "Footage", minimal: "Minimal",
-};
-const MOTION_INTENSITY_LABELS: Record<string, string> = {
-  quiet: "Tenang", emphasis: "Penekanan", impact: "Dampak kuat",
-};
-const NARRATIVE_INTENT_LABELS: Record<string, string> = {
-  question: "Pertanyaan", contrast: "Kontras", "cause-effect": "Sebab-akibat", process: "Proses", evidence: "Bukti", insight: "Insight", instruction: "Instruksi", story: "Cerita", reflection: "Refleksi", statement: "Pernyataan", resolution: "Kesimpulan",
-};
-const CONFIDENCE_LABELS: Record<string, string> = { low: "sinyal lemah", medium: "sinyal sedang", high: "sinyal kuat" };
-
-type Mode = "normal" | "affiliate";
-const MODE_KEY = "clipper:motion:mode:v1";
-
-type Track = { file: File; url: string; seconds: number };
-/** A scene picture kept in memory only (never uploaded or saved with the session). */
-type SceneImageFile = { url: string; name: string; mediaType?: "image" | "video"; /** Set for stock media: contributor and source page. */ credit?: { text: string; href: string } };
-type Generated = Track & { mood: Mood; seed: number };
-type MusicMode = "none" | "auto" | "upload";
-type VoiceMode = "ai" | "manual" | "none";
-type AiNarration = { key: string; narration: Narration; sceneSeconds: number[] };
-type VoiceProgress = { phase: "download" | "synth"; loaded: number; total: number; label: string };
-
-/** Reads an audio file's duration, decoding it when the media element cannot (e.g. some WAV/OGG on Safari). */
-/** Safe-zone guide drawn over the preview only (percentages of the 1080×1920 frame); never part of the rendered video. */
-function SafeGuide() {
-  const x = (v: number) => `${(v / WIDTH) * 100}%`, y = (v: number) => `${(v / HEIGHT) * 100}%`;
-  const box = contentBox(false);
-  const shade = { position: "absolute" as const, background: "rgba(255,60,60,0.22)" };
-  return (
-    <div data-testid="safe-guide" aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-      <div style={{ ...shade, left: 0, right: 0, top: 0, height: y(SAFE.top) }} />
-      <div style={{ ...shade, left: 0, right: 0, bottom: 0, height: y(SAFE.bottom) }} />
-      <div style={{ ...shade, left: 0, width: x(SAFE.side), top: y(SAFE.top), bottom: y(SAFE.bottom) }} />
-      <div style={{ ...shade, right: 0, width: x(SAFE.side), top: y(SAFE.top), bottom: y(SAFE.bottom) }} />
-      <div style={{ position: "absolute", left: 0, right: 0, top: y(SQUARE_CROP.top), height: y(SQUARE_CROP.bottom - SQUARE_CROP.top), border: "1px dashed #59b7ff" }} />
-      <div style={{ position: "absolute", left: x(SAFE.side), right: x(SAFE.side), top: y(box.top), height: y(box.height), border: "1px dashed #ffffffcc" }} />
-      <div style={{ position: "absolute", left: x(SAFE.side), right: x(SAFE.side), top: y(HEIGHT - CAPTION_BOTTOM), borderTop: "2px solid #ffe066" }} />
-    </div>
-  );
-}
-
-/** Size and length of a finished MP4 as the browser reads them; undefined where this browser cannot say (checked then skipped). */
-async function probeRendered(blob: Blob): Promise<{ width?: number; height?: number; seconds?: number }> {
-  const url = URL.createObjectURL(blob);
-  try {
-    return await new Promise(resolve => {
-      const v = document.createElement("video");
-      const done = (r: { width?: number; height?: number; seconds?: number }) => { v.removeAttribute("src"); v.load(); resolve(r); };
-      const t = setTimeout(() => done({}), 5000);
-      v.preload = "metadata"; v.muted = true;
-      v.onloadedmetadata = () => { clearTimeout(t); done({ width: v.videoWidth || undefined, height: v.videoHeight || undefined, seconds: Number.isFinite(v.duration) ? v.duration : undefined }); };
-      v.onerror = () => { clearTimeout(t); done({}); };
-      v.src = url;
-    });
-  } finally { URL.revokeObjectURL(url); }
-}
-
-async function audioDuration(file: File, url: string): Promise<number> {
-  const fromElement = await new Promise<number>(resolve => {
-    const el = new Audio();
-    el.preload = "metadata";
-    el.onloadedmetadata = () => resolve(el.duration);
-    el.onerror = () => resolve(NaN);
-    el.src = url;
-  });
-  if (Number.isFinite(fromElement) && fromElement > 0) return fromElement;
-  return (await decodeToMono(file)).seconds;
-}
 
 export default function MotionStudio() {
   const player = useRef<PlayerRef>(null);
@@ -291,7 +221,6 @@ export default function MotionStudio() {
   useEffect(() => { try { if (localStorage.getItem(MODE_KEY) === "affiliate") setContentMode("affiliate"); } catch { /* storage blocked: starts as ordinary content */ } }, []);
   function chooseMode(m: Mode) { setContentMode(m); try { localStorage.setItem(MODE_KEY, m); } catch { /* not remembered */ } }
   const [directorNote, setDirectorNote] = useState("");
-  type DirectorSnap = { stickerMode: StickerMode; stickerOverrides: Record<string, string>; sfxMode: SfxMode; typography: TypePackId; backdrop: "plain" | "mesh"; grain: boolean; captionStyle: CaptionStyleId; style: StyleId; palette: PaletteId; contentPreset: ContentPresetId | "custom"; overrides: Record<string, VisualOverride>; cutOverrides: Record<string, Cut>; info: Record<string, { reason: string; imageIdea?: string; imageQuery?: string }>; aiScores: Record<string, SceneScore>; note: string };
   const [guide, setGuide] = useState(false);
   // Watermark: remembered for this editing session, so it is back for every re-render (and shared with the clipper).
   const [watermark, setWatermarkState] = useState<Watermark>(DEFAULT_WATERMARK);
@@ -1281,49 +1210,16 @@ export default function MotionStudio() {
       </details>
       <FlowStepNav step={4} onGo={goFlow} />
     </section>
-    <section className="flow-step" data-step="5" data-testid="flow-step-5">
-      <div className="step-title" data-testid="step-5"><b>5</b>Render</div>
-      {timeline.ok && <details className="fold storyboard" data-testid="storyboard">
-        <summary>Urutan adegan {storyIssues.length ? `· ${storyErrors.length} masalah, ${storyIssues.length - storyErrors.length} saran` : "· siap render"}</summary>
-        <ol>{storyboard.scenes.map(sc => <li key={sc.id} data-testid="storyboard-scene"><b>{sc.order + 1}.</b> {FAMILY_LABELS[sc.family]} · {sc.layout} · {sc.timing.seconds} dtk · {sc.continuity === "continues" ? "lanjutan visual" : sc.continuity === "start" ? "pembuka" : "visual baru"}{sc.sticker && STICKER_BY_ID[sc.sticker] ? ` · stiker: ${STICKER_BY_ID[sc.sticker].emoji} ${STICKER_BY_ID[sc.sticker].label}` : sc.accent ? ` · objek 3D: ${STORY_VISUAL_LABELS[sc.accent]}` : ""}{sc.captionPolicy === "suppressed-duplicate" ? " · tanpa subtitle ganda" : ""}</li>)}</ol>
-        {storyIssues.map((i, n) => <small key={n} className={i.level === "error" ? "notice notice-error" : "narrative-reason"} role={i.level === "error" ? "alert" : "status"} data-testid="storyboard-issue">{i.level === "error" ? "Perlu diperbaiki: " : "Saran: "}{i.message}</small>)}
-      </details>}
-      {blocker && <p className="field-error" role="alert" data-testid="blocker">{blocker}</p>}
-      {timeline.ok && timeline.warnings.map(w => <p className="field-warning" key={w}>{w}</p>)}
-      {timeline.ok && <PreRenderChecklist checks={preChecks} onFix={applyFix} prefix="pre" disabled={rendering} />}
-
-      <div className="panel-actions">
-        {rendering
-          ? <button className="motion-cancel" onClick={() => abort.current?.abort()} data-testid="cancel">Batalkan render</button>
-          : <button className="motion-primary" onClick={() => void render()} disabled={!!blocker || narrationBusy || musicBusy || voiceBusy} data-testid="render">Render MP4 <span>↓</span></button>}
-        <button className="motion-secondary" onClick={exportProject} disabled={!props}>Proyek JSON</button>
-      </div>
-      <button className="text-link" onClick={copyBrief} disabled={!timeline.ok}>Salin brief teks</button>
-      {rendering && <div className="render-progress" data-testid="progress"><div><span>Merender di browser…</span><b>{progress}%</b></div><i><em style={{ width: progress + "%" }} /></i></div>}
-      {rendering && <HeavyWorkNotice what="render" seconds={videoSeconds} />}
-      {renderError && <p className="field-error" role="alert" data-testid="render-error">{renderError}</p>}
-      {errorDetail && <details className="error-details" open><summary>Detail teknis (kirimkan saat melapor)</summary><code data-testid="error-detail">{errorDetail}</code><button className="text-link" onClick={() => navigator.clipboard?.writeText(errorDetail).then(() => setStatus("Detail teknis disalin."), () => setStatus("Salin manual teks di atas."))}>Salin detail teknis</button></details>}
-      {result && <PostRenderActions saveOpen={saveOpen} info={`${WIDTH}×${HEIGHT} · ${videoSeconds.toFixed(1)} dtk · ${(result.size / 1024 ** 2).toFixed(1)} MB`} onSave={goSave} onAnother={makeAnother} onSeo={goSeo}
-        download={<a className="motion-primary" href={result.url} download={result.name} data-testid="download" onClick={() => { void updateHistory(l => logDownload(l, base(), { name: result.name, size: result.size, label: `${WIDTH}×${HEIGHT} · ${videoSeconds.toFixed(0)} dtk` })); }}>Simpan MP4 ↓</a>}
-        extra={srtUrl ? <a className="text-link" href={srtUrl} download={result.name.replace(/\.mp4$/i, "") + ".srt"} data-testid="download-srt">Unduh subtitle (.srt)</a> : null} />}
-      {result && saveOpen && <SaveToHub key={result.url} tone="dark" getBlob={() => fetch(result.url).then(r => r.blob())} fileName={result.name} title={title.trim() || result.name.replace(/\.[^.]+$/, "")} source="motion" seconds={videoSeconds} width={WIDTH} height={HEIGHT} historyId={base().id} />}
-      {status && <p className="motion-status" role="status" data-testid="status">{status}</p>}
-      {timeline.ok && <SeoPanel seed={seoSeed} stored={entrySeo} storedId={historyId} onResult={onSeoResult} transcript={timeline.scenes.map(sc => stripMarks(sc.text)).join(" ")} topic={title.trim()} language={imported?.language === "english" || imported?.language === "en" ? "en" : "id"} />}
-      <FlowStepNav step={5} onGo={goFlow} />
-    </section>
+    <RenderStep
+      abort={abort} applyFix={applyFix} base={base} blocker={blocker} copyBrief={copyBrief} entrySeo={entrySeo} errorDetail={errorDetail}
+      exportProject={exportProject} goFlow={goFlow} goSave={goSave} goSeo={goSeo} historyId={historyId} imported={imported} makeAnother={makeAnother}
+      musicBusy={musicBusy} narrationBusy={narrationBusy} onSeoResult={onSeoResult} preChecks={preChecks} progress={progress} props={props} render={render}
+      renderError={renderError} rendering={rendering} result={result} saveOpen={saveOpen} seoSeed={seoSeed} setStatus={setStatus} srtUrl={srtUrl}
+      status={status} storyboard={storyboard} storyErrors={storyErrors} storyIssues={storyIssues} timeline={timeline} title={title}
+      videoSeconds={videoSeconds} voiceBusy={voiceBusy} />
     </section>
 
-    <section className="preview-column">
-      <div className="panel-heading"><div><small>02 / PRATINJAU</small><h2>Preview video</h2></div><span className="preview-badge"><i /> {props ? `${(totalFrames(props.scenes) / FPS).toFixed(1)}s · 9:16` : "—"}</span></div>
-      <div className="player-wrap" style={{ position: "relative", background: `linear-gradient(145deg, ${colors.bg1}, ${colors.bg2})` }}>
-        {props ? <Player ref={player} component={ScriptVideo} inputProps={props} durationInFrames={props ? totalFrames(props.scenes) : 1} fps={FPS} compositionWidth={WIDTH} compositionHeight={HEIGHT} controls style={{ width: "100%", aspectRatio: "9 / 16" }} acknowledgeRemotionLicense />
-          : <div className="player-empty">{blocker}</div>}
-        {guide && props ? <SafeGuide /> : null}
-      </div>
-      <label className="check-row" data-testid="safe-guide-toggle"><input type="checkbox" checked={guide} onChange={e => setGuide(e.target.checked)} /> Tampilkan panduan area aman (hanya di pratinjau, tidak ikut ke MP4)</label>
-      {guide ? <p className="preview-disclaimer" data-testid="safe-guide-legend">Merah: tertutup tampilan aplikasi (tab, deskripsi, tombol kanan). Putus-putus putih: area konten utama 1200 px. Biru: kotak 1080×1080 yang tersisa bila dipotong 1:1. Kuning: baris dasar subtitle.</p> : null}
-      <p className="preview-disclaimer">Pratinjau memakai komposisi yang sama dengan hasil render, jadi teks, durasi scene, narasi, dan backsound identik dengan MP4.</p>
-    </section>
+    <PreviewColumn blocker={blocker} colors={colors} guide={guide} player={player} props={props} setGuide={setGuide} />
   </div>
   );
   const quickPreview = props ? <Player ref={quickPlayer} component={ScriptVideo} inputProps={props} durationInFrames={totalFrames(props.scenes)} fps={FPS} compositionWidth={WIDTH} compositionHeight={HEIGHT} controls style={{ width: "100%", aspectRatio: "9 / 16" }} acknowledgeRemotionLicense /> : null;
@@ -1361,54 +1257,5 @@ export default function MotionStudio() {
       <section className="remotion-note"><span className="remotion-icon">R</span><div><b>Render di browser, tanpa biaya server</b><p>MP4 dibuat di perangkat Anda dengan Remotion Web Renderer (WebCodecs). Naskah, rekaman, dan musik tidak diunggah. Hasil MP4 baru dikirim ke Perpustakaan (penyimpanan cloud privat) jika Anda memilih dan menyetujuinya. Backsound otomatis disintesis di perangkat dengan Tone.js.</p></div><span className="status-chip">NO PAID RENDER</span></section>
       <footer className="motion-footer"><span>CLIPPER STUDIO / MOTION LAB</span><span>Built with Remotion</span></footer>
     </main>
-  );
-}
-
-/** 83.4 → "1:23.4" */
-function formatClock(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  return `${m}:${(seconds - m * 60).toFixed(1).padStart(4, "0")}`;
-}
-
-/** Per-scene visual correction: template and icon, each "Otomatis" unless the user picks one. */
-function SceneVisualControls({ text, topics, override, disabled, onChange, cut, onCut, onClipHere, onClipSeek }: { text: string; topics?: ReadonlySet<string>; override?: VisualOverride; disabled: boolean; onChange: (o: VisualOverride) => void; cut?: { value?: Cut; auto: Cut; clipFrom?: number }; onCut: (c: Cut | undefined) => void; onClipHere: () => void; onClipSeek: (seconds: number) => void }) {
-  const auto = resolveVisual(text, undefined, topics);
-  const current = resolveVisual(text, override, topics);
-  const autoIcon = auto.icon ? ICONS[auto.icon]?.label : "tanpa ikon";
-  return (
-    <div className="scene-visual">
-      {cut && <label>
-        <span>Layar</span>
-        <select value={cut.value ?? ""} disabled={disabled} data-testid="scene-cut" onChange={e => onCut((e.target.value || undefined) as Cut | undefined)}>
-          <option value="">Otomatis · {cut.auto === "graphic" ? "Grafis penuh" : cut.auto === "overlay" ? "Video + animasi" : "Video + subtitle"}</option>
-          <option value="video">Video + subtitle</option>
-          <option value="overlay">Video + animasi</option>
-          <option value="graphic">Grafis penuh (ganti layar)</option>
-          <option value="clip">Potongan lain dari video</option>
-        </select>
-      </label>}
-      {cut && cut.value === "clip" && <div className="clip-pick" data-testid="clip-pick">
-        <span>Mulai di <b data-testid="clip-from">{formatClock(cut.clipFrom ?? 0)}</b> (maks. 4 dtk, tanpa suara)</span>
-        <button type="button" className="text-link" disabled={disabled} onClick={() => onClipSeek(cut.clipFrom ?? 0)} data-testid="clip-seek">Lihat</button>
-        <button type="button" className="text-link" disabled={disabled} onClick={onClipHere} data-testid="clip-here">Pakai posisi pemutar</button>
-      </div>}
-      <label>
-        <span>Tampilan</span>
-        <select value={override?.template ?? ""} disabled={disabled} data-testid="scene-template"
-          onChange={e => onChange({ ...override, template: (e.target.value || undefined) as Template | undefined })}>
-          <option value="">Otomatis · {TEMPLATES.find(x => x.id === auto.template)?.label}</option>
-          {TEMPLATES.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}
-        </select>
-      </label>
-      <label>
-        <span>Ikon</span>
-        <select value={override?.icon ?? ""} disabled={disabled || current.template === "compare" || current.template === "cta"} data-testid="scene-icon"
-          onChange={e => onChange({ ...override, icon: e.target.value || undefined })}>
-          <option value="">Otomatis · {autoIcon}</option>
-          <option value="none">Tanpa ikon</option>
-          {Object.entries(ICONS).sort((a, b) => a[1].label.localeCompare(b[1].label, "id")).map(([id, v]) => <option key={id} value={id}>{v.label}</option>)}
-        </select>
-      </label>
-    </div>
   );
 }
