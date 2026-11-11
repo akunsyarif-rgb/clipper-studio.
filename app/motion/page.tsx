@@ -840,6 +840,9 @@ export default function MotionStudio() {
     catch { setStatus("Browser tidak memberi izin clipboard. Gunakan Ekspor proyek JSON."); }
   }
 
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  // Anything that needs the full controls (a clip handed over, a saved session, a chosen video) opens them by itself.
+  useEffect(() => { if (handoffNote || saved || source || offer) setAdvancedOpen(true); }, [handoffNote, saved, source, offer]);
   const busy = rendering || recording || narrationBusy || voiceBusy;
   // Editing over a source video is ordinary content only; the chosen mode comes back when the video is removed.
   const videoMode = videoEdit && !!source;
@@ -949,10 +952,6 @@ export default function MotionStudio() {
   </div>
   );
   const quickPreview = props ? <Player ref={quickPlayer} component={ScriptVideo} inputProps={props} durationInFrames={totalFrames(props.scenes)} fps={FPS} compositionWidth={WIDTH} compositionHeight={HEIGHT} controls style={{ width: "100%", aspectRatio: "9 / 16" }} acknowledgeRemotionLicense /> : null;
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  // Anything that needs the full controls (a clip handed over, a saved session, a chosen video) opens them by itself.
-  useEffect(() => { if (handoffNote || saved || source || offer) setAdvancedOpen(true); }, [handoffNote, saved, source, offer]);
-
   return (
     <main className="motion-shell">
       <header className="motion-header">
