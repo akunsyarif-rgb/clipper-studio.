@@ -2,40 +2,21 @@
 
 import { Player, type PlayerRef } from "@remotion/player";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import { DEFAULT_MUSIC_VOLUME, type Mood } from "@/lib/audio";
-import { NarrationRecorder, type Narration } from "@/lib/recorder";
-import { type CaptionStyleId, FPS, HEIGHT, totalFrames, WIDTH, type ContentPresetId, type PaletteId, type StyleId } from "@/lib/script";
-import { type DirectionOverrides } from "@/lib/voice-director";
-import { ClipCache } from "@/lib/tts/clip-cache";
-import { type TtsLang } from "@/lib/tts/supertonic";
-import { type Transcript } from "@/lib/transcript";
-import { type Cut, type VisualOverride } from "@/lib/visuals";
-import { type Density } from "@/lib/importance";
-import type { BrandMotion, OverlayPosition } from "@/lib/overlay";
+import { useEffect, useRef } from "react";
+import { FPS, HEIGHT, totalFrames, WIDTH } from "@/lib/script";
 import { ScriptVideo } from "@/remotion/ScriptVideo";
 import AppNav from "../AppNav";
 import AiSetupCard from "../AiSetupCard";
 import QuickStart from "../QuickStart";
 import PreRenderChecklist from "../PreRenderChecklist";
-import { type CaptionPos } from "@/lib/caption-box";
-import { setCustomIconEntrance } from "@/lib/visuals";
-import type { Entrance } from "@/lib/icon-motion";
-import { type CinePlan } from "@/lib/cinematic";
-import { type SeoSeed } from "../SeoPanel";
-import { type Edit, type EditProfile } from "@/lib/edit-profile";
-import { type Trim } from "@/lib/trim";
-import { type StickerMode } from "@/lib/stickers";
-import { type SfxMode } from "@/lib/sfx";
-import { DEFAULT_TYPE_PACK, resolveTypePack, type TypePackId } from "@/lib/fonts";
-import { ensureFonts } from "../../remotion/fonts";
-import { DEFAULT_WATERMARK, loadWatermark, saveWatermark, type Watermark } from "@/lib/watermark";
-import { emptyHistory, type History } from "@/lib/revision";
-import { type AffiliateBrief } from "@/lib/affiliate";
 import CloudAccount from "../CloudAccount";
-import type { SceneScore } from "@/lib/gemini";
-import { MODE_KEY, SAMPLE } from "./_components/constants";
-import type { AiNarration, DirectorSnap, Generated, Mode, MusicMode, SceneImageFile, Track, VoiceMode, VoiceProgress } from "./_components/types";
+import usePanelState from "./_hooks/usePanelState";
+import useSceneState from "./_hooks/useSceneState";
+import useLookState from "./_hooks/useLookState";
+import useSourceState from "./_hooks/useSourceState";
+import useMusicState from "./_hooks/useMusicState";
+import useVoiceState from "./_hooks/useVoiceState";
+import useRenderState from "./_hooks/useRenderState";
 import useStudioFlow from "./_hooks/useStudioFlow";
 import useRenderActions from "./_hooks/useRenderActions";
 import useDirector from "./_hooks/useDirector";
@@ -72,121 +53,25 @@ export default function MotionStudio() {
     replayTimer.current = setTimeout(() => { for (const r of [player, quickPlayer]) { try { r.current?.pause(); } catch { /* not on screen */ } } }, 3200);
   }
   useEffect(() => () => { if (replayTimer.current) clearTimeout(replayTimer.current); }, []);
-  const audioInput = useRef<HTMLInputElement>(null);
-  const musicInput = useRef<HTMLInputElement>(null);
-  const abort = useRef<AbortController | null>(null);
-  const recorder = useRef<NarrationRecorder | null>(null);
-  const clipCache = useRef(new ClipCache());
-  /** Each voice run takes a number; a run is current only while no newer run or cancel has moved the counter (no shared flag to reset). */
-  const voiceRun = useRef(0);
-  const voiceActive = useRef(false);
-  const [script, setScript] = useState(SAMPLE);
-  const [title, setTitle] = useState("Sebuah pengingat");
-  const [style, setStyle] = useState<StyleId>("hybrid");
-  const [palette, setPalette] = useState<PaletteId>("violet");
-  const [contentPreset, setContentPreset] = useState<ContentPresetId | "custom">("custom");
-  const [target, setTarget] = useState("auto");
-  const [captions, setCaptions] = useState(true);
-  const [manualNarration, setNarration] = useState<Narration | null>(null);
-  const [voiceMode, setVoiceMode] = useState<VoiceMode>("ai");
-  const [ttsLang, setTtsLang] = useState<TtsLang>("id");
-  const [ttsVoice, setTtsVoice] = useState(0);
-  const [ttsSpeed, setTtsSpeed] = useState(1.05);
-  const [voiceDirectionOverrides, setVoiceDirectionOverrides] = useState<DirectionOverrides>({});
-  const [aiNarration, setAiNarration] = useState<AiNarration | null>(null);
-  const [voiceProgress, setVoiceProgress] = useState<VoiceProgress | null>(null);
-  const [voiceError, setVoiceError] = useState("");
-  const [recordingSeconds, setRecordingSeconds] = useState<number | null>(null);
-  const [narrationBusy, setNarrationBusy] = useState(false);
-  const [audioError, setAudioError] = useState("");
-  const [musicMode, setMusicMode] = useState<MusicMode>("none");
-  const [mood, setMood] = useState<Mood>("tenang");
-  const [moodTouched, setMoodTouched] = useState(false);
-  const [seed, setSeed] = useState(1);
-  const [musicVolume, setMusicVolume] = useState(Math.round(DEFAULT_MUSIC_VOLUME * 100));
-  const [duck, setDuck] = useState(true);
-  const [generated, setGenerated] = useState<Generated | null>(null);
-  const [uploadedMusic, setUploadedMusic] = useState<Track | null>(null);
-  const [musicBusy, setMusicBusy] = useState(false);
-  const [musicError, setMusicError] = useState("");
-  const [status, setStatus] = useState("");
-  const [rendering, setRendering] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [result, setResult] = useState<{ url: string; name: string; size: number } | null>(null);
-  const [renderError, setRenderError] = useState("");
-  const [errorDetail, setErrorDetail] = useState("");
-  /** Manual visual corrections, keyed by scene text so they survive edits to other sentences. */
-  const [overrides, setOverrides] = useState<Record<string, VisualOverride>>({});
-  // Transcript handed over from the clipper: `offer` is waiting in sessionStorage, `imported` was applied to the script.
-  const [offer, setOffer] = useState<{ source: string; transcript: Transcript } | null>(null);
-  const [imported, setImported] = useState<Transcript | null>(null);
-  // Source video for automatic transcript (uploaded right here); its own audio becomes the narration so captions match.
-  const sourceVideo = useRef<HTMLVideoElement>(null);
-  const [source, setSource] = useState<{ file: File; url: string; seconds: number } | null>(null);
-  const [sourceError, setSourceError] = useState("");
-  const [asrBusy, setAsrBusy] = useState(false);
-  // Edit mode: the uploaded video is the base layer (with its own audio); scenes become captions or cutaway graphics.
-  const [videoEdit, setVideoEdit] = useState(false);
-  // The part of the source video that is used (null = all of it) and the range a Clipper clip came with.
-  const [trim, setTrim] = useState<Trim | null>(null);
-  const [trimNote, setTrimNote] = useState("");
-  // Editing profile over a source video (music / comedy): reviewable picture-only edits and the punchlines' caption emphasis, in file time.
-  const [editProfile, setEditProfile] = useState<EditProfile>("standard");
-  const [edits, setEdits] = useState<Edit[]>([]);
-  const [emphasis, setEmphasis] = useState<{ from: number; to: number }[]>([]);
-  const [comedySfx, setComedySfx] = useState(false);
-  const [captionOffset, setCaptionOffset] = useState(0);
-  // Where animations drawn over the speaker sit: the empty space above the head, or just above the captions.
-  const [overlayPos, setOverlayPos] = useState<OverlayPosition>("top");
-  // How many scenes get an animation, and how elaborate a popular name's animation is.
-  const [density, setDensity] = useState<Density>("balanced");
-  // Gemini's opinion per sentence (by its text); optional, kept for this visit only.
-  const [aiScores, setAiScores] = useState<Record<string, SceneScore>>({});
-  const [brandMotion, setBrandMotion] = useState<BrandMotion>("simple");
-  const [storyVisuals, setStoryVisuals] = useState(true);
-  const [stickerMode, setStickerMode] = useState<StickerMode>("off");
-  const [stickerOverrides, setStickerOverrides] = useState<Record<string, string>>({});
-  const [sfxMode, setSfxMode] = useState<SfxMode>("off");
-  const [backdrop, setBackdrop] = useState<"plain" | "mesh">("plain");
-  const [grain, setGrain] = useState(false);
-  // Cinematic Studio: the applied plan (motion preset per scene text + beat-aligned lengths); it stays valid only while the script is unchanged.
-  // Icons from Iconify used by scenes (also stored in the session, so they return without the network).
-  const [iconEntrance, setIconEntranceState] = useState<Entrance>("pop");
-  const chooseEntrance = (e: Entrance) => { setCustomIconEntrance(e); setIconEntranceState(e); };
-  const [customIcons, setCustomIcons] = useState<Record<string, { label: string; node: [string, Record<string, string>][] }>>({});
-  const [cine, setCine] = useState<{ plan: CinePlan; fx: Record<string, string> } | null>(null);
-  const [captionStyle, setCaptionStyle] = useState<CaptionStyleId>("classic");
-  /** Subtitle position and size over a source video (percent of the frame); undefined = the usual place and size. */
-  const [captionPos, setCaptionPos] = useState<CaptionPos | undefined>(undefined);
-  const [typography, setTypography] = useState<TypePackId>(DEFAULT_TYPE_PACK);
-  // Fonts of the chosen pack are fetched as soon as it is chosen, so the preview never shows a fallback face for long.
-  useEffect(() => { void ensureFonts(resolveTypePack(typography)); }, [typography]);
-  const [cutOverrides, setCutOverrides] = useState<Record<string, Cut>>({});
-  // Scene pictures for faceless videos, keyed by scene text like the other per-scene choices.
-  const [images, setImages] = useState<Record<string, SceneImageFile>>({});
-  const [imageError, setImageError] = useState("");
-  // The last "Sutradara AI" pass: why each scene looks as it does (by scene text), and what to restore on undo.
-  const [directorInfo, setDirectorInfo] = useState<Record<string, { reason: string; imageIdea?: string; imageQuery?: string }>>({});
-  const [pickerFor, setPickerFor] = useState<string | null>(null);
-  const [pickerSource, setPickerSource] = useState<"pexels" | "pixabay" | "pixabay-video">("pexels");
-  // Set while the affiliate panel holds a complete product brief: this is then a selling video.
-  const [affiliateBrief, setAffiliateBrief] = useState<AffiliateBrief | null>(null);
-  // Which kind of content this is: ordinary, or a selling (affiliate) video. The last choice is remembered on this device.
-  const [contentMode, setContentMode] = useState<Mode>("normal");
-  const [seoSeed, setSeoSeed] = useState<SeoSeed | null>(null);
-  useEffect(() => { try { if (localStorage.getItem(MODE_KEY) === "affiliate") setContentMode("affiliate"); } catch { /* storage blocked: starts as ordinary content */ } }, []);
-  function chooseMode(m: Mode) { setContentMode(m); try { localStorage.setItem(MODE_KEY, m); } catch { /* not remembered */ } }
-  const [directorNote, setDirectorNote] = useState("");
-  const [guide, setGuide] = useState(false);
-  // Watermark: remembered for this editing session, so it is back for every re-render (and shared with the clipper).
-  const [watermark, setWatermarkState] = useState<Watermark>(DEFAULT_WATERMARK);
-  useEffect(() => { setWatermarkState(loadWatermark()); }, []);
-  const setWatermark = (w: Watermark) => { setWatermarkState(w); saveWatermark(w); };
-  const [directorHistory, setDirectorHistory] = useState<History<DirectorSnap>>(emptyHistory());
-  const imagesRef = useRef(images);
-  imagesRef.current = images;
-  // Where in the source video a "clip" scene starts (seconds), per scene text.
-  const [clipStarts, setClipStarts] = useState<Record<string, number>>({});
+  const {
+    abort, errorDetail, progress, renderError, rendering, result, setErrorDetail, setProgress, setRenderError, setRendering, setResult, setStatus, status,
+  } = useRenderState();
+  const {
+    aiNarration, audioError, audioInput, clipCache, manualNarration, narrationBusy, recorder, recordingSeconds, setAiNarration, setAudioError, setNarration, setNarrationBusy, setRecordingSeconds, setTtsLang, setTtsSpeed, setTtsVoice, setVoiceDirectionOverrides, setVoiceError, setVoiceMode, setVoiceProgress, ttsLang, ttsSpeed, ttsVoice, voiceActive, voiceDirectionOverrides, voiceError, voiceMode, voiceProgress, voiceRun,
+  } = useVoiceState();
+  const {
+    duck, generated, mood, moodTouched, musicBusy, musicError, musicInput, musicMode, musicVolume, seed, setDuck, setGenerated, setMood, setMoodTouched, setMusicBusy, setMusicError, setMusicMode, setMusicVolume, setSeed, setUploadedMusic, uploadedMusic,
+  } = useMusicState();
+  const {
+    asrBusy, captionOffset, comedySfx, density, editProfile, edits, emphasis, imported, offer, overlayPos, setAsrBusy, setCaptionOffset, setComedySfx, setDensity, setEditProfile, setEdits, setEmphasis, setImported, setOffer, setOverlayPos, setSource, setSourceError, setTrim, setTrimNote, setVideoEdit, source, sourceError, sourceVideo, trim, trimNote, videoEdit,
+  } = useSourceState();
+  const {
+    backdrop, brandMotion, captionPos, captionStyle, captions, chooseEntrance, cine, contentPreset, customIcons, grain, iconEntrance, palette, script, setBackdrop, setBrandMotion, setCaptionPos, setCaptionStyle, setCaptions, setCine, setContentPreset, setCustomIcons, setGrain, setPalette, setScript, setSfxMode, setStickerMode, setStickerOverrides, setStoryVisuals, setStyle, setTarget, setTitle, setTypography, setWatermark, sfxMode, stickerMode, stickerOverrides, storyVisuals, style, target, title, typography, watermark,
+  } = useLookState();
+  const {
+    aiScores, clipStarts, cutOverrides, directorHistory, directorInfo, imageError, images, imagesRef, overrides, pickerFor, pickerSource, setAiScores, setClipStarts, setCutOverrides, setDirectorHistory, setDirectorInfo, setImageError, setImages, setOverrides, setPickerFor, setPickerSource,
+  } = useSceneState();
+  const { affiliateBrief, chooseMode, contentMode, directorNote, guide, seoSeed, setAffiliateBrief, setDirectorNote, setGuide, setSeoSeed } = usePanelState();
 
   const {
     applyTrim, autosave, cloudUser, handoffNote, onSourceVideo, saved, savedCloud, savedSource, setAutosave, setCloudUser, setHandoffNote, setSaved, setSavedCloud, setSavedSource,
