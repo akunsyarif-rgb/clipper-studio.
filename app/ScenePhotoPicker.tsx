@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ResultsBar from "./ResultsBar";
 import { creditText, downloadPhoto, PexelsError, searchPhotos, type PexelsPhoto } from "@/lib/pexels";
 
 /**
@@ -18,6 +19,7 @@ export default function ScenePhotoPicker({ initialQuery, onChoose, onClose }: {
   const [choosing, setChoosing] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [remaining, setRemaining] = useState<number | null>(null);
+  const [hidden, setHidden] = useState(false);
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
 
@@ -25,7 +27,7 @@ export default function ScenePhotoPicker({ initialQuery, onChoose, onClose }: {
     if (q.trim().length < 2) { setError("Ketik kata kunci pencarian (bahasa Inggris hasilnya lebih tepat)."); return; }
     abort.current?.abort();
     const ctl = new AbortController(); abort.current = ctl;
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setHidden(false);
     try {
       const r = await searchPhotos(q.trim(), { perPage: 6, signal: ctl.signal });
       setPhotos(r.photos); setRemaining(r.remaining);
@@ -49,7 +51,8 @@ export default function ScenePhotoPicker({ initialQuery, onChoose, onClose }: {
       <button type="button" onClick={onClose} className="text-link" data-testid="photo-close">Tutup</button>
     </form>
     {error && <div className="notice notice-error" role="alert" data-testid="photo-error">{error}</div>}
-    {photos && photos.length > 0 && <div className="photo-grid" data-testid="photo-grid">
+    {photos && photos.length > 0 && <ResultsBar count={photos.length} hidden={hidden} onToggle={() => setHidden(h => !h)} label="foto" testId="photo-toggle" />}
+    {photos && photos.length > 0 && !hidden && <div className="photo-grid" data-testid="photo-grid">
       {photos.map(p => (
         <div key={p.id} className="photo-card">
           <button type="button" onClick={() => void choose(p)} disabled={choosing !== null} data-testid="photo-choice" aria-label={`Pakai foto ${p.alt || p.id}`}>
@@ -61,6 +64,6 @@ export default function ScenePhotoPicker({ initialQuery, onChoose, onClose }: {
         </div>
       ))}
     </div>}
-    <small className="photo-note">Foto dari <a href="https://www.pexels.com" target="_blank" rel="noreferrer noopener">Pexels</a>, gratis dipakai (lisensi Pexels){remaining !== null ? `; sisa kuota pencarian jam ini: ${remaining}` : ""}.</small>
+    {!hidden && <small className="photo-note">Foto dari <a href="https://www.pexels.com" target="_blank" rel="noreferrer noopener">Pexels</a>, gratis dipakai (lisensi Pexels){remaining !== null ? `; sisa kuota pencarian jam ini: ${remaining}` : ""}.</small>}
   </div>;
 }

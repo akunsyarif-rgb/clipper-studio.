@@ -1,5 +1,6 @@
 "use client";
 
+import ResultsBar from "./ResultsBar";
 import { useEffect, useRef, useState } from "react";
 import { downloadProductImage, normalizeLink, ProductError } from "@/lib/product";
 import { aiExtractor, researchEverything, type ProductResearch as Research, type ResearchFact, type ResearchImage } from "@/lib/product-research";
@@ -28,6 +29,7 @@ export default function ProductResearch({ product, link, onUseFacts, onUsePrice,
   const [result, setResult] = useState<Research | null>(null);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState("");
+  const [imagesHidden, setImagesHidden] = useState(false);
   const [picking, setPicking] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
 
@@ -102,7 +104,8 @@ export default function ProductResearch({ product, link, onUseFacts, onUsePrice,
 
       {result.images.length > 0 && <div className="aff-images" data-testid="aff-images">
         <b>Gambar dari halaman produk</b>
-        <div className="photo-grid">
+        <ResultsBar count={Math.min(8, result.images.length)} hidden={imagesHidden} onToggle={() => setImagesHidden(h => !h)} label="gambar" testId="aff-images-toggle" />
+        {!imagesHidden && <div className="photo-grid">
           {result.images.slice(0, 8).map(img => <div key={img.url} className="photo-card">
             <button type="button" onClick={() => void choosePicture(img)} disabled={disabled || picking !== null} data-testid="aff-image" aria-label={`Pakai gambar dari ${img.host}`}>
               {/* eslint-disable-next-line @next/next/no-img-element -- third-party product pictures shown as they are; no referrer so shop hotlink rules do not blank them */}
@@ -111,7 +114,7 @@ export default function ProductResearch({ product, link, onUseFacts, onUsePrice,
             </button>
             <small><a href={img.pageUrl} target="_blank" rel="noreferrer noopener">{img.host}</a></small>
           </div>)}
-        </div>
+        </div>}
         <small>Gambar produk milik toko atau merek yang membuatnya. Pakai untuk mempromosikan produk itu dan sesuai izin program afiliasi atau penjual; pastikan Anda boleh memakainya. Sumbernya ikut tampil di bawah scene.</small>
       </div>}
     </div>}

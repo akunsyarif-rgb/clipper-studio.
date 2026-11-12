@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { type PlayerRef } from "@remotion/player";
 import { moodForStyle, type Mood } from "@/lib/audio";
 import { MAX_SECONDS, PALETTES, type PaletteId, type StyleId } from "@/lib/script";
@@ -69,6 +70,8 @@ type Props = {
 };
 
 export default function ImagesStep({ animationPlan, applyIcon, autoPhotos, chooseEntrance, clipStarts, cutOverrides, directorInfo, goFlow, iconEntrance, imageError, images, manualChoice, musicMode, narrativePlan, onSceneImage, overrides, palette, pickerFor, pickerSource, planned, player, putPixabayPhoto, putPixabayVideo, putStockPhoto, queryHints, removeSceneImage, rendering, sceneContext, sceneList, sceneVisuals, setClipStarts, setCutOverrides, setMood, setMusicMode, setOverrides, setPickerFor, setPickerSource, setStickerOverrides, source, sourceVideo, stickerMode, stickerOverrides, style, timeline, videoEdit }: Props) {
+  const [listHidden, setListHidden] = useState(false);
+  const [detail, setDetail] = useState(false);
   return (
     <section className="flow-step" data-step="2" data-testid="flow-step-2">
       <div className="step-title" data-testid="step-2"><b>2</b>Gambar</div>
@@ -80,7 +83,14 @@ export default function ImagesStep({ animationPlan, applyIcon, autoPhotos, choos
         // Over a source video a picture only appears in a full-screen cutaway, so automatic filling covers just those scenes.
         scenes={timeline.scenes.map((sc, i) => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery, hasImage: !!images[sc.text] || (!!(videoEdit && source) && sceneList[i]?.cut !== "graphic") }))} />}
       <div className="timeline-heading"><h3>Timeline scene</h3><span>{timeline.ok ? `${timeline.scenes.length} scene · maks. ${MAX_SECONDS} dtk` : ""}</span></div>
-      <div className="scene-list" data-testid="scenes">{timeline.ok && (() => { let t = 0; return timeline.scenes.map((s, i) => { const from = t; t += s.durationInFrames; return (
+      {timeline.ok && <div className="results-bar" data-testid="scenes-bar">
+        <small>Detail per scene</small>
+        <span>
+          {!listHidden && <button type="button" className="text-link" aria-pressed={detail} onClick={() => setDetail(d => !d)} data-testid="scenes-detail-toggle">{detail ? "Ringkas" : "Tampilkan detail analisis"}</button>}
+          <button type="button" className="text-link" aria-expanded={!listHidden} onClick={() => setListHidden(h => !h)} data-testid="scenes-toggle">{listHidden ? "Tampilkan daftar" : "Sembunyikan daftar"}</button>
+        </span>
+      </div>}
+      {!listHidden && <div className="scene-list" data-testid="scenes" data-compact={detail ? undefined : "1"}>{timeline.ok && (() => { let t = 0; return timeline.scenes.map((s, i) => { const from = t; t += s.durationInFrames; return (
         <div className="scene-item" key={i} data-testid="scene-item">
           <SceneItem
             animationPlan={animationPlan} clipStarts={clipStarts} cutOverrides={cutOverrides} directorInfo={directorInfo} from={from} i={i} images={images}
@@ -90,7 +100,7 @@ export default function ImagesStep({ animationPlan, applyIcon, autoPhotos, choos
             sceneVisuals={sceneVisuals} setClipStarts={setClipStarts} setCutOverrides={setCutOverrides} setOverrides={setOverrides} setPickerFor={setPickerFor}
             setPickerSource={setPickerSource} setStickerOverrides={setStickerOverrides} source={source} sourceVideo={sourceVideo} stickerMode={stickerMode}
             stickerOverrides={stickerOverrides} t={t} videoEdit={videoEdit} />
-        </div>); }); })()}</div>
+        </div>); }); })()}</div>}
       {timeline.ok && <p className="preview-disclaimer" data-testid="image-note">{imageError ? <span className="scene-image-error" data-testid="image-error">{imageError} </span> : null}{videoEdit && source ? "Di video sumber, gambar tampil sebagai layar penuh (maks. 4 detik) pada scene itu, dan pembicara kembali setelahnya. " : null}Gambar latar hanya dipakai di perangkat ini dan tidak ikut tersimpan atau tersinkron; pilih lagi setelah memuat ulang halaman. Pakai gambar milik Anda, foto Pexels/Pixabay, atau yang boleh dipakai ulang: gambar dari internet (mis. Pinterest) belum tentu bebas hak cipta.</p>}
       <FlowStepNav step={2} onGo={goFlow} />
     </section>

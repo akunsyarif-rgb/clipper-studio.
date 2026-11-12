@@ -133,7 +133,7 @@ function SceneImage({ src, video, index, length, colors }: { src: string; video?
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
       {video ? <Video src={resolveAudio(src)} muted loop objectFit="cover" /> : <Img src={resolveAudio(src)} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${k.scale}) translate(${k.x}%, ${k.y}%)` }} />}
-      <AbsoluteFill style={{ background: `linear-gradient(180deg, ${colors.bg1}66 0%, ${colors.bg1}b8 34%, ${colors.bg1}d9 62%, ${colors.bg1}e6 100%)` }} />
+      <AbsoluteFill style={{ background: `linear-gradient(180deg, ${colors.bg1}33 0%, ${colors.bg1}8c 34%, ${colors.bg1}b3 62%, ${colors.bg1}cc 100%)` }} />
     </AbsoluteFill>
   );
 }
@@ -166,7 +166,7 @@ function SceneView({ scene, index, count, title, style, colors, layout, insets, 
   return (
     <AbsoluteFill style={{ opacity: fx ? fx.opacity : fadeIn }}>
       {fx && scene.fx === "liquid-glass" ? <div data-fx-glass="1" style={{ position: "absolute", left: SAFE.side - 24, right: SAFE.side - 24, top: box.top + box.height * 0.2, height: box.height * 0.6, borderRadius: 56, transform: `translateY(${fx.y}px) scale(${fx.scale})`, background: `linear-gradient(135deg, ${colors.text}2e 0%, ${colors.text}0d 55%, ${colors.accent}1f 100%)`, border: `1.5px solid ${colors.text}40`, boxShadow: `0 30px 90px ${colors.bg1}aa, inset 0 1px 0 ${colors.text}59` }} /> : null}
-      {scene.image ? <SceneImage src={scene.image} index={index} length={d} colors={colors} /> : null}
+      {scene.videoSrc ? <SceneImage src={scene.videoSrc} video index={index} length={d} colors={colors} /> : scene.image ? <SceneImage src={scene.image} index={index} length={d} colors={colors} /> : null}
       {/* Everything stays inside the platform safe area; the full safe box is used because text scenes carry no caption band. */}
       <div data-fx-mask={fx && fx.reveal < 1 ? "1" : undefined} style={{ position: "absolute", inset: 0, clipPath: fx && fx.reveal < 1 ? `inset(0 0 ${HEIGHT - FX_MASK_LINE}px 0)` : undefined }}>
       <div data-family={family} style={{ position: "absolute", top: box.top, left: SAFE.side, width: box.width, height: box.height, display: "flex", flexDirection: "column", justifyContent: "center", color: colors.text, transform: fx ? `translate(${fx.x}px, ${fx.y + drift * 0.3}px) scale(${fx.scale})` : `translateY(${drift}px) scale(${popScale})`, filter: (fx ? fx.blur : blur) ? `blur(${fx ? fx.blur : blur}px)` : undefined }}>
