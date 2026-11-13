@@ -43,12 +43,14 @@ try {
     const body = JSON.parse(route.request().postData() || "{}");
     searches.push(body.action);
     if (body.action === "search") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ photos: [1, 2, 3, 4, 5, 6, 7, 8].map(n => ({ id: n, alt: "x" + n, photographer: "Fotografer", pageUrl: "https://pixabay.com/p/" + n, thumb: "https://cdn.pixabay.com/photo/t" + n + ".jpg", image: "https://cdn.pixabay.com/photo/i" + n + ".jpg" })), totalHits: 8 }) });
-    if (body.action === "video-search") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ videos: [{ id: 901, tags: "city", photographer: "Videografer", pageUrl: "https://pixabay.com/v/901", duration: 3, url: "https://cdn.pixabay.com/video/901.mp4", thumbnail: "https://cdn.pixabay.com/video/t901.jpg", width: 360, height: 640, size: 300000 }], totalHits: 1 }) });
+    if (body.action === "video-search") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ videos: [901, 902].map(id => ({ id, tags: "city", photographer: "Videografer", pageUrl: "https://pixabay.com/v/" + id, duration: 3, url: `https://cdn.pixabay.com/video/${id}.mp4`, thumbnail: `https://cdn.pixabay.com/video/t${id}.jpg`, width: 360, height: 640, size: 300000 })), totalHits: 2 }) });
     return route.fulfill({ status: 200, contentType: "image/jpeg", body: jpg });
   });
   await page.route("https://cdn.pixabay.com/photo/**", r => r.fulfill({ status: 200, contentType: "image/jpeg", body: jpg, headers: { "access-control-allow-origin": "*" } }));
   await page.route("https://cdn.pixabay.com/video/t*.jpg", r => r.fulfill({ status: 200, contentType: "image/jpeg", body: jpg, headers: { "access-control-allow-origin": "*" } }));
   await page.route("https://cdn.pixabay.com/video/*.mp4", r => r.fulfill({ status: 200, contentType: "video/webm", body: webm, headers: { "access-control-allow-origin": "*", "accept-ranges": "bytes" } }));
+  // Clip 902 is gone from the CDN: it must not break the preview.
+  await page.route("https://cdn.pixabay.com/video/902.mp4", r => r.fulfill({ status: 404, body: "gone" }));
 
   await page.goto(BASE);
   await page.getByTestId("advanced-settings").evaluate(d => { d.open = true; });
@@ -94,6 +96,18 @@ try {
     await page.getByTestId("pixabay-video-choice").first().click();
     await page.getByTestId("scene-image-preview").nth(1).click();
     await page.waitForFunction(() => document.querySelectorAll(".player-wrap video, .player-wrap canvas").length > 0, null, { timeout: 8000 });
+  });
+
+  await step("a stock clip that cannot be loaded does not throw: the scene keeps its text and the preview stays up", async () => {
+    await page.getByTestId("scene-video-pixabay").nth(2).scrollIntoViewIfNeeded();
+    await page.getByTestId("scene-video-pixabay").nth(2).click();
+    await page.getByTestId("pixabay-video-query").fill("city");
+    await page.getByTestId("pixabay-video-search").click();
+    await page.getByTestId("pixabay-video-toggle").waitFor();
+    await page.getByTestId("pixabay-video-choice").nth(1).click();
+    await page.getByTestId("scene-image-preview").nth(2).click();
+    await page.waitForTimeout(2500);
+    assert(await page.locator(".player-wrap").isVisible(), "the preview is still there");
   });
 
   await step("the long analysis text of the scene list is hidden by default, can be shown, and the whole list can be hidden", async () => {

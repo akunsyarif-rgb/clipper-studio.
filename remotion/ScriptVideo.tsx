@@ -132,7 +132,7 @@ function SceneImage({ src, video, index, length, colors }: { src: string; video?
   const k = kenBurns(index, frame, length);
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
-      {video ? <Video src={resolveAudio(src)} muted loop objectFit="cover" /> : <Img src={resolveAudio(src)} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${k.scale}) translate(${k.x}%, ${k.y}%)` }} />}
+      {video ? <Video src={resolveAudio(src)} muted loop objectFit="cover" fallbackOffthreadVideoProps={{ onError: () => { /* a stock clip that cannot be loaded leaves the scene with its background and text, instead of throwing */ } }} /> : <Img src={resolveAudio(src)} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${k.scale}) translate(${k.x}%, ${k.y}%)` }} />}
       <AbsoluteFill style={{ background: `linear-gradient(180deg, ${colors.bg1}33 0%, ${colors.bg1}8c 34%, ${colors.bg1}b3 62%, ${colors.bg1}cc 100%)` }} />
     </AbsoluteFill>
   );
