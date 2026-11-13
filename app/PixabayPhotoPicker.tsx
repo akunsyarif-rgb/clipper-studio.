@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ResultsBar from "./ResultsBar";
 import { downloadPixabayPhoto, PixabayError, searchPixabayPhotos, pixabayCredit, type PixabayPhoto, type PixabayImageType } from "@/lib/pixabay";
 
 export default function PixabayPhotoPicker({ initialQuery, onChoose, onClose }: {
@@ -14,6 +15,7 @@ export default function PixabayPhotoPicker({ initialQuery, onChoose, onClose }: 
   const [busy, setBusy] = useState(false);
   const [choosing, setChoosing] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [hidden, setHidden] = useState(false);
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
 
@@ -21,7 +23,7 @@ export default function PixabayPhotoPicker({ initialQuery, onChoose, onClose }: 
     if (q.trim().length < 2) { setError("Ketik minimal dua karakter. Kata kunci bahasa Inggris biasanya memberi hasil lebih baik."); return; }
     abort.current?.abort();
     const ctl = new AbortController(); abort.current = ctl;
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setHidden(false);
     try {
       const result = await searchPixabayPhotos(q.trim(), { perPage: 8, imageType, signal: ctl.signal });
       setPhotos(result.photos);
@@ -52,7 +54,8 @@ export default function PixabayPhotoPicker({ initialQuery, onChoose, onClose }: 
       <button type="button" onClick={onClose} className="text-link">Tutup</button>
     </form>
     {error && <div className="notice notice-error" role="alert" data-testid="pixabay-error">{error}</div>}
-    {photos && photos.length > 0 && <div className="photo-grid" data-testid="pixabay-photo-grid">
+    {photos && photos.length > 0 && <ResultsBar count={photos.length} hidden={hidden} onToggle={() => setHidden(h => !h)} label="gambar" testId="pixabay-photo-toggle" />}
+    {photos && photos.length > 0 && !hidden && <div className="photo-grid" data-testid="pixabay-photo-grid">
       {photos.map(photo => (
         <div key={photo.id} className="photo-card">
           <button type="button" onClick={() => void choose(photo)} disabled={choosing !== null} data-testid="pixabay-photo-choice" aria-label={`Pakai gambar ${photo.alt || photo.id}`}>
@@ -64,6 +67,6 @@ export default function PixabayPhotoPicker({ initialQuery, onChoose, onClose }: 
         </div>
       ))}
     </div>}
-    <small className="photo-note">Foto, ilustrasi, dan vektor dari <a href="https://pixabay.com" target="_blank" rel="noreferrer noopener">Pixabay</a>. Aset terpilih diunduh sebelum dipakai; hasil pencarian di-cache 24 jam sesuai ketentuan API.</small>
+    {!hidden && <small className="photo-note">Foto, ilustrasi, dan vektor dari <a href="https://pixabay.com" target="_blank" rel="noreferrer noopener">Pixabay</a>. Aset terpilih diunduh sebelum dipakai; hasil pencarian di-cache 24 jam sesuai ketentuan API.</small>}
   </div>;
 }

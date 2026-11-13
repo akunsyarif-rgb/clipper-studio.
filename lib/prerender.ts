@@ -2,8 +2,8 @@
 // Warnings never block a render; they say what is missing and, where there is one, offer a one-tap fix.
 import { MIN_SCENE_SECONDS, readingSeconds } from "./script";
 
-export type FixId = "music" | "duration" | "cta";
-export type Check = { id: "sound" | "scene-length" | "cta" | "length"; level: "ok" | "warn"; title: string; detail: string; fix?: { id: FixId; label: string } };
+export type FixId = "music" | "duration" | "cta" | "voice";
+export type Check = { id: "voice" | "sound" | "scene-length" | "cta" | "length"; level: "ok" | "warn"; title: string; detail: string; fix?: { id: FixId; label: string } };
 export type PrerenderInput = {
   hasMusic: boolean;
   /** A voice-over (own recording or automatic voice) is in the video. */
@@ -14,6 +14,8 @@ export type PrerenderInput = {
   totalSeconds: number;
   /** The length can be changed by the "Durasi" setting (a fixed target); false when scenes follow a beat plan, a narration or a transcript. */
   durationAdjustable: boolean;
+  /** The automatic voice is chosen but not made yet (or no longer matches the script): the render cannot start until it is made. */
+  voicePending?: boolean;
   /** The film was built by the Cinematic Studio, which always closes with a call to action. */
   closesWithCta: boolean;
 };
@@ -31,6 +33,7 @@ export const sceneIsTooFast = (s: { text: string; seconds: number }): boolean =>
 
 export function prerenderChecks(i: PrerenderInput): Check[] {
   const out: Check[] = [];
+  if (i.voicePending) out.push({ id: "voice", level: "warn", title: "Suara otomatis belum dibuat", detail: "Render baru bisa dimulai setelah suara dari naskah dibuat (cukup sekali; hanya kalimat yang berubah dibuat ulang).", fix: { id: "voice", label: "Buat suara otomatis" } });
   const sound = i.hasMusic || i.hasVoice || i.hasSourceAudio;
   out.push(sound
     ? { id: "sound", level: "ok", title: "Suara atau musik", detail: i.hasVoice ? "Ada suara narasi." : i.hasMusic ? "Ada musik latar." : "Memakai suara dari video sumber." }

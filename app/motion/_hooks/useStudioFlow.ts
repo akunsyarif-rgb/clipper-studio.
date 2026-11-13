@@ -13,6 +13,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { TimelineResult } from "@/lib/script";
 
 type Inputs = {
+  generateVoice: () => Promise<void>;
   cine: { plan: CinePlan; fx: Record<string, string>; } | null;
   cineActive: boolean;
   contentMode: Mode;
@@ -47,7 +48,7 @@ type Inputs = {
   voiceMode: VoiceMode;
 };
 
-export default function useStudioFlow({ cine, cineActive, contentMode, contentPreset, handoffNote, mode, musicMode, narration, narrationBusy, offer, palette, recording, rendering, replayPreview, result, saved, script, setContentPreset, setMood, setMusicMode, setPalette, setScript, setStatus, setStyle, setTarget, source, style, timeline, title, videoEdit, voiceBusy, voiceMode }: Inputs) {
+export default function useStudioFlow({ cine, cineActive, contentMode, contentPreset, generateVoice, handoffNote, mode, musicMode, narration, narrationBusy, offer, palette, recording, rendering, replayPreview, result, saved, script, setContentPreset, setMood, setMusicMode, setPalette, setScript, setStatus, setStyle, setTarget, source, style, timeline, title, videoEdit, voiceBusy, voiceMode }: Inputs) {
 const [advancedOpen, setAdvancedOpen] = useState(false);
   // Anything that needs the full controls (a clip handed over, a saved session, a chosen video) opens them by itself.
   useEffect(() => { if (handoffNote || saved || source || offer) setAdvancedOpen(true); }, [handoffNote, saved, source, offer]);
@@ -62,10 +63,12 @@ const [advancedOpen, setAdvancedOpen] = useState(false);
     scenes: timeline.scenes.map(sc => ({ text: sc.text, seconds: sc.durationInFrames / FPS })), totalSeconds: timeline.seconds,
     durationAdjustable: mode.kind === "target" && !(videoEdit && source) && voiceMode !== "ai",
     closesWithCta: cineActive && cine!.plan.scenes.at(-1)?.act === "cta",
+    voicePending: voiceMode === "ai" && !narration,
   }) : [];
   function applyFix(id: FixId) {
     if (id === "music") { setMusicMode("auto"); setMood(moodForStyle(style)); }
     else if (id === "duration") setTarget("auto");
+    else if (id === "voice") void generateVoice();
     else if (id === "cta") {
       const line = suggestCta({ text: script, title }).text.slice(0, 100);
       if (line && !splitScript(script).includes(line)) setScript(prev => `${prev.replace(/\s+$/, "")}\n${line}`.slice(0, 3000));

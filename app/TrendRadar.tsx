@@ -1,5 +1,6 @@
 "use client";
 
+import ResultsBar from "./ResultsBar";
 import { useEffect, useRef, useState } from "react";
 import { cloud } from "@/lib/cloud";
 import { ageLabel, forgetYoutubeKey, saveYoutubeKey, scanTrends, signalsText, SOURCE_LABEL, statusLine, TrendsError, youtubeStatus, type Scan, type TrendSignal } from "@/lib/trends";
@@ -29,6 +30,7 @@ export default function TrendRadar({ niche, onUse, disabled }: { niche: string; 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [scan, setScan] = useState<Scan | null>(null);
+  const [listHidden, setListHidden] = useState(false);
   const [fromCache, setFromCache] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [added, setAdded] = useState(false);
@@ -99,11 +101,14 @@ export default function TrendRadar({ niche, onUse, disabled }: { niche: string; 
         <small className="field-hint" data-testid="radar-status">{statusLine(scan.status)}</small>
         {scan.items.length === 0
           ? <small data-testid="radar-empty">Tidak ada sinyal untuk topik ini. Coba kata yang lebih umum, atau pindai tanpa topik.</small>
-          : <ul className="seo-list radar-list">{scan.items.map(s => (
+          : <>
+            <ResultsBar count={scan.items.length} hidden={listHidden} onToggle={() => setListHidden(h => !h)} label="sinyal" testId="radar-toggle" />
+            {!listHidden && <ul className="seo-list radar-list">{scan.items.map(s => (
             <li key={id(s)} data-testid="radar-item">
               <label><input type="checkbox" checked={picked.has(id(s))} onChange={() => toggle(s)} disabled={!picked.has(id(s)) && picked.size >= 5} /> <b>{s.title}</b></label>{" "}
               <small>{SOURCE_LABEL[s.source]}{s.also.length ? ` + ${s.also.map(a => SOURCE_LABEL[a]).join(", ")}` : ""} · {s.engLabel}{s.ts ? ` · ${ageLabel(s.ts)}` : ""} · <a href={s.url} target="_blank" rel="noopener noreferrer">buka</a></small>
             </li>))}</ul>}
+          </>}
         {scan.items.length > 0 && <div className="range-tools">
           <button type="button" onClick={() => { onUse(signalsText(chosen)); setAdded(true); }} disabled={!chosen.length || disabled} data-testid="radar-use">{added ? "Ditambahkan ✓" : `Masukkan ${chosen.length || ""} ke kolom tren`}</button>
           <small className="field-hint">Maksimal 5. Anda masih bisa mengubah teksnya sebelum AI menulis ide.</small>

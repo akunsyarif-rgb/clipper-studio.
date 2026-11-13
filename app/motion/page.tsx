@@ -32,6 +32,7 @@ import useTimeline from "./_hooks/useTimeline";
 import useSourceVideo from "./_hooks/useSourceVideo";
 import VoiceStep from "./_components/VoiceStep";
 import ImagesStep from "./_components/ImagesStep";
+import DirectorSection from "./_components/DirectorSection";
 import ScriptStep from "./_components/ScriptStep";
 import RemotionNote from "./_components/RemotionNote";
 import ModeSwitch from "./_components/ModeSwitch";
@@ -143,7 +144,7 @@ export default function MotionStudio() {
   const {
     activeMode, advancedOpen, applyFix, busy, colors, flowStep, goFlow, goSave, goSeo, makeAnother, preChecks, rememberStyle, saveOpen, setAdvancedOpen, styleUndo, tryOtherStyle, undoStyle, videoMode,
   } = useStudioFlow({
-    cine, cineActive, contentMode, contentPreset, handoffNote, mode, musicMode, narration, narrationBusy, offer, palette, recording, rendering, replayPreview, result, saved, script, setContentPreset, setMood, setMusicMode, setPalette, setScript, setStatus, setStyle, setTarget, source, style, timeline, title, videoEdit, voiceBusy, voiceMode,
+    cine, cineActive, generateVoice, contentMode, contentPreset, handoffNote, mode, musicMode, narration, narrationBusy, offer, palette, recording, rendering, replayPreview, result, saved, script, setContentPreset, setMood, setMusicMode, setPalette, setScript, setStatus, setStyle, setTarget, source, style, timeline, title, videoEdit, voiceBusy, voiceMode,
   });
   const studioGrid = (
   <div className="studio-grid flow" data-flow-step={flowStep}>
@@ -165,6 +166,7 @@ export default function MotionStudio() {
       sourceError={sourceError} sourceVideo={sourceVideo} timed={timed} timeline={timeline} timings={timings} title={title} titleError={titleError}
       trim={trim} trimNote={trimNote} undoEditPlan={undoEditPlan} useTimingOnly={useTimingOnly} videoEdit={videoEdit} voiceMode={voiceMode} />
     <ImagesStep
+      director={<DirectorSection activeMode={activeMode} affiliateBrief={affiliateBrief} applyDirector={applyDirector} cutOverrides={cutOverrides} directorHistory={directorHistory} directorInfo={directorInfo} directorNote={directorNote} imported={imported} overrides={overrides} palette={palette} redoDirector={redoDirector} source={source} style={style} timeline={timeline} undoDirector={undoDirector} videoEdit={videoEdit} />}
       animationPlan={animationPlan} applyIcon={applyIcon} autoPhotos={autoPhotos} chooseEntrance={chooseEntrance} clipStarts={clipStarts}
       cutOverrides={cutOverrides} directorInfo={directorInfo} goFlow={goFlow} iconEntrance={iconEntrance} imageError={imageError} images={images}
       manualChoice={manualChoice} musicMode={musicMode} narrativePlan={narrativePlan} onSceneImage={onSceneImage} overrides={overrides} palette={palette}
@@ -189,13 +191,13 @@ export default function MotionStudio() {
       voiceDirectionOverrides={voiceDirectionOverrides} voiceDirections={voiceDirections} voiceError={voiceError} voiceMode={voiceMode}
       voiceProgress={voiceProgress} voiceSegmentKeys={voiceSegmentKeys} />
     <StyleStep
-      activeMode={activeMode} affiliateBrief={affiliateBrief} applyDirector={applyDirector} backdrop={backdrop} captionPos={captionPos} captions={captions}
-      contentPreset={contentPreset} cutOverrides={cutOverrides} directorHistory={directorHistory} directorInfo={directorInfo} directorNote={directorNote}
-      goFlow={goFlow} grain={grain} imported={imported} overrides={overrides} palette={palette} redoDirector={redoDirector} rememberStyle={rememberStyle}
+      backdrop={backdrop} captionPos={captionPos} captions={captions}
+      contentPreset={contentPreset}
+      goFlow={goFlow} grain={grain} palette={palette} rememberStyle={rememberStyle}
       rendering={rendering} replayPreview={replayPreview} setBackdrop={setBackdrop} setCaptionPos={setCaptionPos} setContentPreset={setContentPreset}
       setGrain={setGrain} setPalette={setPalette} setStoryVisuals={setStoryVisuals} setStyle={setStyle} setTypography={setTypography}
       setWatermark={setWatermark} showCaptionFrame={showCaptionFrame} source={source} storyVisuals={storyVisuals} style={style} styleUndo={styleUndo}
-      timeline={timeline} tryOtherStyle={tryOtherStyle} typography={typography} undoDirector={undoDirector} undoStyle={undoStyle} videoEdit={videoEdit}
+      tryOtherStyle={tryOtherStyle} typography={typography} undoStyle={undoStyle} videoEdit={videoEdit}
       watermark={watermark} />
     <RenderStep
       abort={abort} applyFix={applyFix} base={base} blocker={blocker} copyBrief={copyBrief} entrySeo={entrySeo} errorDetail={errorDetail}

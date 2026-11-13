@@ -196,3 +196,11 @@ body{color-scheme:dark}
 .model-recs .rec-head { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
 .model-recs .rec-head em { font-style: normal; color: var(--green); font-size: 12px; }
 .model-recs small { color: var(--muted); }
+
+/* Result lists that can grow long: a thin bar with the count and a hide/show button; compact scene rows hide the long analysis text. */
+.results-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:6px 0}
+.results-bar small{color:var(--m-muted,#9ca4ba);font-size:11px}
+.results-bar span{display:inline-flex;gap:14px;flex-wrap:wrap}
+.results-bar .text-link{margin-top:0;border:0;background:none;color:#b6f9de;font-size:11px;cursor:pointer;padding:6px 0;min-height:32px}
+.scene-list[data-compact] .narrative-reason:not(.director-reason):not([data-testid=scene-importance]),.scene-list[data-compact] .narrative-continuity{display:none}
+@media(max-width:520px){.photo-grid{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:110px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;padding-bottom:6px}.photo-grid .photo-card{scroll-snap-align:start}}

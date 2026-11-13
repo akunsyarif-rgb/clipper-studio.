@@ -454,10 +454,10 @@ const ACCENT_GAP = 32;
 export function FamilyView(props: FamilyProps) {
   const { scene, visual, box, colors } = props;
   const text = stripMarks(scene.text);
-  const sticker = scene.sticker && !scene.image ? scene.sticker : null;
+  const sticker = scene.sticker && !scene.image && !scene.videoSrc ? scene.sticker : null;
   const kind = sticker || props.storyVisuals === false ? null : chooseStoryVisual({
     family: props.family, layout: props.layout ?? "standard", role: props.role, template: visual.template,
-    occupied: !!scene.image || !!(visual.iconPinned && visual.icon),
+    occupied: !!scene.image || !!scene.videoSrc || !!(visual.iconPinned && visual.icon),
     causeEffect: visual.template !== "list" && splitCause(text) !== null,
   });
   const size = sticker ? Math.min(240, Math.round(box.height * 0.22)) : Math.min(320, Math.round(box.height * 0.3));

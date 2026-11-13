@@ -1,5 +1,6 @@
 "use client";
 
+import ResultsBar from "./ResultsBar";
 import { useEffect, useRef, useState } from "react";
 import { fetchIcon, getSvgDirectUrl, ICON_SETS, IconifyError, resolveSceneIcon, searchSvgIcons, type LoadedIcon } from "@/lib/iconify";
 import { iconLookupFor } from "@/lib/icon-keywords";
@@ -25,6 +26,7 @@ export default function IconifyPanel({ scenes, accent, disabled, entrance, onEnt
   const [results, setResults] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  const [hidden, setHidden] = useState(false);
   const [error, setError] = useState("");
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
@@ -34,7 +36,7 @@ export default function IconifyPanel({ scenes, accent, disabled, entrance, onEnt
 
   async function search() {
     if (!keyword.trim()) return;
-    setBusy(true); setError(""); setNote("");
+    setBusy(true); setError(""); setNote(""); setHidden(false);
     const ctl = new AbortController(); abort.current = ctl;
     try { const r = await searchSvgIcons(keyword, 12, { signal: ctl.signal }); setResults(r); if (r.length === 0) setNote("Tidak ada ikon untuk kata itu. Coba kata bahasa Inggris."); }
     catch (e) { fail(e); } finally { setBusy(false); }
@@ -86,7 +88,8 @@ export default function IconifyPanel({ scenes, accent, disabled, entrance, onEnt
       <button type="button" onClick={() => void search()} disabled={disabled || busy || !keyword.trim()} data-testid="icon-search">Cari ikon</button>
       {error && <div className="notice notice-error" role="alert" data-testid="icon-error">{error}</div>}
       {note && <div className="notice" role="status" data-testid="icon-note">{note}</div>}
-      {results && results.length > 0 && <div className="icon-grid" data-testid="icon-results">
+      {results && results.length > 0 && <ResultsBar count={results.length} hidden={hidden} onToggle={() => setHidden(h => !h)} label="ikon" testId="icon-toggle" />}
+      {results && results.length > 0 && !hidden && <div className="icon-grid" data-testid="icon-results">
         {results.map(name => <button key={name} type="button" className="icon-choice" disabled={disabled || busy} title={name} aria-label={name} onClick={() => void choose(name)} data-testid="icon-choice">
           {/* Preview thumbnail only; the icon used in the video is vector data, not this image. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}

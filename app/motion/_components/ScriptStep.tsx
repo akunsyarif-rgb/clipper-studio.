@@ -1,4 +1,5 @@
 import { type Narration } from "@/lib/recorder";
+import StartChips from "./StartChips";
 import { type CaptionStyleId, type ContentPresetId, type PaletteId } from "@/lib/script";
 import { type Transcript } from "@/lib/transcript";
 import { type Cut } from "@/lib/visuals";
@@ -93,6 +94,7 @@ export default function ScriptStep({ activeMode, applyCinematic, applyEditPlan, 
   return (
     <section className="flow-step" data-step="1" data-testid="flow-step-1">
       <div className="step-title" data-testid="step-1"><b>1</b>{activeMode === "affiliate" ? "Produk dan naskah" : "Naskah"}</div>
+      <StartChips />
       <TranscriptNotices
         imported={imported} offer={offer} setImported={setImported} setOffer={setOffer} setScript={setScript} setVoiceMode={setVoiceMode} timed={timed}
         timings={timings} videoEdit={videoEdit} />
