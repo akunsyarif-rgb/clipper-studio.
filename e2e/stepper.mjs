@@ -45,9 +45,9 @@ try {
     assert(!(await p.getByTestId("flow-stepper").isVisible()), "no stepper on a tablet");
     const inStep = (n, id) => p.getByTestId(`flow-step-${n}`).getByTestId(id).count();
     assert(await inStep(1, "script") === 1 && await inStep(1, "fold-cinematic") === 1, "script and Cinematic Studio are in step 1");
-    assert(await inStep(2, "pixabay-auto") === 1 && await inStep(2, "fold-iconify") === 1 && await inStep(2, "scenes") === 1, "pictures, icons and the scene list are in step 2");
+    assert(await inStep(2, "pixabay-auto") === 1 && await inStep(2, "fold-iconify") === 1 && await inStep(2, "scenes") === 1 && await inStep(2, "ai-director") === 1, "the AI director (its keywords feed the picture tools), pictures, icons and the scene list are in step 2");
     assert(await inStep(3, "fold-music") === 1 && await inStep(3, "fold-duration") === 1, "voice and music are in step 3");
-    assert(await inStep(4, "ai-director") === 1 && await inStep(4, "fold-look") === 1 && await inStep(4, "style-picker") === 1, "the AI director and the look are in step 4");
+    assert(await inStep(4, "ai-director") === 0 && await inStep(4, "fold-look") === 1 && await inStep(4, "style-picker") === 1, "the look is in step 4 (the AI director moved to step 2, before the manual look settings it would overwrite)");
     assert(await inStep(5, "render") === 1 && await inStep(5, "pre-checklist") === 1, "render and its checklist are in step 5");
     await ctx.close();
   });

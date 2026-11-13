@@ -21,6 +21,7 @@ type Stage = "write" | "plan" | "preview";
  * press Setuju, 3) look at the preview and press Render. Everything else stays in "Pengaturan lanjutan". Nothing changes in the
  * studio until Setuju; the plan comes from the same command agent and storyboard builder as the Cinematic Studio.
  */
+const GENRE_KEY = "clipper:quick:genre:v1";
 export default function QuickStart({ onApply, preview, checklist, renderSeconds, onSave, onAnother, onSeo, onRender, onCancelRender, rendering, progress, result, renderError, blocker, onOpenAdvanced }: {
   onApply: (plan: CinePlan, visuals?: Visual[]) => void;
   /** The studio's own preview player (null while there is nothing to show). */
@@ -46,6 +47,9 @@ export default function QuickStart({ onApply, preview, checklist, renderSeconds,
   const [stage, setStage] = useState<Stage>("write");
   const [command, setCommand] = useState("");
   const [form, setForm] = useState({ genre: "produk" as Genre, product: "", tagline: "", cta: "", seconds: 30 });
+  // The kind of film last chosen is remembered on this device, so a creator who makes stories is not asked about a product every time.
+  useEffect(() => { try { const g = localStorage.getItem(GENRE_KEY); if (g && (GENRE_IDS as readonly string[]).includes(g)) setForm(f => ({ ...f, genre: g as Genre })); } catch { /* storage blocked: starts with the product form */ } }, []);
+  const chooseGenre = (genre: Genre) => { setForm(f => ({ ...f, genre })); try { localStorage.setItem(GENRE_KEY, genre); } catch { /* not remembered */ } };
   const [plan, setPlan] = useState<CinePlan | null>(null);
   const [visuals, setVisuals] = useState<Visual[]>([]);
   const [busy, setBusy] = useState(false);
@@ -94,7 +98,7 @@ export default function QuickStart({ onApply, preview, checklist, renderSeconds,
       </div>
       {!useAi && <div className="field-grid" data-testid="quick-manual">
         <p><small>Tanpa AI: isi tiga kolom ini, aplikasi menyusun rencananya sendiri.</small></p>
-        <label>Jenis<select value={form.genre} onChange={e => setForm(f => ({ ...f, genre: e.target.value as Genre }))} data-testid="quick-genre">{GENRE_IDS.map(g => <option key={g} value={g}>{GENRES[g].label}</option>)}</select></label>
+        <label>Jenis<select value={form.genre} onChange={e => chooseGenre(e.target.value as Genre)} data-testid="quick-genre">{GENRE_IDS.map(g => <option key={g} value={g}>{GENRES[g].label}</option>)}</select></label>
         <label>{GENRES[form.genre].subject}<input value={form.product} maxLength={60} onChange={e => setForm(f => ({ ...f, product: e.target.value }))} data-testid="quick-product" /></label>
         <label>{GENRES[form.genre].tagline}<input value={form.tagline} maxLength={100} onChange={e => setForm(f => ({ ...f, tagline: e.target.value }))} data-testid="quick-tagline" /></label>
         <label>{GENRES[form.genre].cta}<input value={form.cta} maxLength={80} onChange={e => setForm(f => ({ ...f, cta: e.target.value }))} data-testid="quick-cta" /></label>

@@ -27,19 +27,19 @@ Dari atas ke bawah pada halaman `/motion` (mode Konten biasa):
 | A4 | **Suara otomatis wajib dibuat, tetapi baru ketahuan di langkah 5.** Mode suara bawaan "Otomatis"; tanpa menekan *Buat suara otomatis*, `blocker` menolak render. Daftar periksa pra-render tidak punya tombol perbaikan untuk suara (`FixId` hanya `music`, `duration`, `cta`). | `useStoryboardChecks.ts` (`blocker`), `lib/prerender.ts` | Pengguna sampai di tombol Render lalu tertahan. |
 | A5 | **Banyak pintu masuk untuk membuat naskah**: QuickStart, "0 · Mulai dari tren", kolom naskah, Cinematic Studio (di dalam langkah 1, dan *mengganti* naskah serta gaya), video sumber + transkrip. Tidak ada satu tempat yang bilang "mulai dari mana". | `StudioPanelHeader.tsx`, `ScriptStep.tsx`, `QuickStart.tsx` | Pengguna baru tidak tahu jalur mana yang utama. |
 | A6 | **Dua alur sejajar** (QuickStart dan Pengaturan lanjutan), masing-masing punya pratinjau dan tombol render sendiri. | `page.tsx` (`QuickStart` + `advanced-settings`) | Tidak jelas mana yang "resmi"; status keduanya bisa terasa berbeda. |
-| A7 | **Isian QuickStart bawaan berorientasi produk** (`EMPTY.genre = "produk"`: Produk, hook, Ajakan). Untuk konten biasa (motivasi, edukasi, cerita) tiga isian pertama tidak relevan. | `CinematicStudio.tsx` (`EMPTY`) | Konten biasa terasa seperti formulir iklan. |
+| A7 | **Jenis bawaan QuickStart adalah Produk.** Label isian sebenarnya sudah menyesuaikan jenis (`GENRES[form.genre].subject/tagline/cta`: untuk Cerita menjadi *Judul atau tema*, *Kalimat pembuka*, dst.), tetapi pilihan awalnya selalu *Produk / peluncuran*, sehingga pembuat konten biasa melihat formulir produk setiap kali halaman dibuka. (Dugaan awal bahwa isian tidak relevan terlalu keras; yang kurang adalah pilihan awalnya tidak diingat.) | `QuickStart.tsx` (`form.genre` awal `"produk"`), `lib/cinematic.ts` (`GENRES`) | Satu klik tambahan setiap kali, dan kesan formulir iklan. |
 | A8 | **Pratinjau terlalu jauh dari tempat bekerja** di ponsel: setelah memilih gambar di langkah 2, pratinjau berada sekitar 1.700 px di bawah layar. | Diukur di iPhone 13 (`.player-wrap` top 1698 px) | Pengguna tidak melihat hasil pilihannya, jadi merasa gambar "tidak muncul". |
 
 ## 3. Saran urutan
 
-**Pilihan ringan (disarankan lebih dulu, tanpa mengubah nomor langkah):**
+**Pilihan ringan: SUDAH DITERAPKAN** (tanpa mengubah nomor langkah):
 
-1. Pindahkan **Sutradara AI** ke atas langkah 2 (Gambar), atau tampilkan tombolnya di kedua langkah. Kata kunci gambar jadi tersedia tepat saat dibutuhkan (A1), dan AI berjalan sebelum pengguna mengatur gaya manual (A2).
-2. Tambahkan tombol perbaikan **"Buat suara otomatis"** di daftar periksa pra-render dan pesan `blocker` (A4).
-3. Ubah isian QuickStart bawaan mengikuti jenis konten terakhir yang dipakai, dan sembunyikan "Produk/Ajakan" bila jenisnya Cerita atau Edukasi (A7).
-4. Beri satu judul "Mulai dari…" di langkah 1 yang merangkum: tulis sendiri · dari tren · dari ide (AI) · dari video (A5).
+1. **Sutradara AI dipindah ke atas langkah 2 (Gambar).** Kata kunci gambar tersedia tepat saat dibutuhkan (A1), dan AI berjalan sebelum pengguna mengatur gaya manual (A2). Langkah 4 kini hanya berisi gaya, subtitle, tampilan & tema, dan watermark. Catatan: durasi scene yang dilihat Sutradara AI masih perkiraan sampai suara dibuat di langkah 3.
+2. **Daftar periksa pra-render** kini memuat baris **"Suara otomatis belum dibuat"** dengan tombol *Buat suara otomatis* (A4). Baris itu hilang sendiri setelah suara dibuat atau pengguna memilih tanpa suara.
+3. **QuickStart mengingat jenis film terakhir** di perangkat ini (A7).
+4. **Baris "Mulai dari:"** di langkah 1 dengan empat pintu: *Tulis sendiri*, *Tren*, *Ide (AI)*, *Video*. Tiap tombol membawa pengguna ke bagian yang tepat (A5).
 
-**Pilihan ideal (urutan baru, perlu menyesuaikan `data-testid` dan e2e):**
+**Pilihan ideal (belum diterapkan; urutan baru, perlu menyesuaikan `data-testid` dan e2e):**
 
 | Langkah | Isi | Alasan |
 |---|---|---|
@@ -78,3 +78,4 @@ Diperiksa semua komponen yang merender daftar hasil:
 - **Tombol "Lihat di pratinjau"** di tiap scene yang sudah bergambar: meloncat ke scene itu dan menggulir ke pratinjau.
 - **Tombol Sembunyikan/Tampilkan** pada daftar hasil di atas (komponen `ResultsBar`), tanpa pencarian ulang saat ditampilkan kembali.
 - Tes e2e baru `e2e/image-results.mjs` mengunci semua perilaku di atas pada layar ponsel.
+- Saran urutan "pilihan ringan" (bagian 3) diterapkan; `e2e/flow-order.mjs` mengujinya, dan `e2e/stepper.mjs` kini menegaskan Sutradara AI berada di langkah 2.

@@ -10,6 +10,12 @@ describe("pre-render checks", () => {
     expect(c.map(x => x.id)).toEqual(["sound", "scene-length", "cta", "length"]);
     expect(c.every(x => x.level === "ok" && !x.fix)).toBe(true);
   });
+  it("an automatic voice that is not made yet comes first and offers to make it; nothing is added once it exists", () => {
+    const c = prerenderChecks({ ...base, voicePending: true });
+    expect(c.map(x => x.id)).toEqual(["voice", "sound", "scene-length", "cta", "length"]);
+    expect(c[0]).toMatchObject({ level: "warn", title: "Suara otomatis belum dibuat", fix: { id: "voice", label: "Buat suara otomatis" } });
+    expect(prerenderChecks({ ...base, voicePending: false }).map(x => x.id)).toEqual(["sound", "scene-length", "cta", "length"]);
+  });
   it("no sound at all offers default music; a voice, music or the source video's own sound counts", () => {
     const none = prerenderChecks({ ...base, hasMusic: false });
     expect(none[0]).toMatchObject({ level: "warn", fix: { id: "music", label: "Tambah musik default" } });
