@@ -75,6 +75,7 @@ Diperiksa semua komponen yang merender daftar hasil:
 - **Foto terlalu gelap di pratinjau.** Selubung warna di atas foto sampai 90% pekat; dikurangi menjadi sekitar 20–80% agar foto terlihat dan teks tetap terbaca.
 - **Pratinjau kosong saat scene dipilih.** Klik scene meloncat ke frame pertama scene (animasi masuk masih transparan); sekarang meloncat 10 frame ke dalam scene.
 - **Baris kontrol gambar rusak di ponsel.** Input berkas tampil di tengah baris dan kredit foto terbelah jadi huruf bertumpuk; sekarang input disembunyikan dan kredit mendapat satu baris penuh.
+- **Klip latar yang gagal dimuat tidak lagi melempar error.** Karena klip kini benar-benar digambar, alamat yang sudah mati di CDN memunculkan error pemutaran yang tak tertangkap (ditemukan oleh regresi browser di GitHub). `<Video>` diberi penangan error untuk `<video>` cadangannya, sehingga scene tetap tampil dengan latar dan teksnya; jalur render MP4 tidak berubah. Dikunci oleh skenario "klip yang tak bisa dimuat" di `e2e/image-results.mjs`.
 - **Tombol "Lihat di pratinjau"** di tiap scene yang sudah bergambar: meloncat ke scene itu dan menggulir ke pratinjau.
 - **Tombol Sembunyikan/Tampilkan** pada daftar hasil di atas (komponen `ResultsBar`), tanpa pencarian ulang saat ditampilkan kembali.
 - Tes e2e baru `e2e/image-results.mjs` mengunci semua perilaku di atas pada layar ponsel.
