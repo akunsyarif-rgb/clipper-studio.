@@ -35,7 +35,7 @@ try {
 
   await step("tablet: one numbered flow 1-5, every helper inside the step it belongs to, all steps on screen", async () => {
     const { ctx, p } = await newPage({ width: 1100, height: 1400 });
-    const titles = { 1: /1\s*Naskah/, 2: /2\s*Gambar/, 3: /3\s*Suara dan musik/, 4: /4\s*Gaya/, 5: /5\s*Render/ };
+    const titles = { 1: /1\s*Naskah/, 2: /2\s*Sutradara dan gaya/, 3: /3\s*Suara dan musik/, 4: /4\s*Gambar/, 5: /5\s*Render/ };
     for (const n of [1, 2, 3, 4, 5]) {
       const t = p.getByTestId(`step-${n}`);
       await t.waitFor({ timeout: 5000 });
@@ -45,9 +45,9 @@ try {
     assert(!(await p.getByTestId("flow-stepper").isVisible()), "no stepper on a tablet");
     const inStep = (n, id) => p.getByTestId(`flow-step-${n}`).getByTestId(id).count();
     assert(await inStep(1, "script") === 1 && await inStep(1, "fold-cinematic") === 1, "script and Cinematic Studio are in step 1");
-    assert(await inStep(2, "pixabay-auto") === 1 && await inStep(2, "fold-iconify") === 1 && await inStep(2, "scenes") === 1 && await inStep(2, "ai-director") === 1, "the AI director (its keywords feed the picture tools), pictures, icons and the scene list are in step 2");
+    assert(await inStep(2, "ai-director") === 1 && await inStep(2, "director-optional") === 1 && await inStep(2, "fold-look") === 1 && await inStep(2, "style-picker") === 1, "the optional AI director comes first in step 2, then the look: both follow the finished script");
     assert(await inStep(3, "fold-music") === 1 && await inStep(3, "fold-duration") === 1, "voice and music are in step 3");
-    assert(await inStep(4, "ai-director") === 0 && await inStep(4, "fold-look") === 1 && await inStep(4, "style-picker") === 1, "the look is in step 4 (the AI director moved to step 2, before the manual look settings it would overwrite)");
+    assert(await inStep(4, "pixabay-auto") === 1 && await inStep(4, "fold-iconify") === 1 && await inStep(4, "scenes") === 1 && await inStep(4, "ai-director") === 0, "pictures, icons and the scene list are the last step before render (step 4), once the look and the voice are set");
     assert(await inStep(5, "render") === 1 && await inStep(5, "pre-checklist") === 1, "render and its checklist are in step 5");
     await ctx.close();
   });

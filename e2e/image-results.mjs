@@ -55,7 +55,7 @@ try {
   await page.goto(BASE);
   await page.getByTestId("advanced-settings").evaluate(d => { d.open = true; });
   await page.getByTestId("script").fill("Hot coffee in the morning.\nRocket launch at night.\nCity lights glow.");
-  await page.getByRole("button", { name: /Selanjutnya/ }).first().click();
+  await page.getByTestId("flow-dot-4").click(); // the pictures are step 4 (script, director and look, voice, pictures, render)
 
   await step("photo results are one swipeable row on a phone and can be hidden and shown again without a new search", async () => {
     await page.getByTestId("scene-image-pixabay").first().click();

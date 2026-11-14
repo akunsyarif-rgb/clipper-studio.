@@ -93,7 +93,7 @@ const [advancedOpen, setAdvancedOpen] = useState(false);
   function goSave() { setSaveOpen(true); openAdvanced(() => { setFlowStep(5); setTimeout(() => document.querySelector("[data-testid=hub-open]")?.scrollIntoView({ behavior: "smooth", block: "center" }), 80); }); }
   function makeAnother() {
     tryOtherStyle(); setStatus("Gaya diganti. Atur seperlunya lalu tekan Render untuk membuat versi baru.");
-    openAdvanced(() => { setFlowStep(4); document.querySelector("[data-testid=step-4]")?.scrollIntoView({ behavior: "smooth", block: "start" }); });
+    openAdvanced(() => { setFlowStep(2); document.querySelector("[data-testid=step-2]")?.scrollIntoView({ behavior: "smooth", block: "start" }); });
   }
   function goSeo() {
     openAdvanced(() => { setFlowStep(5); const f = document.querySelector<HTMLDetailsElement>("[data-testid=fold-seo]"); if (f) { f.open = true; f.scrollIntoView({ behavior: "smooth", block: "start" }); } });

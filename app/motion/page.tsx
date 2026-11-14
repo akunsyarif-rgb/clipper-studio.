@@ -165,17 +165,16 @@ export default function MotionStudio() {
       setTitle={setTitle} setTrim={setTrim} setTrimNote={setTrimNote} setVideoEdit={setVideoEdit} setVoiceMode={setVoiceMode} source={source}
       sourceError={sourceError} sourceVideo={sourceVideo} timed={timed} timeline={timeline} timings={timings} title={title} titleError={titleError}
       trim={trim} trimNote={trimNote} undoEditPlan={undoEditPlan} useTimingOnly={useTimingOnly} videoEdit={videoEdit} voiceMode={voiceMode} />
-    <ImagesStep
+    <StyleStep
       director={<DirectorSection activeMode={activeMode} affiliateBrief={affiliateBrief} applyDirector={applyDirector} cutOverrides={cutOverrides} directorHistory={directorHistory} directorInfo={directorInfo} directorNote={directorNote} imported={imported} overrides={overrides} palette={palette} redoDirector={redoDirector} source={source} style={style} timeline={timeline} undoDirector={undoDirector} videoEdit={videoEdit} />}
-      animationPlan={animationPlan} applyIcon={applyIcon} autoPhotos={autoPhotos} chooseEntrance={chooseEntrance} clipStarts={clipStarts}
-      cutOverrides={cutOverrides} directorInfo={directorInfo} goFlow={goFlow} iconEntrance={iconEntrance} imageError={imageError} images={images}
-      manualChoice={manualChoice} musicMode={musicMode} narrativePlan={narrativePlan} onSceneImage={onSceneImage} overrides={overrides} palette={palette}
-      pickerFor={pickerFor} pickerSource={pickerSource} planned={planned} player={player} putPixabayPhoto={putPixabayPhoto}
-      putPixabayVideo={putPixabayVideo} putStockPhoto={putStockPhoto} queryHints={queryHints} removeSceneImage={removeSceneImage} rendering={rendering}
-      sceneContext={sceneContext} sceneList={sceneList} sceneVisuals={sceneVisuals} setClipStarts={setClipStarts} setCutOverrides={setCutOverrides}
-      setMood={setMood} setMusicMode={setMusicMode} setOverrides={setOverrides} setPickerFor={setPickerFor} setPickerSource={setPickerSource}
-      setStickerOverrides={setStickerOverrides} source={source} sourceVideo={sourceVideo} stickerMode={stickerMode} stickerOverrides={stickerOverrides}
-      style={style} timeline={timeline} videoEdit={videoEdit} />
+      backdrop={backdrop} captionPos={captionPos} captions={captions}
+      contentPreset={contentPreset}
+      goFlow={goFlow} grain={grain} palette={palette} rememberStyle={rememberStyle}
+      rendering={rendering} replayPreview={replayPreview} setBackdrop={setBackdrop} setCaptionPos={setCaptionPos} setContentPreset={setContentPreset}
+      setGrain={setGrain} setPalette={setPalette} setStoryVisuals={setStoryVisuals} setStyle={setStyle} setTypography={setTypography}
+      setWatermark={setWatermark} showCaptionFrame={showCaptionFrame} source={source} storyVisuals={storyVisuals} style={style} styleUndo={styleUndo}
+      tryOtherStyle={tryOtherStyle} typography={typography} undoStyle={undoStyle} videoEdit={videoEdit}
+      watermark={watermark} />
     <VoiceStep
       aiFresh={aiFresh} aiNarration={aiNarration} audioError={audioError} audioInput={audioInput} autoDirections={autoDirections} busy={busy}
       cancelRecording={cancelRecording} cancelVoice={cancelVoice} captions={captions} captionStyle={captionStyle} duck={duck}
@@ -190,15 +189,16 @@ export default function MotionStudio() {
       uploadedMusic={uploadedMusic} videoEdit={videoEdit} videoSeconds={videoSeconds} voiceBusy={voiceBusy}
       voiceDirectionOverrides={voiceDirectionOverrides} voiceDirections={voiceDirections} voiceError={voiceError} voiceMode={voiceMode}
       voiceProgress={voiceProgress} voiceSegmentKeys={voiceSegmentKeys} />
-    <StyleStep
-      backdrop={backdrop} captionPos={captionPos} captions={captions}
-      contentPreset={contentPreset}
-      goFlow={goFlow} grain={grain} palette={palette} rememberStyle={rememberStyle}
-      rendering={rendering} replayPreview={replayPreview} setBackdrop={setBackdrop} setCaptionPos={setCaptionPos} setContentPreset={setContentPreset}
-      setGrain={setGrain} setPalette={setPalette} setStoryVisuals={setStoryVisuals} setStyle={setStyle} setTypography={setTypography}
-      setWatermark={setWatermark} showCaptionFrame={showCaptionFrame} source={source} storyVisuals={storyVisuals} style={style} styleUndo={styleUndo}
-      tryOtherStyle={tryOtherStyle} typography={typography} undoStyle={undoStyle} videoEdit={videoEdit}
-      watermark={watermark} />
+    <ImagesStep
+      animationPlan={animationPlan} applyIcon={applyIcon} autoPhotos={autoPhotos} chooseEntrance={chooseEntrance} clipStarts={clipStarts}
+      cutOverrides={cutOverrides} directorInfo={directorInfo} goFlow={goFlow} iconEntrance={iconEntrance} imageError={imageError} images={images}
+      manualChoice={manualChoice} musicMode={musicMode} narrativePlan={narrativePlan} onSceneImage={onSceneImage} overrides={overrides} palette={palette}
+      pickerFor={pickerFor} pickerSource={pickerSource} planned={planned} player={player} putPixabayPhoto={putPixabayPhoto}
+      putPixabayVideo={putPixabayVideo} putStockPhoto={putStockPhoto} queryHints={queryHints} removeSceneImage={removeSceneImage} rendering={rendering}
+      sceneContext={sceneContext} sceneList={sceneList} sceneVisuals={sceneVisuals} setClipStarts={setClipStarts} setCutOverrides={setCutOverrides}
+      setMood={setMood} setMusicMode={setMusicMode} setOverrides={setOverrides} setPickerFor={setPickerFor} setPickerSource={setPickerSource}
+      setStickerOverrides={setStickerOverrides} source={source} sourceVideo={sourceVideo} stickerMode={stickerMode} stickerOverrides={stickerOverrides}
+      style={style} timeline={timeline} videoEdit={videoEdit} />
     <RenderStep
       abort={abort} applyFix={applyFix} base={base} blocker={blocker} copyBrief={copyBrief} entrySeo={entrySeo} errorDetail={errorDetail}
       exportProject={exportProject} goFlow={goFlow} goSave={goSave} goSeo={goSeo} historyId={historyId} imported={imported} makeAnother={makeAnother}

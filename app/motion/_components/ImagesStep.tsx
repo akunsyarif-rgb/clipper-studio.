@@ -15,15 +15,13 @@ import { type PexelsPhoto } from "@/lib/pexels";
 import type { Visual } from "@/lib/command-agent";
 import type { MusicMode, SceneImageFile } from "./types";
 import SceneItem from "./SceneItem";
-import type { Dispatch, SetStateAction, RefObject, ChangeEvent, ReactNode } from "react";
+import type { Dispatch, SetStateAction, RefObject, ChangeEvent } from "react";
 import type { AnimationPlan } from "@/lib/importance";
 import type { NarrativePlan } from "@/lib/narrative";
 import type { SceneVisual } from "@/lib/visuals";
 import type { TimelineResult } from "@/lib/script";
 
 type Props = {
-  /** The "Sutradara AI" panel, shown first: its picture keywords feed the tools below. */
-  director: ReactNode;
   animationPlan: AnimationPlan;
   applyIcon: (text: string, icon: LoadedIcon) => void;
   autoPhotos: number;
@@ -71,13 +69,12 @@ type Props = {
   videoEdit: boolean;
 };
 
-export default function ImagesStep({ director, animationPlan, applyIcon, autoPhotos, chooseEntrance, clipStarts, cutOverrides, directorInfo, goFlow, iconEntrance, imageError, images, manualChoice, musicMode, narrativePlan, onSceneImage, overrides, palette, pickerFor, pickerSource, planned, player, putPixabayPhoto, putPixabayVideo, putStockPhoto, queryHints, removeSceneImage, rendering, sceneContext, sceneList, sceneVisuals, setClipStarts, setCutOverrides, setMood, setMusicMode, setOverrides, setPickerFor, setPickerSource, setStickerOverrides, source, sourceVideo, stickerMode, stickerOverrides, style, timeline, videoEdit }: Props) {
+export default function ImagesStep({ animationPlan, applyIcon, autoPhotos, chooseEntrance, clipStarts, cutOverrides, directorInfo, goFlow, iconEntrance, imageError, images, manualChoice, musicMode, narrativePlan, onSceneImage, overrides, palette, pickerFor, pickerSource, planned, player, putPixabayPhoto, putPixabayVideo, putStockPhoto, queryHints, removeSceneImage, rendering, sceneContext, sceneList, sceneVisuals, setClipStarts, setCutOverrides, setMood, setMusicMode, setOverrides, setPickerFor, setPickerSource, setStickerOverrides, source, sourceVideo, stickerMode, stickerOverrides, style, timeline, videoEdit }: Props) {
   const [listHidden, setListHidden] = useState(false);
   const [detail, setDetail] = useState(false);
   return (
-    <section className="flow-step" data-step="2" data-testid="flow-step-2">
-      <div className="step-title" data-testid="step-2"><b>2</b>Gambar</div>
-      {director}
+    <section className="flow-step" data-step="4" data-testid="flow-step-4">
+      <div className="step-title" data-testid="step-4"><b>4</b>Gambar</div>
       {timeline.ok && <PixabayAutoPanel autoRun={autoPhotos} disabled={rendering} onApply={putPixabayPhoto} onApplyVideo={putPixabayVideo} musicOn={musicMode === "auto"} onMusic={() => { setMusicMode("auto"); setMood(moodForStyle(style)); }}
         scenes={timeline.scenes.map((sc, i) => ({ text: sc.text, query: directorInfo[sc.text]?.imageQuery ?? queryHints[sc.text]?.term, kind: queryHints[sc.text]?.kind, hasImage: !!images[sc.text] || (!!(videoEdit && source) && sceneList[i]?.cut !== "graphic") }))} />}
       {timeline.ok && <IconifyPanel entrance={iconEntrance} onEntrance={chooseEntrance} disabled={rendering} accent={PALETTES[palette].accent} onApply={applyIcon}
@@ -105,7 +102,7 @@ export default function ImagesStep({ director, animationPlan, applyIcon, autoPho
             stickerOverrides={stickerOverrides} t={t} videoEdit={videoEdit} />
         </div>); }); })()}</div>}
       {timeline.ok && <p className="preview-disclaimer" data-testid="image-note">{imageError ? <span className="scene-image-error" data-testid="image-error">{imageError} </span> : null}{videoEdit && source ? "Di video sumber, gambar tampil sebagai layar penuh (maks. 4 detik) pada scene itu, dan pembicara kembali setelahnya. " : null}Gambar latar hanya dipakai di perangkat ini dan tidak ikut tersimpan atau tersinkron; pilih lagi setelah memuat ulang halaman. Pakai gambar milik Anda, foto Pexels/Pixabay, atau yang boleh dipakai ulang: gambar dari internet (mis. Pinterest) belum tentu bebas hak cipta.</p>}
-      <FlowStepNav step={2} onGo={goFlow} />
+      <FlowStepNav step={4} onGo={goFlow} />
     </section>
   );
 }
