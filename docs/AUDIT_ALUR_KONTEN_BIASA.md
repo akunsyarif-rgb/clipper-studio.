@@ -34,20 +34,22 @@ Dari atas ke bawah pada halaman `/motion` (mode Konten biasa):
 
 **Pilihan ringan: SUDAH DITERAPKAN** (tanpa mengubah nomor langkah):
 
-1. **Sutradara AI dipindah ke atas langkah 2 (Gambar).** Kata kunci gambar tersedia tepat saat dibutuhkan (A1), dan AI berjalan sebelum pengguna mengatur gaya manual (A2). Langkah 4 kini hanya berisi gaya, subtitle, tampilan & tema, dan watermark. Catatan: durasi scene yang dilihat Sutradara AI masih perkiraan sampai suara dibuat di langkah 3.
+1. **Sutradara AI dipindah ke depan gaya dan gambar.** Awalnya diletakkan di langkah Gambar; sekarang berada di langkah 2 (Sutradara dan gaya), paling atas, sehingga kata kunci gambar sudah ada saat langkah Gambar (A1) dan AI berjalan sebelum pengguna mengatur gaya manual (A2).
 2. **Daftar periksa pra-render** kini memuat baris **"Suara otomatis belum dibuat"** dengan tombol *Buat suara otomatis* (A4). Baris itu hilang sendiri setelah suara dibuat atau pengguna memilih tanpa suara.
 3. **QuickStart mengingat jenis film terakhir** di perangkat ini (A7).
 4. **Baris "Mulai dari:"** di langkah 1 dengan empat pintu: *Tulis sendiri*, *Tren*, *Ide (AI)*, *Video*. Tiap tombol membawa pengguna ke bagian yang tepat (A5).
 
-**Pilihan ideal (belum diterapkan; urutan baru, perlu menyesuaikan `data-testid` dan e2e):**
+**Urutan akhir: SUDAH DITERAPKAN (sesuai arahan pemilik produk):** naskah dulu, lalu sutradara dan gaya yang mengikuti naskah, baru suara, lalu gambar. Sutradara AI **opsional**: tidak otomatis berjalan, ditandai "opsional" dengan petunjuk bahwa bagian itu boleh dilewati bila naskah sudah final, dan pengguna bisa langsung mengatur gaya sendiri di bawahnya.
 
 | Langkah | Isi | Alasan |
 |---|---|---|
-| 1 Naskah | Mulai dari…, naskah, judul | Semua yang lain bergantung pada teks. |
-| 2 Suara | Voice over, durasi, subtitle, backsound | Suara menentukan durasi tiap scene. |
-| 3 Sutradara & gaya | Sutradara AI, lalu penyesuaian gaya, palet, watermark | AI memberi titik awal; penyesuaian manual datang sesudahnya dan tidak tertimpa. |
-| 4 Gambar & ikon | Pencarian gambar, video latar, ikon, daftar scene | Kata kunci, palet, dan durasi sudah final. |
+| 1 Naskah | Mulai dari…, naskah, judul | Semua yang lain bergantung pada teks. Petunjuk "Naskah sudah final? Lanjut ke langkah 2". |
+| 2 Sutradara dan gaya | Sutradara AI (opsional), gaya animasi dan palet, posisi subtitle, tampilan & tema, watermark | AI memberi titik awal dari naskah yang sudah final; pengaturan manual datang sesudahnya dan tidak tertimpa. |
+| 3 Suara dan musik | Voice over, backsound, durasi & subtitle, efek & stiker | Suara menentukan durasi tiap scene setelah gaya dipilih. |
+| 4 Gambar | Pencarian gambar, video latar, ikon, daftar scene | Kata kunci (Sutradara AI), warna (gaya), dan durasi (suara) sudah final. |
 | 5 Render | Daftar periksa, render, SEO, simpan | Tidak berubah. |
+
+Catatan: durasi scene yang dilihat Sutradara AI masih perkiraan sampai suara dibuat di langkah 3; hasil gambar tidak terpengaruh karena terikat pada teks scene.
 
 **Pratinjau (A8):** pertahankan tombol "Lihat di pratinjau" (sudah ditambahkan), dan pertimbangkan pratinjau mini yang menempel di ponsel pada langkah 4 (Gambar). Itu butuh uji sentuh di perangkat nyata, jadi belum dikerjakan.
 

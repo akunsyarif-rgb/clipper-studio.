@@ -60,7 +60,8 @@ export default function AiDirector({ input, language, active, note, canRedo, ver
 
   if (access === undefined) return null;
   return <div className="ai-director" data-testid="ai-director">
-    <b>Sutradara AI</b>
+    <b>Sutradara AI <span className="optional-tag">opsional</span></b>
+    <small data-testid="director-optional">Tidak wajib: bila naskah sudah final dan Anda lebih suka mengatur sendiri, lewati bagian ini dan lanjutkan ke pengaturan gaya di bawah.</small>
     <small>AI menyusun gaya, palet, tampilan tiap scene, ikon{input.videoEdit ? ", dan potongan layar" : ""} dari naskah Anda memakai panduan motion graphics. Hanya teks kalimat yang dikirim; teks Anda tidak diubah. Periksa hasilnya di daftar scene, ubah yang tidak cocok, atau tulis masukan lalu susun ulang.</small>
     {access === null
       ? <AiNeeded testId="director-needs-key" what="Sutradara AI memakai AI." />

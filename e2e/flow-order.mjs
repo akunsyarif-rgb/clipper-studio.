@@ -61,6 +61,28 @@ try {
     await page.waitForFunction(() => document.querySelector('[data-testid="quick-genre"]')?.value === "cerita", null, { timeout: 5000 });
   });
 
+  await step("phone: the steps follow the script, then the director and look, then voice, then pictures, then render; the director is optional", async () => {
+    const pctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const p = await pctx.newPage();
+    await p.goto(BASE);
+    await p.getByTestId("advanced-settings").evaluate(d => { d.open = true; });
+    const title = async () => (await p.getByTestId("flow-stepper").innerText()).replace(/\s+/g, " ");
+    const expected = ["Naskah", "Sutradara dan gaya", "Suara dan musik", "Gambar", "Render"];
+    assert(/Langkah 1 dari 5/.test(await title()) && /Naskah/.test(await title()), "starts with the script: " + await title());
+    for (let n = 1; n < 5; n++) {
+      const next = await p.getByTestId(`flow-nav-${n}`).getByTestId("flow-next").innerText();
+      assert(next.includes(expected[n]), `after step ${n} comes ${expected[n]} (button says: ${next})`);
+      await p.getByTestId(`flow-nav-${n}`).getByTestId("flow-next").click();
+      assert(new RegExp(`Langkah ${n + 1} dari 5`).test(await title()), `now on step ${n + 1}: ` + await title());
+      if (n === 1) {
+        await p.getByTestId("script").waitFor({ state: "attached" });
+        assert(await p.getByTestId("director-optional").isVisible(), "step 2 says the AI director is optional and can be skipped");
+        assert(await p.getByTestId("style-picker").isVisible(), "and the look can be set right there without the director");
+      }
+    }
+    await pctx.close();
+  });
+
   await step("no uncaught page errors", async () => {
     const real = pageErrors.filter(m => m !== "Failed to fetch");
     assert(real.length === 0, real.join(" | "));

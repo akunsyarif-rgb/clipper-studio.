@@ -121,6 +121,7 @@ export default function ScriptStep({ activeMode, applyCinematic, applyEditPlan, 
       {titleError && <p className="field-error">{titleError}</p>}
       <CinematicStudio active={cine} hasMusic={musicMode !== "none"} frames={timeline.ok ? timeline.scenes.map(x => x.durationInFrames) : []} onApply={applyCinematic} onClear={() => setCine(null)}
         onFx={(text, fx: FxId) => setCine(c => c ? { ...c, fx: { ...c.fx, [text]: fx }, plan: { ...c.plan, scenes: c.plan.scenes.map(x => x.text === text ? { ...x, fx } : x), fxByText: { ...c.plan.fxByText, [text]: fx } } } : c)} />
+      <small className="field-hint normal-only" data-testid="script-final-hint">Naskah sudah final? Lanjut ke langkah 2: Sutradara AI (opsional, boleh dilewati) lalu gaya, suara, dan gambar.</small>
       <FlowStepNav step={1} onGo={goFlow} />
     </section>
   );

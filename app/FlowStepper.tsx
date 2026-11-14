@@ -1,6 +1,6 @@
 "use client";
 
-export const FLOW_STEPS = ["Naskah", "Gambar", "Suara dan musik", "Gaya", "Render"] as const;
+export const FLOW_STEPS = ["Naskah", "Sutradara dan gaya", "Suara dan musik", "Gambar", "Render"] as const;
 
 /** On a phone the five steps are shown one at a time: a progress bar on top ... */
 export function FlowStepperBar({ step, onGo }: { step: number; onGo: (n: number) => void }) {

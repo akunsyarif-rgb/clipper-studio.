@@ -7,9 +7,11 @@ import { type TypePackId } from "@/lib/fonts";
 import WatermarkPanel from "../../WatermarkPanel";
 import { isWatermarkActive, type Watermark } from "@/lib/watermark";
 import LookFold from "./LookFold";
-import type { Dispatch, SetStateAction } from "react";
+import type { Dispatch, SetStateAction, ReactNode } from "react";
 
 type Props = {
+  /** The optional "Sutradara AI" panel, first in this step: it plans the look from the finished script, before the manual settings below. */
+  director: ReactNode;
   backdrop: "plain" | "mesh";
   captionPos: CaptionPos | undefined;
   captions: boolean;
@@ -41,10 +43,11 @@ type Props = {
   watermark: Watermark;
 };
 
-export default function StyleStep({ backdrop, captionPos, captions, contentPreset, goFlow, grain, palette, rememberStyle, rendering, replayPreview, setBackdrop, setCaptionPos, setContentPreset, setGrain, setPalette, setStoryVisuals, setStyle, setTypography, setWatermark, showCaptionFrame, source, storyVisuals, style, styleUndo, tryOtherStyle, typography, undoStyle, videoEdit, watermark }: Props) {
+export default function StyleStep({ director, backdrop, captionPos, captions, contentPreset, goFlow, grain, palette, rememberStyle, rendering, replayPreview, setBackdrop, setCaptionPos, setContentPreset, setGrain, setPalette, setStoryVisuals, setStyle, setTypography, setWatermark, showCaptionFrame, source, storyVisuals, style, styleUndo, tryOtherStyle, typography, undoStyle, videoEdit, watermark }: Props) {
   return (
-    <section className="flow-step" data-step="4" data-testid="flow-step-4">
-      <div className="step-title" data-testid="step-4"><b>4</b>Gaya</div>
+    <section className="flow-step" data-step="2" data-testid="flow-step-2">
+      <div className="step-title" data-testid="step-2"><b>2</b>Sutradara dan gaya</div>
+      {director}
       <StylePicker style={style} palette={palette} onStyle={s => { rememberStyle(); setStyle(s); setContentPreset("custom"); replayPreview(); }} onPalette={pl => { rememberStyle(); setPalette(pl); setContentPreset("custom"); replayPreview(); }} onTryOther={tryOtherStyle} onUndo={undoStyle} canUndo={!!styleUndo} disabled={rendering} />
       <CaptionPosPanel value={captionPos} onChange={setCaptionPos} active={!!(videoEdit && source)} captionsOn={captions} disabled={rendering} onTouch={showCaptionFrame} />
       <LookFold
@@ -54,7 +57,7 @@ export default function StyleStep({ backdrop, captionPos, captions, contentPrese
       <details className="fold" data-testid="fold-watermark"><summary><b>Watermark video</b> <small>{isWatermarkActive(watermark) ? `${watermark.text} · ${watermark.position.replace("-", " ")}` : "Nonaktif"}</small></summary>
         <WatermarkPanel value={watermark} onChange={setWatermark} disabled={rendering} note="Terlihat langsung di pratinjau." />
       </details>
-      <FlowStepNav step={4} onGo={goFlow} />
+      <FlowStepNav step={2} onGo={goFlow} />
     </section>
   );
 }
