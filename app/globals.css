@@ -204,3 +204,21 @@ body{color-scheme:dark}
 .results-bar .text-link{margin-top:0;border:0;background:none;color:#b6f9de;font-size:11px;cursor:pointer;padding:6px 0;min-height:32px}
 .scene-list[data-compact] .narrative-reason:not(.director-reason):not([data-testid=scene-importance]),.scene-list[data-compact] .narrative-continuity{display:none}
 @media(max-width:520px){.photo-grid{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:110px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;padding-bottom:6px}.photo-grid .photo-card{scroll-snap-align:start}}
+
+/* Opening-line meter and title/thumbnail lint: advice beside the text, never a gate. */
+.hook-meter{margin:8px 0;border:1px solid var(--m-line,#232740);border-radius:10px;padding:8px 12px;font-size:12px}
+.hook-meter summary{cursor:pointer;list-style:none;display:flex;flex-wrap:wrap;gap:4px;align-items:baseline}
+.hook-meter summary small{color:var(--m-muted,#9ca4ba);flex-basis:100%}
+.hook-meter.hook-kuat summary b,.hook-meter.hook-kuat summary span{color:#7ee0b0}.hook-meter.hook-cukup summary b,.hook-meter.hook-cukup summary span{color:#f0cf6a}.hook-meter.hook-lemah summary b,.hook-meter.hook-lemah summary span{color:#ff9a8a}
+.hook-bars{list-style:none;margin:8px 0 4px;padding:0;display:flex;flex-direction:column;gap:5px}
+.hook-bars li{display:grid;grid-template-columns:minmax(0,9.5em) 1fr 2.2em;gap:8px;align-items:center}
+.hook-bars i{display:block;height:6px;border-radius:3px;background:#ffffff14;overflow:hidden}.hook-bars em{display:block;height:100%;background:#93f6ce}
+.hook-bars b{text-align:right;font-variant-numeric:tabular-nums}
+.hook-hint{margin:4px 0 0;color:var(--m-muted,#9ca4ba);line-height:1.5}
+.hook-note{display:block;margin-top:6px;color:var(--m-muted,#9ca4ba);font-size:10.5px;line-height:1.5}
+.hook-badge{display:inline-block;margin-top:4px;padding:2px 8px;border-radius:999px;font-size:11px;border:1px solid var(--m-line,#232740)}
+.hook-badge.hook-kuat{color:#7ee0b0}.hook-badge.hook-cukup{color:#f0cf6a}.hook-badge.hook-lemah{color:#ff9a8a}
+.title-lint{margin-top:6px;padding:8px 10px;border:1px dashed var(--m-line,#232740);border-radius:8px;font-size:11.5px}
+.title-lint-head{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}.title-lint-head small{color:var(--m-muted,#9ca4ba)}
+.title-lint ul{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:3px;line-height:1.45}
+.title-lint li.bad{color:#ffb4a8}.title-lint li.ok{color:var(--m-muted,#9ca4ba)}

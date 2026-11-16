@@ -1,5 +1,6 @@
 "use client";
 
+import HookMeter from "./HookMeter";
 import type { ReactNode } from "react";
 import { formatTime } from "@/lib/clip";
 import { lineTextAt, nudged, stepped, WEAK_SCORE, type Item, type Line } from "@/lib/clip-assist";
@@ -32,6 +33,7 @@ export default function SuggestionList({ items, onItems, duration, actions, intr
       <label className="field-label flow-opening">Teks pembuka <span className="field-hint">opsional · jadi judul di Motion · hanya dari isi transkrip, periksa sebelum dipakai</span>
         <input value={m.opening ?? ""} maxLength={70} placeholder={m.score !== undefined && m.score < WEAK_SCORE ? "Tulis konteks singkat untuk penonton baru" : "Kosong = judul klip dipakai"} onChange={e => set(i, x => ({ ...x, opening: e.target.value }))} data-testid="flow-opening" />
       </label>
+      {m.opening?.trim() && <HookMeter text={m.opening} compact />}
       <div className="range-tools">{actions(m, i)}</div>
       <details className="flow-adjust"><summary>Sesuaikan waktu</summary>
         {lines && lines.length > 0 && <div className="range-tools">

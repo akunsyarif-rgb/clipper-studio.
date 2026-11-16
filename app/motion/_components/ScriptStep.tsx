@@ -1,4 +1,7 @@
 import { type Narration } from "@/lib/recorder";
+import HookMeter from "../../HookMeter";
+import { AUDIO_ONLY, VIDEO_ONLY } from "./constants";
+import { hookLineOf } from "@/lib/hook-score";
 import StartChips from "./StartChips";
 import { type CaptionStyleId, type ContentPresetId, type PaletteId } from "@/lib/script";
 import { type Transcript } from "@/lib/transcript";
@@ -115,6 +118,7 @@ export default function ScriptStep({ activeMode, applyCinematic, applyEditPlan, 
       <label className="field-label" htmlFor="motion-script">Naskah <span className="field-hint">satu baris/kalimat = satu scene · *kata* untuk menonjolkan</span></label>
       <textarea id="motion-script" data-testid="script" value={script} onChange={e => setScript(e.target.value)} rows={7} placeholder="Tulis naskah video…" />
       <div className="char-count">{script.length} / 3000</div>
+      {script !== VIDEO_ONLY && script !== AUDIO_ONLY && <HookMeter text={hookLineOf(script)} />}
       <small className="field-hint" data-testid="pause-hint">Jeda: tulis <code>[jeda 1s]</code> setelah kalimat (0,1–10 dtk). Tidak dibacakan dan tidak tampil.</small>
       <label className="field-label" htmlFor="motion-title">Judul / teks pembuka</label>
       <input id="motion-title" data-testid="title" value={title} onChange={e => setTitle(e.target.value)} maxLength={60} />

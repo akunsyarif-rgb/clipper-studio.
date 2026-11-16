@@ -71,6 +71,11 @@ try {
     const tags = await page.getByTestId("seo-card-hashtags").locator("li").allInnerTexts();
     assert(tags.join(" ") === "#disiplin #BangunPagi #produktif #jakarta #motivasi", "#FYP removed, tags cleaned, capped at five: " + tags.join(" "));
     assert(await page.getByTestId("seo-score").innerText().then(t => t.startsWith("88")), "score shown");
+    // Advice beside the cards (local, no AI): a hook badge on the spoken and on-screen openings, a lint on the thumbnail text. None of it touches the score above.
+    await page.getByTestId("seo-card-voiceoverHook").getByTestId("hook-badge").waitFor({ timeout: 2000 });
+    assert(await page.getByTestId("seo-card-hookText").getByTestId("hook-badge").count() === 1, "the on-screen hook has a hook badge too");
+    assert(/Hook \d+\/100/.test(await page.getByTestId("seo-card-voiceoverHook").getByTestId("hook-badge").innerText()), "the badge says the score");
+    assert(await page.getByTestId("seo-card-thumbnailText").getByTestId("title-lint").isVisible(), "the thumbnail text is linted");
     assert(/Tambahkan pertanyaan/.test(await page.getByTestId("seo-fix").innerText()), "quick fix shown");
     return `tags ${tags.join(" ")}`;
   });
@@ -97,6 +102,9 @@ try {
     assert((await page.getByTestId("seo-text-title").innerText()).length === 55, "the title is shown as written");
     assert(await page.getByTestId("seo-score").innerText().then(t => t.startsWith("92")), "score lowered from 97 by one failed rule (100 - 8): " + await page.getByTestId("seo-score").innerText());
     assert(await page.getByTestId("seo-adjusted").isVisible(), "the correction is explained");
+    const lint = page.getByTestId("seo-card-title").getByTestId("title-lint");
+    assert(await lint.isVisible(), "the title is linted together with the thumbnail text");
+    assert(/di beranda ponsel/.test(await lint.innerText()) && /tidak mengubah skor SEO/.test(await lint.innerText()), "the 55-character title is flagged for the mobile feed, as advice only: " + await lint.innerText());
     await openFolds(page);
     assert((await page.getByTestId("seo-check-failed").allInnerTexts()).some(t => /Judul.*55 karakter/.test(t)), "the failed rule is listed");
     // The TikTok pack is still there when going back.
