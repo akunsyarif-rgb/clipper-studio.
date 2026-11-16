@@ -1,5 +1,8 @@
 "use client";
 
+import HookMeter from "./HookMeter";
+import TitleLint from "./TitleLint";
+import { lintThumb, lintTitle } from "@/lib/title-lint";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { GeminiError } from "@/lib/gemini";
 import { getAccess } from "@/lib/gemini-access";
@@ -28,6 +31,10 @@ export async function copyText(text: string): Promise<boolean> {
  * what is "viral now" unless the creator wrote it.
  */
 export type SeoSeed = { platform: SeoPlatform; niche: string; audience: string; trends: string; nonce: number };
+
+/** The cards that hold a spoken or on-screen opening line: they get the hook badge. */
+const HOOK_CARDS = new Set(["hookText", "voiceoverHook", "hook", "hookTweet"]);
+const cardText = (r: SeoResult, key: string): string | undefined => { const v = r.cards.find(c => c.key === key)?.value; return typeof v === "string" && v ? v : undefined; };
 
 export default function SeoPanel({ transcript, topic, language, seed, stored, storedId, onResult }: { transcript: string; topic: string; language: "id" | "en"; /** Packs already made for this video (from the history), shown again when its id (`storedId`) comes back. */ stored?: Partial<Record<SeoPlatform, { at: number; result: SeoResult }>>; storedId?: string; /** Every new pack, so the history keeps it. */ onResult?: (platform: SeoPlatform, result: SeoResult) => void; /** Filled by "Mulai dari tren": applied once per nonce, the creator can still edit every field. */ seed?: SeoSeed | null }) {
   const access = useGeminiAccess();
@@ -128,6 +135,9 @@ export default function SeoPanel({ transcript, topic, language, seed, stored, st
                 ? <ul className={c.kind === "hashtags" ? "seo-tags" : "seo-list"}>{c.value.map((v, i) => <li key={i}>{v}</li>)}</ul>
                 : <p className="seo-text" style={{ whiteSpace: "pre-wrap" }} data-testid={"seo-text-" + c.key}>{c.value || "—"}</p>}
               {!Array.isArray(c.value) && c.value ? <small className="field-hint">{c.value.length} karakter · {c.value.trim().split(/\s+/).length} kata</small> : null}
+              {!Array.isArray(c.value) && HOOK_CARDS.has(c.key) ? <HookMeter text={c.value} compact /> : null}
+              {!Array.isArray(c.value) && c.value && c.key === "title" ? <TitleLint heading="Cek judul dan thumbnail" result={lintTitle(c.value, cardText(result, "thumbnailText"))} /> : null}
+              {!Array.isArray(c.value) && c.value && c.key === "thumbnailText" && result.platform === "tiktok" ? <TitleLint heading="Cek teks thumbnail" result={lintThumb(c.value, cardText(result, "hookText"))} /> : null}
             </div>
           );
         })}

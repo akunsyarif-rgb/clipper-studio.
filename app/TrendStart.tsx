@@ -1,5 +1,6 @@
 "use client";
 
+import HookMeter from "./HookMeter";
 import { useEffect, useRef, useState } from "react";
 import { GeminiError } from "@/lib/gemini";
 import { getAccess } from "@/lib/gemini-access";
@@ -95,6 +96,7 @@ export default function TrendStart({ onUse, disabled }: {
             </div>
             <p className="seo-text"><b>{idea.title}</b></p>
             <p className="seo-text" data-testid="trend-hook">Hook: {idea.hook}</p>
+            <HookMeter text={idea.hook} compact />
             {idea.whyFits ? <small className="field-hint">{idea.whyFits}</small> : null}
             <details><summary>Naskah ({idea.lines.length} scene)</summary><ol className="seo-list">{idea.lines.map((l, j) => <li key={j}>{l}</li>)}</ol></details>
           </div>
